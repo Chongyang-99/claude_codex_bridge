@@ -22,6 +22,19 @@ def test_ccbd_client_explicit_timeout_overrides_env(monkeypatch, tmp_path) -> No
     assert client._timeout_s == 0.2
 
 
+def test_ccbd_client_with_timeout_preserves_socket_path(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("CCB_CCBD_CLIENT_TIMEOUT_S", "4.5")
+    socket_path = tmp_path / "ccbd.sock"
+    client = CcbdClient(socket_path)
+
+    cloned = client.with_timeout(12.0)
+
+    assert cloned is not client
+    assert cloned._socket_path == socket_path
+    assert cloned._timeout_s == 12.0
+    assert client._timeout_s == 4.5
+
+
 def test_ccbd_client_dynamic_submit_endpoint_uses_request(monkeypatch, tmp_path) -> None:
     client = CcbdClient(tmp_path / "ccbd.sock")
     calls: list[tuple[str, dict]] = []

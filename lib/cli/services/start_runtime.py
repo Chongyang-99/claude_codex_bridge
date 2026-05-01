@@ -25,6 +25,7 @@ def start_agents(
     cleanup_summary_cls,
     before_client_start_fn=None,
     enrich_summary_fn=None,
+    start_rpc_timeout_s: float | None = None,
 ) -> StartSummary:
     pre_start_result = before_client_start_fn(context) if before_client_start_fn is not None else None
     handle = ensure_daemon_started_fn(context)
@@ -36,7 +37,7 @@ def start_agents(
     }
     if terminal_size is not None:
         start_kwargs['terminal_size'] = terminal_size
-    payload = handle.client.start(**start_kwargs)
+    payload = _start_rpc_client(handle.client, timeout_s=start_rpc_timeout_s).start(**start_kwargs)
     _record_daemon_started_flag(
         context,
         daemon_started=handle.started,
@@ -51,6 +52,15 @@ def start_agents(
     if enrich_summary_fn is not None:
         return enrich_summary_fn(context, summary, pre_start_result)
     return summary
+
+
+def _start_rpc_client(client, *, timeout_s: float | None):
+    if timeout_s is None:
+        return client
+    with_timeout = getattr(client, 'with_timeout', None)
+    if not callable(with_timeout):
+        return client
+    return with_timeout(timeout_s)
 
 
 def _summary_from_start_payload(context, payload: dict, *, daemon_started: bool, cleanup_summary_cls) -> StartSummary:

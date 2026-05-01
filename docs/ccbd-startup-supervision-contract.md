@@ -259,6 +259,7 @@ Startup waiter rules:
 - `startup_transaction_timeout_s` is the maximum budget ceiling for one keeper-owned cold-start transaction:
   - it is not a fixed sleep
   - it is not a generic per-RPC timeout
+  - foreground `ccb` startup may use it for the scoped `start` RPC that completes namespace, desired-agent, and startup-report work after control-plane readiness is reached
   - it must return immediately when the relevant transaction reaches success or failure
   - it must not delay ordinary hot-path calls against an already mounted backend
   - stalled startup should also be bounded by a shorter progress-stall policy based on lifecycle startup progress
