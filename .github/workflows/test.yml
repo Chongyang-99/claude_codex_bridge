@@ -44,8 +44,43 @@ jobs:
         run: python -m compileall -q lib bin ccb
 
       - name: Run tests
-        run: pytest test/ -v --tb=short
+        run: pytest test/ -v --tb=short -m "not provider_blackbox"
         shell: bash
+
+  provider-blackbox:
+    name: Provider blackbox / ubuntu-latest / py3.11
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pytest
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest tomli
+
+      - name: Install tmux
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y tmux
+
+      - name: Syntax check
+        run: python -m compileall -q lib bin ccb
+
+      - name: Run provider blackbox tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TERM=xterm-256color
+          python -m pytest -q -m provider_blackbox test/test_v2_phase2_entrypoint.py
 
   macos-install-smoke:
     name: macOS install smoke
@@ -215,4 +250,4 @@ jobs:
         shell: wsl-bash {0}
         run: |
           export TERM=xterm-256color
-          python3 -m pytest test/ -v --tb=short
+          python3 -m pytest test/ -v --tb=short -m "not provider_blackbox"

@@ -77,11 +77,19 @@ def _runtime(agent_name: str, *, project_id: str, workspace_path: str, pid: int)
 
 def _wait_for(path: Path, timeout: float = 2.0) -> None:
     deadline = time.time() + timeout
+    last_error: str | None = None
     while time.time() < deadline:
         if path.exists():
-            return
+            if path.suffix != '.sock':
+                return
+            try:
+                CcbdClient(path, timeout_s=0.2).ping('ccbd')
+                return
+            except CcbdClientError as exc:
+                last_error = str(exc)
         time.sleep(0.02)
-    raise AssertionError(f'timed out waiting for {path}')
+    suffix = f' last_error={last_error!r}' if last_error else ''
+    raise AssertionError(f'timed out waiting for {path}{suffix}')
 
 
 def _wait_for_job_status(client: CcbdClient, job_id: str, expected: str, *, timeout: float = 3.0) -> dict:

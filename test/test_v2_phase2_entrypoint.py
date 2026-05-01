@@ -1377,6 +1377,7 @@ def test_ccb_doctor_and_ping_expose_opencode_restore_degradation(tmp_path: Path)
     assert kill.returncode == 0, kill.stderr
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_opencode_real_adapter_blackbox_pane_dead_fails_degraded(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import opencode as opencode_adapter_module
 
@@ -1444,6 +1445,7 @@ def test_ccb_opencode_real_adapter_blackbox_pane_dead_fails_degraded(monkeypatch
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_opencode_real_adapter_blackbox_completed_reply_without_done_marker(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import opencode as opencode_adapter_module
 
@@ -1521,6 +1523,7 @@ def test_ccb_opencode_real_adapter_blackbox_completed_reply_without_done_marker(
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_opencode_real_adapter_blackbox_cancel_stops_legacy_completion(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import opencode as opencode_adapter_module
 
@@ -1622,6 +1625,7 @@ def test_ccb_opencode_real_adapter_blackbox_cancel_stops_legacy_completion(monke
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_droid_real_adapter_blackbox_pane_dead_fails_degraded(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import droid as droid_adapter_module
 
@@ -1709,6 +1713,7 @@ def test_ccb_droid_real_adapter_blackbox_pane_dead_fails_degraded(monkeypatch, t
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_droid_real_adapter_blackbox_terminal_done_marker_completion(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import droid as droid_adapter_module
 
@@ -1805,6 +1810,7 @@ def test_ccb_droid_real_adapter_blackbox_terminal_done_marker_completion(monkeyp
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_droid_real_adapter_blackbox_cancel_stops_legacy_completion(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import droid as droid_adapter_module
 
@@ -2186,6 +2192,7 @@ def test_ccb_fake_codex_provider_blackbox_watch_chain(tmp_path: Path) -> None:
     assert kill.returncode == 0, kill.stderr
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_codex_real_adapter_blackbox_watch_chain_without_done_marker(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import codex as codex_adapter_module
 
@@ -2325,6 +2332,7 @@ def test_ccb_codex_real_adapter_blackbox_watch_chain_without_done_marker(monkeyp
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_codex_real_adapter_recovers_after_ccbd_restart(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import codex as codex_adapter_module
 
@@ -3435,6 +3443,7 @@ def test_ccb_two_named_opencode_agents_concurrent_ask_isolated(monkeypatch, tmp_
         _assert_phase2_app_shutdown_clean(project_root, app, thread)
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_gemini_real_adapter_recovers_after_ccbd_restart_and_rotate_clears_stale_preview(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -3702,6 +3711,7 @@ def test_ccb_fake_legacy_provider_degraded_done_marker_completion(tmp_path: Path
     assert kill.returncode == 0, kill.stderr
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_claude_real_adapter_blackbox_watch_chain(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import claude as claude_adapter_module
 
@@ -3805,6 +3815,7 @@ def test_ccb_claude_real_adapter_blackbox_watch_chain(monkeypatch, tmp_path: Pat
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_claude_real_adapter_blackbox_watch_chain_without_done_marker(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import claude as claude_adapter_module
 
@@ -3897,6 +3908,7 @@ def test_ccb_claude_real_adapter_blackbox_watch_chain_without_done_marker(monkey
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_claude_real_adapter_recovers_after_ccbd_restart(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import claude as claude_adapter_module
 
@@ -4014,6 +4026,7 @@ def test_ccb_claude_real_adapter_recovers_after_ccbd_restart(monkeypatch, tmp_pa
             assert not thread1.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_claude_real_adapter_blackbox_rotate_and_subagent_only_new_main_boundary_completes(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -4182,6 +4195,7 @@ def test_ccb_claude_real_adapter_blackbox_rotate_and_subagent_only_new_main_boun
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_claude_real_adapter_recovers_after_ccbd_restart_rotate_and_subagent_only_new_main_boundary_completes(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -4352,6 +4366,7 @@ def test_ccb_claude_real_adapter_recovers_after_ccbd_restart_rotate_and_subagent
             assert not thread1.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_gemini_real_adapter_blackbox_watch_chain(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import gemini as gemini_adapter_module
 
@@ -4456,6 +4471,7 @@ def test_ccb_gemini_real_adapter_blackbox_watch_chain(monkeypatch, tmp_path: Pat
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_gemini_real_adapter_blackbox_waits_for_last_snapshot_mutation_to_settle(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -4585,6 +4601,7 @@ def test_ccb_gemini_real_adapter_blackbox_waits_for_last_snapshot_mutation_to_se
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_gemini_real_adapter_blackbox_handles_long_silence_and_rotate(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import gemini as gemini_adapter_module
 
@@ -4686,6 +4703,7 @@ def test_ccb_gemini_real_adapter_blackbox_handles_long_silence_and_rotate(monkey
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_gemini_real_adapter_blackbox_clears_stale_reply_preview_after_rotate(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import gemini as gemini_adapter_module
 
@@ -4794,6 +4812,7 @@ def test_ccb_gemini_real_adapter_blackbox_clears_stale_reply_preview_after_rotat
         assert not thread.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_gemini_real_adapter_recovers_after_ccbd_restart(monkeypatch, tmp_path: Path) -> None:
     from provider_execution import gemini as gemini_adapter_module
 
@@ -4923,6 +4942,7 @@ def test_ccb_gemini_real_adapter_recovers_after_ccbd_restart(monkeypatch, tmp_pa
             assert not thread1.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_gemini_real_adapter_recovers_after_ccbd_restart_and_waits_for_post_restart_mutation_settle(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -5080,6 +5100,7 @@ def test_ccb_gemini_real_adapter_recovers_after_ccbd_restart_and_waits_for_post_
             assert not thread1.is_alive()
 
 
+@pytest.mark.provider_blackbox
 def test_ccb_gemini_real_adapter_recovers_after_restart_rotate_and_waits_for_new_session_mutation_settle(
     monkeypatch, tmp_path: Path
 ) -> None:
