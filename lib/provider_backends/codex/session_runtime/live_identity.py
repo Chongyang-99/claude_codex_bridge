@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from provider_core.contracts import ProviderRuntimeIdentity
+from provider_backends.codex.session_switch.diagnostics import read_diagnostics
+from provider_backends.codex.session_switch.models import STATE_AUTO_REBOUND
 
 from ..start_cmd import extract_resume_session_id
 
@@ -26,7 +28,41 @@ def live_runtime_identity(session) -> ProviderRuntimeIdentity | None:
     for cmdline in cmdlines:
         if extract_resume_session_id(cmdline) == expected_session_id:
             return ProviderRuntimeIdentity('match')
+    if _rotated_in_process(session, expected_session_id=expected_session_id):
+        return ProviderRuntimeIdentity('rotated_in_process', 'session_rotated_inside_live_provider')
     return ProviderRuntimeIdentity('mismatch', 'live_codex_process_not_running_bound_resume_session')
+
+
+def _rotated_in_process(session, *, expected_session_id: str) -> bool:
+    runtime_dir = _session_runtime_dir(session)
+    record = read_diagnostics(runtime_dir)
+    if str(record.get('state') or '').strip() != STATE_AUTO_REBOUND:
+        return False
+    if record.get('committed') is not True:
+        return False
+    candidate = record.get('candidate')
+    if not isinstance(candidate, dict):
+        return False
+    candidate_id = str(candidate.get('session_id') or '').strip()
+    if candidate_id and candidate_id != expected_session_id:
+        return False
+    candidate_path = str(candidate.get('session_path') or '').strip()
+    bound_path = str(getattr(session, 'codex_session_path', '') or '').strip()
+    return bool(candidate_path and bound_path and candidate_path == bound_path)
+
+
+def _session_runtime_dir(session) -> Path | None:
+    value = getattr(session, 'runtime_dir', None)
+    if value is None:
+        data = getattr(session, 'data', None)
+        if isinstance(data, dict):
+            value = data.get('runtime_dir')
+    if value is None:
+        return None
+    try:
+        return Path(value).expanduser()
+    except Exception:
+        return None
 
 
 def _session_backend(session):

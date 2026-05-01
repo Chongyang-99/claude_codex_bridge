@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from provider_execution.capabilities import execution_restore_capability
 
 from ..provider_binding import binding_status
@@ -79,6 +81,7 @@ def agent_summary(
     session_ref = runtime_session_ref(runtime)
     manifest = catalog.resolve_completion_manifest(spec.provider, spec.runtime_mode)
     capability = execution_restore_capability(execution_registry.get(spec.provider), provider=spec.provider)
+    switch = session_switch_summary(runtime, provider=spec.provider)
     return {
         'agent_name': agent_name,
         'provider': spec.provider,
@@ -107,6 +110,11 @@ def agent_summary(
         'execution_restore_mode': capability['restore_mode'],
         'execution_restore_reason': capability['restore_reason'],
         'execution_restore_detail': capability['restore_detail'],
+        'session_switch_state': switch.get('state'),
+        'session_switch_reason': switch.get('reason'),
+        'session_switch_committed': switch.get('committed'),
+        'session_switch_candidate_id': switch.get('candidate_session_id'),
+        'session_switch_candidate_path': switch.get('candidate_session_path'),
     }
 
 
@@ -132,6 +140,35 @@ def snapshot_reason(latest_snapshot):
     if latest_snapshot is None:
         return None
     return latest_snapshot.latest_decision.reason
+
+
+def session_switch_summary(runtime, *, provider: str) -> dict[str, object]:
+    if runtime is None or str(provider or '').strip().lower() != 'codex':
+        return {}
+    runtime_root = str(getattr(runtime, 'runtime_root', None) or '').strip()
+    if not runtime_root:
+        return {}
+    try:
+        from provider_backends.codex.session_switch.diagnostics import read_diagnostics
+
+        record = read_diagnostics(Path(runtime_root))
+    except Exception:
+        return {}
+    if not record:
+        return {}
+    candidate = record.get('candidate')
+    candidate_id = None
+    candidate_path = None
+    if isinstance(candidate, dict):
+        candidate_id = candidate.get('session_id')
+        candidate_path = candidate.get('session_path')
+    return {
+        'state': record.get('state'),
+        'reason': record.get('reason'),
+        'committed': record.get('committed'),
+        'candidate_session_id': candidate_id,
+        'candidate_session_path': candidate_path,
+    }
 
 
 __all__ = ['agent_summaries']

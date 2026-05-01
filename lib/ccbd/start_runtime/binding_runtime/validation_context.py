@@ -88,7 +88,7 @@ def has_acceptable_provider_runtime_identity(binding) -> bool:
     state = str(getattr(binding, 'provider_identity_state', None) or '').strip().lower()
     if not state:
         return True
-    return state == 'match'
+    return state in {'match', 'rotated_in_process'}
 
 
 def has_no_provider_runtime_identity_mismatch(binding) -> bool:

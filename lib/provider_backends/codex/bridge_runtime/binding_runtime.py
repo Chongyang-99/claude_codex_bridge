@@ -9,6 +9,7 @@ from provider_backends.codex.comm_runtime.binding import extract_session_id
 from provider_backends.codex.comm_runtime.log_reader_facade import CodexLogReader
 from provider_backends.codex.session import CodexProjectSession
 from provider_backends.codex.session_runtime.follow_policy import should_follow_workspace_sessions
+from provider_backends.codex.session_switch import STATE_AUTO_REBINDABLE, commit_rebind, resolve_switch_decision, write_decision
 
 from .env import env_float, path_or_none, read_session_data, session_root, session_work_dir
 
@@ -46,6 +47,14 @@ class CodexBindingTracker:
         context = refresh_context(self.session_file)
         if context is None:
             return False
+
+        switched = auto_rebind_switched_session(
+            context["data"],
+            session_file=context["session_file"],
+            runtime_dir=self.runtime_dir,
+        )
+        if switched:
+            return True
 
         log_path = current_log_path(context["data"], session_file=context["session_file"])
         if log_path is None:
@@ -95,6 +104,26 @@ def current_log_path(data: dict[str, object], *, session_file: Path | None) -> P
     return log_path
 
 
+def auto_rebind_switched_session(
+    data: dict[str, object],
+    *,
+    session_file: Path,
+    runtime_dir: Path,
+) -> bool:
+    decision = resolve_switch_decision(data, session_file=session_file, runtime_dir=runtime_dir)
+    if decision.state != STATE_AUTO_REBINDABLE or decision.candidate is None:
+        if decision.state != "bound":
+            write_decision(runtime_dir, decision, committed=False)
+        return False
+    return commit_rebind(
+        session_file=session_file,
+        session_data=data,
+        candidate=decision.candidate,
+        runtime_dir=runtime_dir,
+        reason=decision.reason,
+    )
+
+
 def binding_snapshot(data: dict[str, object]) -> tuple[str, str, str, str]:
     return (
         str(data.get("codex_session_path") or "").strip(),
@@ -104,4 +133,4 @@ def binding_snapshot(data: dict[str, object]) -> tuple[str, str, str, str]:
     )
 
 
-__all__ = ["CodexBindingTracker"]
+__all__ = ["CodexBindingTracker", "auto_rebind_switched_session"]

@@ -127,6 +127,15 @@ def render_doctor(payload: Mapping[str, object]) -> tuple[str, ...]:
             f'restore: supported={agent["execution_resume_supported"]} mode={agent["execution_restore_mode"]} reason={agent["execution_restore_reason"]}'
         )
         lines.append(f'restore_detail: {agent["execution_restore_detail"]}')
+        if agent.get("session_switch_state"):
+            lines.append(
+                'session_switch: '
+                f'state={agent.get("session_switch_state")} '
+                f'reason={agent.get("session_switch_reason")} '
+                f'committed={agent.get("session_switch_committed")} '
+                f'candidate_session={agent.get("session_switch_candidate_id")} '
+                f'candidate_path={agent.get("session_switch_candidate_path")}'
+            )
     return tuple(lines)
 
 

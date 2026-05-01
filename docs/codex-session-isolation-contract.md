@@ -182,11 +182,40 @@ even when they can see a request anchor there. A request anchor observed outside
 the managed home is a contract violation or legacy-leak diagnostic, not a
 completion source.
 
+Native in-pane Codex session switches are supported only through the managed
+session-switch boundary:
+
+- users may still run Codex-native `/new` or `codex resume <session_id>` inside
+  the managed pane
+- ordinary log readers must remain bound to the current session and must not
+  restore v5-style workspace-wide following
+- the agent-local bridge binding tracker may observe the agent's own managed
+  `codex_home/sessions` namespace and propose a session switch
+- a proposed switch may be auto-committed only when the candidate log is inside
+  the current agent's managed home, has the same `work_dir`, is newer than the
+  current binding, is the only valid candidate, and belongs to the current
+  runtime generation
+- when a running job is visible, auto-commit additionally requires the candidate
+  log to contain that job's request anchor
+- ambiguous candidates, missing anchors, external logs, and runtime mismatches
+  must be recorded as switch diagnostics and must not change binding authority
+- the switch committer is the only code path allowed to update
+  `codex_session_id`, `codex_session_path`, old-binding metadata, and persisted
+  resume command fields for a native in-pane switch
+- `doctor --fix` may reuse the same switch committer as a fallback repair path,
+  but doctor must not define a separate binding authority model
+
+Successful in-pane switches may produce a `rotated_in_process` runtime identity
+state. That state means the live pane is still the managed pane and the session
+file has been re-bound through the managed switch committer, even though the
+original process command line may not literally contain
+`codex ... resume <codex_session_id>`.
+
 Runtime pane reuse is a separate proof obligation from session-file binding:
 
 - a live tmux pane is not sufficient proof that the managed Codex agent is attached to the bound provider conversation
 - when `codex_session_id` exists, startup may reuse an existing live pane only if the live provider process identity proves it is running `codex ... resume <codex_session_id>`
-- if the live process identity is missing, unknown, or proves a different/non-resume Codex command, startup must reject that pane as reusable evidence and relaunch through the normal managed start command
+- if the live process identity is missing, unknown, or proves a different/non-resume Codex command without a committed managed in-pane switch, startup must reject that pane as reusable evidence and relaunch through the normal managed start command
 - the persisted `start_cmd` or `codex_start_cmd` is desired launch authority, not proof that the current pane process was launched with that command
 - relaunch after identity mismatch must preserve the agent-scoped `codex_home`, derived `codex_session_root`, and bound `codex_session_id` so ordinary `ccb` restores history while `ccb -n` remains the explicit fresh-start path
 - when the current explicit agent-local Codex provider authority differs from

@@ -141,6 +141,10 @@ Rules:
 
 - it must summarize current backend inspection plus latest persisted reports
 - agent binding diagnostics must include both `tmux_socket_name` and `tmux_socket_path` when known so project-scoped namespace bugs can be diagnosed from logs alone
+- Codex agent diagnostics should surface managed in-pane session-switch state
+  when `.ccb/agents/<agent>/provider-runtime/codex/session-switch.json`
+  exists, including state, reason, commit status, and candidate session
+  identity
 - it must not crash only because one diagnostics artifact is missing or malformed
 - malformed diagnostics files must surface as diagnostics errors, not silent omission
 
