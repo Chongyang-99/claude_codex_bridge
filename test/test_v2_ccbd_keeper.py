@@ -13,6 +13,7 @@ from cli.context import CliContext
 from cli.models import ParsedStartCommand
 import cli.services.daemon as daemon_service
 import ccbd.keeper as keeper_module
+import ccbd.keeper_runtime.loop as keeper_loop
 from project.resolver import bootstrap_project
 from storage.paths import PathLayout
 
@@ -343,6 +344,37 @@ def test_project_keeper_keeps_mounted_phase_when_config_check_times_out(tmp_path
     assert lifecycle.phase == 'mounted'
     assert lifecycle.desired_state == 'running'
     assert lifecycle.last_failure_reason == 'config_check_failed:ping timeout'
+
+
+def test_project_keeper_config_probe_uses_shared_control_plane_timeout(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-keeper-probe-timeout'
+    ctx = _context(project_root, 'agent1:codex\n')
+    expected = project_config_identity_payload(load_project_config(project_root).config)
+    captured: list[float | None] = []
+
+    class _FakeClient:
+        def __init__(self, socket_path, *, timeout_s=None) -> None:
+            assert socket_path == ctx.paths.ccbd_socket_path
+            captured.append(timeout_s)
+
+        def ping(self, target: str) -> dict[str, object]:
+            assert target == 'ccbd'
+            return {'config_signature': expected['config_signature']}
+
+        def stop_all(self, *, force: bool = False) -> dict[str, object]:
+            assert force is False
+            return {'ok': True}
+
+    keeper = ProjectKeeper(project_root, pid=892)
+    monkeypatch.setattr(keeper_loop, 'CcbdClient', _FakeClient)
+
+    assert keeper_loop.daemon_matches_project_config(keeper) is True
+    keeper_loop.request_shutdown(keeper)
+
+    assert captured == [
+        keeper_loop.CONTROL_PLANE_RPC_TIMEOUT_S,
+        keeper_loop.CONTROL_PLANE_RPC_TIMEOUT_S,
+    ]
 
 
 def test_project_keeper_stops_when_shutdown_intent_exists(tmp_path: Path) -> None:

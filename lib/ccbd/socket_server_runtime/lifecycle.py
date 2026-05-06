@@ -4,6 +4,8 @@ import os
 import socket
 import time
 
+_LISTEN_BACKLOG = 128
+
 
 def listen_server(server) -> None:
     if server._server is not None:
@@ -15,7 +17,7 @@ def listen_server(server) -> None:
         server._socket_path.unlink()
     runtime_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     runtime_socket.bind(str(server._socket_path))
-    runtime_socket.listen(16)
+    runtime_socket.listen(_LISTEN_BACKLOG)
     runtime_socket.settimeout(0.2)
     server._server = runtime_socket
     server._bound_socket_stat = _bound_socket_stat(server._socket_path)

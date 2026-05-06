@@ -9,6 +9,7 @@ import time
 from runtime_env.control_plane import control_plane_env
 
 from ccbd.socket_client import CcbdClient, CcbdClientError
+from ccbd.startup_policy import CONTROL_PLANE_RPC_TIMEOUT_S
 
 
 class CcbdProcessError(RuntimeError):
@@ -45,14 +46,14 @@ def _wait_for_ccbd_ready(*, process: subprocess.Popen[bytes], socket_path: Path,
     while time.time() < deadline:
         if socket_path.exists():
             try:
-                CcbdClient(socket_path, timeout_s=0.2).ping('ccbd')
+                CcbdClient(socket_path, timeout_s=CONTROL_PLANE_RPC_TIMEOUT_S).ping('ccbd')
                 return
             except CcbdClientError as exc:
                 last_error = str(exc)
         if process.poll() is not None:
             if socket_path.exists():
                 try:
-                    CcbdClient(socket_path, timeout_s=0.2).ping('ccbd')
+                    CcbdClient(socket_path, timeout_s=CONTROL_PLANE_RPC_TIMEOUT_S).ping('ccbd')
                     return
                 except CcbdClientError as exc:
                     last_error = str(exc)

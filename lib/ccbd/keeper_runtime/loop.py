@@ -8,7 +8,7 @@ from ccbd.models import LeaseHealth
 from ccbd.services.project_namespace_state import ProjectNamespaceStateStore
 from ccbd.services.lifecycle import current_socket_inode, lifecycle_from_inspection
 from ccbd.socket_client import CcbdClient, CcbdClientError
-from ccbd.startup_policy import STARTUP_TRANSACTION_TIMEOUT_S
+from ccbd.startup_policy import CONTROL_PLANE_RPC_TIMEOUT_S, STARTUP_TRANSACTION_TIMEOUT_S
 
 from .records import KeeperState
 from .state import compute_project_id, restart_backoff_active
@@ -177,7 +177,7 @@ def stale_restart_state(app, *, state: KeeperState, inspection, occurred_at: str
 
 def daemon_matches_project_config(app) -> bool:
     expected = project_config_identity_payload(load_project_config(app.project_root).config)
-    payload = CcbdClient(app.paths.ccbd_socket_path, timeout_s=0.2).ping('ccbd')
+    payload = CcbdClient(app.paths.ccbd_socket_path, timeout_s=CONTROL_PLANE_RPC_TIMEOUT_S).ping('ccbd')
     actual_signature = str(payload.get('config_signature') or '').strip()
     if actual_signature:
         return actual_signature == expected['config_signature']
@@ -189,7 +189,7 @@ def daemon_matches_project_config(app) -> bool:
 
 
 def request_shutdown(app) -> None:
-    client = CcbdClient(app.paths.ccbd_socket_path, timeout_s=0.2)
+    client = CcbdClient(app.paths.ccbd_socket_path, timeout_s=CONTROL_PLANE_RPC_TIMEOUT_S)
     try:
         client.stop_all(force=False)
     except CcbdClientError:

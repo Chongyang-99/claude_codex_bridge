@@ -267,6 +267,13 @@ Startup waiter rules:
   - the current authoritative generation bound the project socket
   - the current authoritative generation answers the minimal control-plane readiness probe for that socket
   - the current authoritative generation published the matching current lease authority
+- the socket server must keep accepting control-plane connections even when an earlier client connects but does not send a complete request:
+  - accepted connections must have a bounded request-read timeout
+  - accept and request handling must be decoupled so the kernel listen queue is not consumed by one bad or slow client
+  - request handlers and heartbeat/reconcile ticks must still execute serially in one worker lane, preserving current runtime-file write ordering
+  - mutating-operation post-request ticks, including the double tick after `submit`, must remain synchronous with the handled request in that worker lane
+  - worker-lane heartbeat/reconcile failures must terminate the serving loop and release backend ownership; the server must not remain accept-only with a dead worker lane
+- clients may retry transient connect failures such as `ENOENT`, `ECONNREFUSED`, and `EAGAIN` inside the caller's existing RPC timeout budget, but must not retry after a request has been sent
 - commands that only need control-plane RPC, including `ccb ask`, `ping`, `pend`, `watch`, `queue`, and similar daemon callers, must stop waiting at control-plane readiness
 - those non-foreground callers must not wait for project-namespace attachability or full desired-agent recovery before submitting work
 - interactive `ccb` may continue waiting past control-plane readiness for project-namespace/UI readiness and desired-agent recovery
@@ -479,6 +486,7 @@ Target architecture:
 - `DEGRADED` with a live pid plus fresh heartbeat is observation only, not restart authority, even if the project socket is temporarily unreachable
 - therefore temporary UNIX-socket accept stalls during active work must surface as degraded availability, not a keeper-triggered daemon replacement
 - config-check or live-ping timeout against a nominally mounted daemon is degraded observation only unless lifecycle state or ownership proof explicitly marks the generation failed
+- keeper config-check and graceful-shutdown probes must use the shared short `rpc_probe_timeout_s`; they must not use private shorter literals that make mounted generations look failed during normal startup load
 - if takeover does occur, any superseded daemon that wakes up again must fail its next lease refresh and exit rather than continuing to serve against stale authority
 
 If keeper is absent, the system can only provide "restart on next `ccb` command", which is weaker than the target contract.

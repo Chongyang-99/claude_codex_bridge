@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import queue
 import threading
 
 from .lifecycle import listen_server, shutdown_server
-from .loop import serve_forever as serve_forever_impl
+from .loop import serve_forever as serve_forever_impl, stop_worker
 from .protocol import handle_connection
 
 
@@ -17,6 +18,10 @@ class CcbdSocketServer:
         self._handlers: dict[str, callable] = {}
         self._request_guard = None
         self._server = None
+        self._connection_queue = queue.Queue()
+        self._worker_sentinel = object()
+        self._worker_thread: threading.Thread | None = None
+        self._worker_error: BaseException | None = None
         self._bound_socket_stat: tuple[int, int] | None = None
         self._stop_event = threading.Event()
 
@@ -40,6 +45,7 @@ class CcbdSocketServer:
 
     def shutdown(self) -> None:
         shutdown_server(self)
+        stop_worker(self)
 
     def _handle_connection(self, conn) -> str | None:
         return handle_connection(self, conn)

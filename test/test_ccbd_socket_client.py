@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import errno
+
 import pytest
 
 from ccbd.socket_client import CcbdClient, CcbdClientError
+from ccbd.socket_client_runtime.transport import connect_socket
 
 
 def test_ccbd_client_uses_stable_default_timeout(tmp_path) -> None:
@@ -116,3 +119,95 @@ def test_ccbd_client_request_wraps_socket_connect_errors(monkeypatch, tmp_path) 
 
     with pytest.raises(CcbdClientError, match='Connection refused'):
         client.request('ping', {})
+
+
+def test_connect_socket_retries_transient_connect_errors_within_timeout(monkeypatch, tmp_path) -> None:
+    current = {'t': 0.0}
+    attempts: list[object] = []
+    sleeps: list[float] = []
+
+    class _FakeSocket:
+        def __init__(self) -> None:
+            self.closed = False
+            self.timeout = None
+
+        def settimeout(self, timeout):
+            self.timeout = timeout
+
+        def connect(self, path: str) -> None:
+            attempts.append((path, self.timeout))
+            if len(attempts) == 1:
+                raise OSError(errno.EAGAIN, 'Resource temporarily unavailable')
+
+        def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr('ccbd.socket_client_runtime.transport.time.monotonic', lambda: current['t'])
+
+    def _sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        current['t'] += float(seconds)
+
+    monkeypatch.setattr('ccbd.socket_client_runtime.transport.time.sleep', _sleep)
+    monkeypatch.setattr('ccbd.socket_client_runtime.transport.socket.socket', lambda *args, **kwargs: _FakeSocket())
+
+    sock = connect_socket(tmp_path / 'ccbd.sock', timeout_s=0.5)
+
+    assert isinstance(sock, _FakeSocket)
+    assert len(attempts) == 2
+    assert sleeps == [0.05]
+
+
+def test_connect_socket_does_not_retry_non_transient_errors(monkeypatch, tmp_path) -> None:
+    attempts = 0
+
+    class _FakeSocket:
+        def settimeout(self, timeout):
+            del timeout
+
+        def connect(self, path: str) -> None:
+            nonlocal attempts
+            del path
+            attempts += 1
+            raise OSError(errno.EACCES, 'Permission denied')
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr('ccbd.socket_client_runtime.transport.socket.socket', lambda *args, **kwargs: _FakeSocket())
+
+    with pytest.raises(CcbdClientError, match='Permission denied'):
+        connect_socket(tmp_path / 'ccbd.sock', timeout_s=0.5)
+
+    assert attempts == 1
+
+
+def test_connect_socket_caps_transient_connect_retries(monkeypatch, tmp_path) -> None:
+    current = {'t': 0.0}
+    attempts = 0
+
+    class _FakeSocket:
+        def settimeout(self, timeout):
+            del timeout
+
+        def connect(self, path: str) -> None:
+            nonlocal attempts
+            del path
+            attempts += 1
+            raise OSError(errno.ENOENT, 'No such file or directory')
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr('ccbd.socket_client_runtime.transport.time.monotonic', lambda: current['t'])
+
+    def _sleep(seconds: float) -> None:
+        current['t'] += float(seconds)
+
+    monkeypatch.setattr('ccbd.socket_client_runtime.transport.time.sleep', _sleep)
+    monkeypatch.setattr('ccbd.socket_client_runtime.transport.socket.socket', lambda *args, **kwargs: _FakeSocket())
+
+    with pytest.raises(CcbdClientError, match='No such file or directory'):
+        connect_socket(tmp_path / 'ccbd.sock', timeout_s=0.5)
+
+    assert attempts == 3
