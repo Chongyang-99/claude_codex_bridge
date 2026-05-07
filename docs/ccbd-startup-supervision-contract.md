@@ -596,7 +596,7 @@ Required fields for backend liveness:
 
 Write rule:
 
-- `lease.json.socket_path` and lifecycle authority `socket_path` must always record the effective active socket path for the current generation; preferred project-local socket paths are diagnostics only and belong in startup/ping/doctor payloads, not authority.
+- `lease.json.socket_path` and lifecycle authority `socket_path` must always record the effective active socket path for the current generation; preferred socket paths are diagnostics only and may live under the project anchor or a relocated runtime root, but they do not redefine authority.
 
 ### 7.2 Startup Report
 

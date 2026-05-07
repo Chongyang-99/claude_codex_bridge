@@ -263,17 +263,17 @@ def test_doctor_summary_includes_socket_placement_fields(tmp_path: Path, monkeyp
             runtime_filesystem_hint=context.paths.runtime_state_placement.filesystem_hint,
             runtime_marker_status=context.paths.runtime_marker_status,
             socket_path=None,
-            preferred_socket_path='/mnt/e/repo/.ccb/ccbd/ccbd.sock',
-            effective_socket_path='/tmp/ccb-runtime/ccbd-proj.sock',
+            preferred_socket_path='/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock',
+            effective_socket_path='/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock',
             socket_root_kind='runtime',
-            socket_fallback_reason='unsupported_filesystem',
-            socket_filesystem_hint='wsl_drvfs',
-            tmux_socket_path='/tmp/ccb-runtime/tmux-proj.sock',
-            tmux_preferred_socket_path='/mnt/e/repo/.ccb/ccbd/tmux.sock',
-            tmux_effective_socket_path='/tmp/ccb-runtime/tmux-proj.sock',
+            socket_fallback_reason=None,
+            socket_filesystem_hint=None,
+            tmux_socket_path='/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock',
+            tmux_preferred_socket_path='/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock',
+            tmux_effective_socket_path='/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock',
             tmux_socket_root_kind='runtime',
-            tmux_socket_fallback_reason='unsupported_filesystem',
-            tmux_socket_filesystem_hint='wsl_drvfs',
+            tmux_socket_fallback_reason=None,
+            tmux_socket_filesystem_hint=None,
             last_heartbeat_at=None,
             pid_alive=False,
             socket_connectable=False,
@@ -287,13 +287,13 @@ def test_doctor_summary_includes_socket_placement_fields(tmp_path: Path, monkeyp
 
     payload = doctor_summary(context)
 
-    assert payload['ccbd']['preferred_socket_path'] == '/mnt/e/repo/.ccb/ccbd/ccbd.sock'
-    assert payload['ccbd']['effective_socket_path'] == '/tmp/ccb-runtime/ccbd-proj.sock'
-    assert payload['ccbd']['preferred_socket_path_bytes'] == len('/mnt/e/repo/.ccb/ccbd/ccbd.sock'.encode())
-    assert payload['ccbd']['effective_socket_path_bytes'] == len('/tmp/ccb-runtime/ccbd-proj.sock'.encode())
+    assert payload['ccbd']['preferred_socket_path'] == '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'
+    assert payload['ccbd']['effective_socket_path'] == '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'
+    assert payload['ccbd']['preferred_socket_path_bytes'] == len('/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'.encode())
+    assert payload['ccbd']['effective_socket_path_bytes'] == len('/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'.encode())
     assert payload['ccbd']['socket_root_kind'] == 'runtime'
-    assert payload['ccbd']['socket_fallback_reason'] == 'unsupported_filesystem'
-    assert payload['ccbd']['tmux_effective_socket_path'] == '/tmp/ccb-runtime/tmux-proj.sock'
-    assert payload['ccbd']['tmux_preferred_socket_path_bytes'] == len('/mnt/e/repo/.ccb/ccbd/tmux.sock'.encode())
-    assert payload['ccbd']['tmux_effective_socket_path_bytes'] == len('/tmp/ccb-runtime/tmux-proj.sock'.encode())
-    assert payload['ccbd']['tmux_start_server_command'] == 'tmux -S /tmp/ccb-runtime/tmux-proj.sock start-server'
+    assert payload['ccbd']['socket_fallback_reason'] is None
+    assert payload['ccbd']['tmux_effective_socket_path'] == '/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock'
+    assert payload['ccbd']['tmux_preferred_socket_path_bytes'] == len('/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock'.encode())
+    assert payload['ccbd']['tmux_effective_socket_path_bytes'] == len('/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock'.encode())
+    assert payload['ccbd']['tmux_start_server_command'] == 'tmux -S /home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock start-server'

@@ -399,29 +399,29 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
         },
         'ccbd': {
             'state': 'mounted',
-            'socket_path': '/tmp/ccb-runtime/ccbd-proj.sock',
+            'socket_path': '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock',
             'project_anchor_path': '/mnt/e/repo/.ccb',
             'runtime_state_root': '/home/demo/.local/state/ccb/projects/proj-1',
             'runtime_root_kind': 'relocated',
             'runtime_relocation_reason': 'wsl_drvfs',
             'runtime_filesystem_hint': 'wsl_drvfs',
             'runtime_marker_status': 'ok',
-            'preferred_socket_path': '/mnt/e/repo/.ccb/ccbd/ccbd.sock',
-            'effective_socket_path': '/tmp/ccb-runtime/ccbd-proj.sock',
-            'preferred_socket_path_bytes': 31,
-            'effective_socket_path_bytes': 31,
+            'preferred_socket_path': '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock',
+            'effective_socket_path': '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock',
+            'preferred_socket_path_bytes': 58,
+            'effective_socket_path_bytes': 58,
             'socket_root_kind': 'runtime',
-            'socket_fallback_reason': 'unsupported_filesystem',
-            'socket_filesystem_hint': 'wsl_drvfs',
-            'tmux_socket_path': '/tmp/ccb-runtime/tmux-proj.sock',
-            'tmux_preferred_socket_path': '/mnt/e/repo/.ccb/ccbd/tmux.sock',
-            'tmux_effective_socket_path': '/tmp/ccb-runtime/tmux-proj.sock',
-            'tmux_preferred_socket_path_bytes': 31,
-            'tmux_effective_socket_path_bytes': 31,
-            'tmux_start_server_command': 'tmux -S /tmp/ccb-runtime/tmux-proj.sock start-server',
+            'socket_fallback_reason': None,
+            'socket_filesystem_hint': None,
+            'tmux_socket_path': '/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock',
+            'tmux_preferred_socket_path': '/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock',
+            'tmux_effective_socket_path': '/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock',
+            'tmux_preferred_socket_path_bytes': 58,
+            'tmux_effective_socket_path_bytes': 58,
+            'tmux_start_server_command': 'tmux -S /home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock start-server',
             'tmux_socket_root_kind': 'runtime',
-            'tmux_socket_fallback_reason': 'unsupported_filesystem',
-            'tmux_socket_filesystem_hint': 'wsl_drvfs',
+            'tmux_socket_fallback_reason': None,
+            'tmux_socket_filesystem_hint': None,
             'health': 'healthy',
             'generation': 1,
             'last_heartbeat_at': '2026-03-18T00:00:00Z',
@@ -502,18 +502,18 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
     assert 'requirement_tmux_available: True' in doctor_lines
     assert 'requirement_provider: name=codex executable=codex available=True path=/usr/bin/codex' in doctor_lines
     assert 'ccbd_state: mounted' in doctor_lines
-    assert 'ccbd_effective_socket_path: /tmp/ccb-runtime/ccbd-proj.sock' in doctor_lines
-    assert 'ccbd_effective_socket_path_bytes: 31' in doctor_lines
+    assert 'ccbd_effective_socket_path: /home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock' in doctor_lines
+    assert 'ccbd_effective_socket_path_bytes: 58' in doctor_lines
     assert 'ccbd_project_anchor_path: /mnt/e/repo/.ccb' in doctor_lines
     assert 'ccbd_runtime_state_root: /home/demo/.local/state/ccb/projects/proj-1' in doctor_lines
     assert 'ccbd_runtime_root_kind: relocated' in doctor_lines
     assert 'ccbd_runtime_relocation_reason: wsl_drvfs' in doctor_lines
     assert 'ccbd_runtime_filesystem_hint: wsl_drvfs' in doctor_lines
     assert 'ccbd_runtime_marker_status: ok' in doctor_lines
-    assert 'ccbd_socket_fallback_reason: unsupported_filesystem' in doctor_lines
-    assert 'ccbd_tmux_effective_socket_path: /tmp/ccb-runtime/tmux-proj.sock' in doctor_lines
-    assert 'ccbd_tmux_effective_socket_path_bytes: 31' in doctor_lines
-    assert 'ccbd_tmux_start_server_command: tmux -S /tmp/ccb-runtime/tmux-proj.sock start-server' in doctor_lines
+    assert 'ccbd_socket_fallback_reason: None' in doctor_lines
+    assert 'ccbd_tmux_effective_socket_path: /home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock' in doctor_lines
+    assert 'ccbd_tmux_effective_socket_path_bytes: 58' in doctor_lines
+    assert 'ccbd_tmux_start_server_command: tmux -S /home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock start-server' in doctor_lines
     assert 'ccbd_namespace_tmux_session_name: ccb-repo' in doctor_lines
     assert 'agent: name=codex health=healthy provider=codex completion=protocol_turn' in doctor_lines
     assert (

@@ -35,7 +35,12 @@ def _config() -> ProjectConfig:
     return ProjectConfig(version=2, default_agents=('demo',), agents={'demo': spec})
 
 
-def _inspection(*, phase: str, desired_state: str, socket_path: str = '/tmp/ccbd.sock'):
+def _inspection(
+    *,
+    phase: str,
+    desired_state: str,
+    socket_path: str = '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock',
+):
     return SimpleNamespace(
         phase=phase,
         desired_state=desired_state,
@@ -64,18 +69,18 @@ def _inspection(*, phase: str, desired_state: str, socket_path: str = '/tmp/ccbd
 def _paths() -> SimpleNamespace:
     return SimpleNamespace(
         ccbd_socket_placement=SocketPlacement(
-            preferred_path=Path('/mnt/e/repo/.ccb/ccbd/ccbd.sock'),
-            effective_path=Path('/tmp/ccb-runtime/ccbd-proj.sock'),
+            preferred_path=Path('/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'),
+            effective_path=Path('/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'),
             root_kind='runtime',
-            fallback_reason='unsupported_filesystem',
-            filesystem_hint='wsl_drvfs',
+            fallback_reason=None,
+            filesystem_hint=None,
         ),
         ccbd_tmux_socket_placement=SocketPlacement(
-            preferred_path=Path('/mnt/e/repo/.ccb/ccbd/tmux.sock'),
-            effective_path=Path('/tmp/ccb-runtime/tmux-proj.sock'),
+            preferred_path=Path('/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock'),
+            effective_path=Path('/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock'),
             root_kind='runtime',
-            fallback_reason='unsupported_filesystem',
-            filesystem_hint='wsl_drvfs',
+            fallback_reason=None,
+            filesystem_hint=None,
         ),
     )
 
@@ -95,13 +100,13 @@ def test_build_ccbd_payload_prefers_lifecycle_phase_over_lease_mount_state() -> 
 
     assert payload['mount_state'] == 'starting'
     assert payload['desired_state'] == 'running'
-    assert payload['socket_path'] == '/tmp/ccbd.sock'
-    assert payload['preferred_socket_path'] == '/mnt/e/repo/.ccb/ccbd/ccbd.sock'
-    assert payload['effective_socket_path'] == '/tmp/ccb-runtime/ccbd-proj.sock'
+    assert payload['socket_path'] == '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'
+    assert payload['preferred_socket_path'] == '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'
+    assert payload['effective_socket_path'] == '/home/demo/.local/state/ccb/projects/proj-1/ccbd/ccbd.sock'
     assert payload['socket_root_kind'] == 'runtime'
-    assert payload['socket_fallback_reason'] == 'unsupported_filesystem'
-    assert payload['socket_filesystem_hint'] == 'wsl_drvfs'
-    assert payload['tmux_socket_path'] == '/tmp/ccb-runtime/tmux-proj.sock'
+    assert payload['socket_fallback_reason'] is None
+    assert payload['socket_filesystem_hint'] is None
+    assert payload['tmux_socket_path'] == '/home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock'
     assert payload['diagnostics']['last_failure_reason'] == 'startup_in_progress'
     assert payload['diagnostics']['startup_id'] == 'startup-123'
     assert payload['diagnostics']['startup_stage'] == 'spawn_requested'
