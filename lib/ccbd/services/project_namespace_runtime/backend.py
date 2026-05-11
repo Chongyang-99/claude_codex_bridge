@@ -15,9 +15,7 @@ from terminal_runtime.tmux_readiness import (
     tmux_object_ready_timeout_s,
     tmux_failure_detail,
 )
-
-
-_PLACEHOLDER_CMD = 'while :; do sleep 3600; done'
+from terminal_runtime.placeholders import pane_placeholder_argv
 
 
 @dataclass(frozen=True)
@@ -78,9 +76,7 @@ def create_session(
         [
             '-c',
             str(project_root),
-            'sh',
-            '-lc',
-            _PLACEHOLDER_CMD,
+            *pane_placeholder_argv(),
         ]
     )
     _tmux_run_ready(
@@ -168,9 +164,7 @@ def create_window(backend, *, session_name: str, window_name: str, project_root,
             window_name,
             '-c',
             str(project_root),
-            'sh',
-            '-lc',
-            _PLACEHOLDER_CMD,
+            *pane_placeholder_argv(),
         ],
         failure_message=f'failed to create tmux window {window_name!r} for session {session_name!r}',
         timeout_s=timeout_s,

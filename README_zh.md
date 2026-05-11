@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.4-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.5-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,6 +74,7 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
+- **Tmux 启动更稳**：布局 pane 创建时立即启动静默 placeholder，避免 fast-exiting shell 导致启动 split race。
 - **Ask 在真实负载下保持快速**：provider 执行、mailbox refresh 和后台维护继续异步推进，submit receipt 仍保持有界。
 - **ccbd 生命周期稳定化**：stop-all、shutdown、restart 和后台 supervision 不再通过 stale maintenance 把 stopped runtime 或 terminal job 拉回去。
 - **Observer 命令明确弱化**：`pend`、`watch`、`queue`、`inbox` 都是非权威快照；终态判断请使用 `ccb ask wait <job_id>`。
@@ -293,6 +294,14 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.1.5</b> - Tmux 启动 Hotfix</summary>
+
+- 修复启动时可能出现的 `Cannot split: pane ... does not exist` 和 `respawn pane failed: can't find pane`。
+- Provider pane 仍保持原 managed respawn 启动路径。
+
+</details>
+
+<details>
 <summary><b>v6.1.4</b> - 项目共享记忆 V1</summary>
 
 - `.ccb/ccb_memory.md` 是项目全局记忆文档。

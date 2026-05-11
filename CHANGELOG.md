@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v6.1.5 (2026-05-11)
+
+### Tmux Startup Hotfix
+
+- **Pane Startup Race Fixed**: project layout panes are now created with a silent placeholder in the initial tmux split, preventing fast-exiting shells from causing `Cannot split: pane ... does not exist` or `respawn pane failed: can't find pane`
+- **Provider Launch Semantics Preserved**: agent panes still use the managed respawn path, preserving provider shell, stderr log, and `remain-on-exit` behavior
+- **Tmux Regression Coverage Added**: tests now cover real tmux layout creation with an exiting `default-command` plus guardrails that keep provider commands off the structural split path
+
 ## v6.1.4 (2026-05-11)
 
 ### Project Shared Memory V1

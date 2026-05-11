@@ -238,6 +238,7 @@ General rule:
 - Pane pruning must never silently reorder agents.
 - Incremental in-place splitting on top of an already materialized project namespace is not a valid way to realize a different visible layout signature.
 - When the desired visible layout signature changes, startup must recreate the project namespace before rematerializing tmux panes.
+- During layout materialization, newly split panes must be created with a silent placeholder command in the initial `split-window` call, not as empty panes that are later respawned. Once assigned to a provider leaf, panes must keep using the normal managed respawn path so provider shell, stderr-log, and `remain-on-exit` semantics are preserved.
 
 ## 7. Pane Presentation Contract
 

@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.4-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.5-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -74,6 +74,7 @@ Build project-local teams with roles, pane layout, provider state, worktree isol
 <details>
 <summary><b>Latest release highlights</b></summary>
 
+- **Tmux startup is hardened**: layout panes now start with a silent placeholder immediately, avoiding fast-exiting shell races during startup.
 - **Ask stays fast under real load**: submit receipts stay bounded even while provider work, mailbox refresh, and background maintenance continue asynchronously.
 - **ccbd lifecycle stabilization**: stop-all, shutdown, restart, and background supervision no longer revive stopped runtimes or regress terminal jobs through stale maintenance work.
 - **Observer commands are explicitly weak**: `pend`, `watch`, `queue`, and `inbox` render as non-authoritative snapshots; use `ccb ask wait <job_id>` for terminal truth.
@@ -295,6 +296,14 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.1.5</b> - Tmux Startup Hotfix</summary>
+
+- Fixes startup races that could show `Cannot split: pane ... does not exist` or `respawn pane failed: can't find pane`.
+- Provider panes still use the managed respawn path.
+
+</details>
+
+<details>
 <summary><b>v6.1.4</b> - Shared Project Memory V1</summary>
 
 - `.ccb/ccb_memory.md` is the project-wide shared memory document.
