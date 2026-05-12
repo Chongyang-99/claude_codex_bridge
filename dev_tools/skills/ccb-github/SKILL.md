@@ -26,6 +26,8 @@ python "$CHECKER" --phase published --repo SeemSeam/claude_codex_bridge
 
 The checker is read-only. It catches mechanical drift, but still manually inspect the top of `README.md` and `README_zh.md` because stale "What's New" prose can be semantically wrong even when version numbers are correct.
 
+`--phase published` checks both release state and homepage state: GitHub latest release, release assets, `SHA256SUMS`, release workflows, branch validation workflows, and README/README_zh as rendered from the repository default branch.
+
 ## Decision Tree
 
 - Before tagging: run `--phase prepare`; fix every FAIL before creating a tag.
@@ -72,6 +74,31 @@ python scripts/build_linux_release.py --allow-dirty --output-dir dist-release-lo
 ```
 
 For startup, tmux, ccbd, provider auth, or release asset changes, add the relevant targeted tests or smoke commands before publishing.
+
+## Homepage Maintenance Without A New Tag
+
+Use this when the latest release exists but GitHub's repository homepage is stale:
+
+1. Update `README.md`, `README_zh.md`, GitHub metadata, or `dev_tools` release checks.
+2. Run:
+   ```bash
+   python dev_tools/skills/ccb-github/scripts/check_release_state.py --phase prepare --repo SeemSeam/claude_codex_bridge
+   ```
+3. Commit and push the maintenance branch.
+4. Merge the maintenance branch into the default branch so GitHub homepage README changes are visible:
+   ```bash
+   git checkout main
+   git pull --ff-only origin main
+   git merge --no-ff <maintenance-branch>
+   git push origin main
+   ```
+5. Wait for default-branch `Tests`, `CCBD Real Platform Smoke`, and `Cross-Platform Compatibility Test`.
+6. Run:
+   ```bash
+   python dev_tools/skills/ccb-github/scripts/check_release_state.py --phase published --repo SeemSeam/claude_codex_bridge
+   ```
+
+Do not create a new release tag for README-only homepage maintenance unless runtime/package contents changed and the user explicitly wants a new release.
 
 ## Publish Sequence
 
@@ -126,7 +153,7 @@ Run:
 ```bash
 gh release view vX.Y.Z --repo SeemSeam/claude_codex_bridge --json tagName,url,assets
 gh run list --repo SeemSeam/claude_codex_bridge --limit 10
-gh api 'repos/SeemSeam/claude_codex_bridge/contents/README.md?ref=main' --jq .content | base64 -d | rg 'version-|vX.Y.Z'
+python dev_tools/skills/ccb-github/scripts/check_release_state.py --phase published --repo SeemSeam/claude_codex_bridge
 git status --short --branch
 ```
 

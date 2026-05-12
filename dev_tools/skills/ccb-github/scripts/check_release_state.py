@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import re
 import subprocess
@@ -229,6 +230,123 @@ def check_local_files(root: Path, version: str, repo: str, issues: list[str], wa
     warn(warnings, "Manually inspect README What's New / 最新亮点 for stale prose; this cannot be proven by version regex alone")
 
 
+def check_readme_surface(
+    *,
+    body: str,
+    readme_name: str,
+    version: str,
+    repo: str,
+    source: str,
+    issues: list[str],
+    warnings: list[str],
+) -> None:
+    bare_version = version.removeprefix("v")
+    versions = release_note_versions(body)
+    if versions:
+        if versions[0] != version:
+            fail(
+                issues,
+                f"{source} {readme_name} first release notes entry is {versions[0]}, expected {version}",
+                fix="merge/push the release documentation changes to the default branch",
+            )
+        sorted_versions = sorted(versions, key=semver_tuple, reverse=True)
+        if versions != sorted_versions:
+            warn(warnings, f"{source} {readme_name} release notes are not in descending semver order")
+    else:
+        fail(
+            issues,
+            f"{source} {readme_name} has no release notes version entries",
+            fix="merge/push a README with current release notes to the default branch",
+        )
+
+    if f"version-{bare_version}-orange.svg" not in body:
+        fail(
+            issues,
+            f"{source} {readme_name} version badge does not show {bare_version}",
+            fix="merge/push the release README badge update to the default branch",
+        )
+    if f"<summary><b>{version}</b>" not in body:
+        fail(
+            issues,
+            f"{source} {readme_name} release notes do not include {version}",
+            fix="merge/push release notes for the current version to the default branch",
+        )
+    elif not has_substantive_release_text(readme_release_block(body, version)):
+        fail(
+            issues,
+            f"{source} {readme_name} release notes entry for {version} is empty",
+            fix="add concrete release bullets before calling the homepage updated",
+        )
+    if ".ccb/ccb_memory.md" not in body:
+        fail(
+            issues,
+            f"{source} {readme_name} does not mention .ccb/ccb_memory.md",
+            fix="keep the shared memory wording in the default-branch README",
+        )
+
+    owner, name = repo.split("/", 1)
+    expected_clone = f"https://github.com/{owner}/{name}.git"
+    install_heading = "如何安装" if readme_name == "README_zh.md" else "How to Install"
+    install_body = install_section(body, install_heading)
+    clone_urls = sorted(set(re.findall(r"git\s+clone\s+(https://github\.com/[^\s`]+\.git)", install_body)))
+    wrong_urls = [url for url in clone_urls if url != expected_clone]
+    if wrong_urls:
+        fail(
+            issues,
+            f"{source} {readme_name} has clone URL(s) not matching {expected_clone}: {', '.join(wrong_urls)}",
+            fix=f"replace default-branch README install clone URLs with {expected_clone}",
+        )
+
+    if "CCB.md" in body:
+        fail(
+            issues,
+            f"{source} {readme_name} mentions current CCB.md support",
+            fix="default-branch README should describe only .ccb/ccb_memory.md as current shared memory",
+        )
+
+
+def gh_api_text(root: Path, path: str) -> str | None:
+    proc = run(["gh", "api", path, "--jq", ".content"], root)
+    if proc.returncode != 0:
+        return None
+    try:
+        return base64.b64decode(proc.stdout.encode("utf-8"), validate=False).decode("utf-8", errors="replace")
+    except Exception:
+        return None
+
+
+def check_remote_homepage(
+    *,
+    root: Path,
+    version: str,
+    repo: str,
+    default_branch: str,
+    issues: list[str],
+    warnings: list[str],
+) -> None:
+    if not default_branch:
+        warn(warnings, "Could not determine GitHub default branch; homepage README was not checked")
+        return
+    for readme_name in ("README.md", "README_zh.md"):
+        body = gh_api_text(root, f"repos/{repo}/contents/{readme_name}?ref={default_branch}")
+        if body is None:
+            fail(
+                issues,
+                f"Could not read {readme_name} from GitHub default branch {default_branch}",
+                fix="confirm gh auth/repo access and that the default branch contains the README",
+            )
+            continue
+        check_readme_surface(
+            body=body,
+            readme_name=readme_name,
+            version=version,
+            repo=repo,
+            source=f"GitHub default branch {default_branch}",
+            issues=issues,
+            warnings=warnings,
+        )
+
+
 def check_sha256sums(root: Path, version: str, repo: str, issues: list[str], warnings: list[str]) -> None:
     with tempfile.TemporaryDirectory(prefix="ccb-release-check-") as tmp:
         tmp_path = Path(tmp)
@@ -317,7 +435,8 @@ def check_github(root: Path, version: str, repo: str, issues: list[str], warning
     elif "SHA256SUMS" in asset_names:
         check_sha256sums(root, version, repo, issues, warnings)
 
-    repo_view = run(["gh", "repo", "view", repo, "--json", "description,repositoryTopics,latestRelease,url"], root)
+    default_branch = ""
+    repo_view = run(["gh", "repo", "view", repo, "--json", "description,repositoryTopics,latestRelease,url,defaultBranchRef"], root)
     if repo_view.returncode != 0:
         warn(warnings, f"Could not read GitHub repo metadata: {repo_view.stderr.strip()}")
     else:
@@ -327,11 +446,21 @@ def check_github(root: Path, version: str, repo: str, issues: list[str], warning
             warn(warnings, f"Could not parse gh repo JSON: {exc}")
         else:
             latest = (repo_payload.get("latestRelease") or {}).get("tagName")
+            default_branch = (repo_payload.get("defaultBranchRef") or {}).get("name") or ""
             if latest != version:
                 fail(issues, f"GitHub latest release is {latest!r}, expected {version!r}", fix="publish the GitHub release and ensure it is not draft/prerelease unless intended")
             description = repo_payload.get("description") or ""
             if "Claude, Codex & Gemini" in description and "OpenCode" not in description:
                 warn(warnings, "GitHub description may be stale: it mentions Claude/Codex/Gemini but not newer supported providers")
+
+    check_remote_homepage(
+        root=root,
+        version=version,
+        repo=repo,
+        default_branch=default_branch,
+        issues=issues,
+        warnings=warnings,
+    )
 
     runs = run(
         [
