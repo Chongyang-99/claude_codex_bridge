@@ -163,6 +163,42 @@ def test_await_remote_shutdown_uses_prepared_pids_instead_of_new_lease(tmp_path:
     assert 9002 in alive
 
 
+def test_await_remote_shutdown_finalizes_lifecycle_after_remote_stop(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-remote-finalizes-lifecycle'
+    project_root.mkdir(parents=True, exist_ok=True)
+    bootstrap_project(project_root)
+    context = CliContextBuilder().build(
+        ParsedKillCommand(project=None, force=False),
+        cwd=project_root,
+        bootstrap_if_missing=False,
+    )
+    finalized: list[Path] = []
+
+    summary = await_remote_shutdown(
+        context,
+        force=False,
+        inspect_daemon_fn=lambda _context: (
+            None,
+            None,
+            SimpleNamespace(
+                socket_connectable=False,
+                health=LeaseHealth.UNMOUNTED,
+                lease=SimpleNamespace(mount_state=SimpleNamespace(value='unmounted')),
+            ),
+        ),
+        lease_health_cls=LeaseHealth,
+        kill_summary_cls=KillSummary,
+        timeout_s=0.01,
+        is_pid_alive_fn=lambda pid: False,
+        terminate_pid_tree_fn=lambda pid, timeout_s, is_pid_alive_fn: True,
+        finalize_shutdown_lifecycle_fn=lambda current: finalized.append(current.project.project_root),
+        shutdown_timeout_s=0.01,
+    )
+
+    assert summary.state == 'unmounted'
+    assert finalized == [project_root]
+
+
 def test_kill_project_returns_tmux_cleanup_summary(tmp_path: Path, monkeypatch) -> None:
     project_root = tmp_path / 'repo-kill-cleanup'
     (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
@@ -203,6 +239,104 @@ def test_kill_project_returns_tmux_cleanup_summary(tmp_path: Path, monkeypatch) 
 
     assert len(summary.cleanup_summaries) == 1
     assert summary.cleanup_summaries[0].killed_panes == ('%1',)
+
+
+def test_kill_project_snapshots_control_plane_pids_before_remote_stop(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-kill-pid-snapshot-before-remote'
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text('demo:codex\n', encoding='utf-8')
+    bootstrap_project(project_root)
+    command = ParsedKillCommand(project=None, force=False)
+    context = CliContextBuilder().build(command, cwd=project_root, bootstrap_if_missing=False)
+    events: list[str] = []
+    captured_expected_pids: list[tuple[int, ...]] = []
+
+    class _FakeClient:
+        def stop_all(self, *, force: bool):
+            assert force is False
+            events.append('remote_stop')
+            return {
+                'project_id': context.project.project_id,
+                'state': 'unmounted',
+                'socket_path': str(context.paths.ccbd_socket_path),
+                'forced': False,
+                'cleanup_summaries': [],
+            }
+
+    def _collect_authority(_project_root):
+        events.append('collect_authority')
+        return {111: [project_root / '.ccb' / 'ccbd' / 'lease.json']}
+
+    monkeypatch.setattr(
+        'cli.services.kill.connect_mounted_daemon',
+        lambda context, allow_restart_stale: SimpleNamespace(client=_FakeClient()),
+    )
+    monkeypatch.setattr('cli.services.kill._collect_project_authority_pid_candidates', _collect_authority)
+    monkeypatch.setattr('cli.services.kill.set_tmux_ui_active', lambda active: None)
+    monkeypatch.setattr('cli.services.kill.ProjectNamespaceController', _namespace_controller(destroyed=True))
+    monkeypatch.setattr('cli.services.kill.cleanup_project_tmux_orphans_by_socket', lambda **kwargs: ())
+    monkeypatch.setattr(
+        'cli.services.kill._await_remote_shutdown',
+        lambda context, *, force, expected_pids: captured_expected_pids.append(tuple(expected_pids))
+        or KillSummary(
+            project_id=context.project.project_id,
+            state='unmounted',
+            socket_path=str(context.paths.ccbd_socket_path),
+            forced=force,
+        ),
+    )
+    monkeypatch.setattr('cli.services.kill._pid_matches_project', lambda pid, project_root, hint_paths: True)
+    monkeypatch.setattr('cli.services.kill.is_pid_alive', lambda pid: pid == 111)
+    monkeypatch.setattr('cli.services.kill.terminate_pid_tree', lambda pid, timeout_s, is_pid_alive_fn: True)
+
+    kill_project(context, command)
+
+    assert events == ['collect_authority', 'remote_stop']
+    assert captured_expected_pids == [(111,)]
+
+
+def test_remote_stop_records_shutdown_intent_before_stop_all(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-kill-intent-before-stop-all'
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text('demo:codex\n', encoding='utf-8')
+    bootstrap_project(project_root)
+    command = ParsedKillCommand(project=None, force=False)
+    context = CliContextBuilder().build(command, cwd=project_root, bootstrap_if_missing=False)
+    events: list[str] = []
+
+    class _FakeClient:
+        def stop_all(self, *, force: bool):
+            assert force is False
+            events.append('remote_stop')
+            return {
+                'project_id': context.project.project_id,
+                'state': 'unmounted',
+                'socket_path': str(context.paths.ccbd_socket_path),
+                'forced': False,
+                'cleanup_summaries': [],
+            }
+
+    def _connect(_context, *, allow_restart_stale: bool):
+        assert allow_restart_stale is False
+        events.append('connect')
+        return SimpleNamespace(client=_FakeClient())
+
+    monkeypatch.setattr('cli.services.kill.connect_mounted_daemon', _connect)
+    monkeypatch.setattr('cli.services.kill.record_shutdown_intent', lambda context, reason: events.append(f'intent:{reason}'))
+    monkeypatch.setattr('cli.services.kill._collect_project_authority_pid_candidates', lambda _project_root: {})
+    monkeypatch.setattr('cli.services.kill._await_remote_shutdown', lambda context, *, force, expected_pids: KillSummary(
+        project_id=context.project.project_id,
+        state='unmounted',
+        socket_path=str(context.paths.ccbd_socket_path),
+        forced=force,
+    ))
+    monkeypatch.setattr('cli.services.kill.set_tmux_ui_active', lambda active: None)
+    monkeypatch.setattr('cli.services.kill.ProjectNamespaceController', _namespace_controller(destroyed=True))
+    monkeypatch.setattr('cli.services.kill.cleanup_project_tmux_orphans_by_socket', lambda **kwargs: ())
+
+    kill_project(context, command)
+
+    assert events == ['connect', 'intent:kill', 'remote_stop']
 
 
 def test_kill_project_writes_shutdown_report_after_remote_stop_all(tmp_path: Path, monkeypatch) -> None:

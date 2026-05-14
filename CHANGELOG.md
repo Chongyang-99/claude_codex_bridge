@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v6.1.15 (2026-05-14)
+
+### Kill Shutdown Reliability Hotfix
+
+- **Remote Kill Fully Stops ccbd**: `ccb kill` now snapshots the active `ccbd` and keeper pids before remote `stop_all`, then waits for those exact control-plane processes to exit instead of trusting `phase=unmounted` alone.
+- **Cleanup Works Immediately After Kill**: remote kill now finalizes lifecycle state to `phase=unmounted` / `desired_state=stopped`, so `ccb cleanup` can run right after `ccb kill` without requiring a second kill.
+- **Orphan Runtime Cleanup Hardened**: lingering provider-runtime pid files and orphan process groups are still collected during kill finalization, with regression coverage for stale/new-generation pid races.
+
 ## v6.1.14 (2026-05-14)
 
 ### macOS Claude Keychain Boundary Follow-up

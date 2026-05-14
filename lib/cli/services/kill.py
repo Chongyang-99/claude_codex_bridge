@@ -37,8 +37,16 @@ from cli.kill_runtime.processes import is_pid_alive, terminate_pid_tree
 from cli.models import ParsedKillCommand
 from ccbd.models import LeaseHealth
 
-from .daemon import CcbdServiceError, KillSummary, connect_mounted_daemon, inspect_daemon, record_shutdown_intent, shutdown_daemon
+from .daemon import (
+    CcbdServiceError,
+    KillSummary,
+    connect_mounted_daemon,
+    inspect_daemon,
+    record_shutdown_intent,
+    shutdown_daemon,
+)
 from .daemon_runtime.facade import SHUTDOWN_TIMEOUT_S as _DEF_SHUTDOWN_TIMEOUT_S
+from .daemon_runtime.keeper import finalize_shutdown_lifecycle as _finalize_shutdown_lifecycle
 from .daemon_runtime.keeper import keeper_pid as _keeper_pid
 from .daemon_runtime.keeper import wait_for_keeper_exit as _wait_for_keeper_exit
 from .daemon_runtime.processes import lease_pid as _lease_pid
@@ -53,8 +61,13 @@ _STOP_ALL_TIMEOUT_S = 12.0
 
 
 def kill_project(context: CliContext, command: ParsedKillCommand):
+    control_plane_pid_candidates = _collect_project_authority_pid_candidates(context.project.project_root)
     remote_summary = _request_remote_stop(context, force=command.force)
-    preparation = _prepare_local_shutdown(context, force=command.force)
+    preparation = _prepare_local_shutdown(
+        context,
+        force=command.force,
+        control_plane_pid_candidates=control_plane_pid_candidates,
+    )
     _destroy_project_namespace(context, force=command.force)
     summary = _resolve_shutdown_summary(
         context,
@@ -93,12 +106,18 @@ def _request_remote_stop(context: CliContext, *, force: bool) -> KillSummary | N
     )
 
 
-def _prepare_local_shutdown(context: CliContext, *, force: bool):
+def _prepare_local_shutdown(
+    context: CliContext,
+    *,
+    force: bool,
+    control_plane_pid_candidates: dict[int, list] | None = None,
+):
     return _prepare_local_shutdown_impl(
         context,
         force=force,
         collect_agent_pid_candidates_fn=_collect_agent_pid_candidates,
         collect_project_authority_pid_candidates_fn=_collect_project_authority_pid_candidates,
+        control_plane_pid_candidates=control_plane_pid_candidates,
     )
 
 
@@ -180,6 +199,7 @@ def _await_remote_shutdown(
         wait_for_keeper_exit_fn=_wait_for_keeper_exit,
         is_pid_alive_fn=is_pid_alive,
         terminate_pid_tree_fn=terminate_pid_tree,
+        finalize_shutdown_lifecycle_fn=_finalize_shutdown_lifecycle,
         shutdown_timeout_s=_DEF_SHUTDOWN_TIMEOUT_S,
     )
 

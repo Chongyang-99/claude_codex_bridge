@@ -75,6 +75,7 @@ def await_remote_shutdown(
     wait_for_keeper_exit_fn=None,
     is_pid_alive_fn=None,
     terminate_pid_tree_fn=None,
+    finalize_shutdown_lifecycle_fn=None,
     shutdown_timeout_s: float = 1.0,
 ):
     deadline = time.time() + max(0.1, float(timeout_s))
@@ -125,6 +126,8 @@ def await_remote_shutdown(
                 terminate_pid_tree_fn=terminate_pid_tree_fn,
                 timeout_s=shutdown_timeout_s,
             )
+    if finalize_shutdown_lifecycle_fn is not None:
+        finalize_shutdown_lifecycle_fn(context)
     try:
         _, _, last_inspection = inspect_daemon_fn(context)
     except Exception:

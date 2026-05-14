@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.14-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.15-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -74,10 +74,10 @@ Build project-local teams with roles, pane layout, provider state, worktree isol
 <details>
 <summary><b>Latest release highlights</b></summary>
 
-- **macOS Claude login inheritance is more compatible**: when `com.apple.security.plist` is absent, managed Claude homes link `Library/Keychains` so the user's login keychain remains discoverable.
-- **Claude auth cleanup stays symmetric**: disabling auth inheritance removes both the Keychain preference projection and the fallback Keychains link.
-- **Storage diagnostics classify the fallback safely**: `ccb doctor storage` treats the managed Claude Keychains link as secret auth state, and support bundles do not follow it.
-- **Provider storage stays slimmer**: Codex, Claude, and Gemini share or prune rebuildable provider assets instead of duplicating them across managed homes.
+- **`ccb kill` now fully stops the backend**: remote shutdown waits for the recorded `ccbd` and keeper pids to exit instead of returning as soon as lifecycle says unmounted.
+- **`ccb cleanup` works immediately after kill**: remote kill finalizes lifecycle state to stopped/unmounted, so cleanup no longer needs a second kill after a normal shutdown.
+- **Orphan runtime processes are swept more reliably**: kill finalization keeps collecting provider-runtime pid files and orphan process groups while avoiding newer backend generations.
+- **Shutdown diagnostics are clearer**: the startup and diagnostics contracts now require final reports to reflect post-shutdown state, not transient stopping state.
 
 See [Release Notes](#release-notes) for the full history.
 
@@ -306,6 +306,15 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.1.15</b> - Kill Shutdown Reliability Hotfix</summary>
+
+- Waits for recorded `ccbd` and keeper pids to exit during remote `ccb kill` instead of trusting lifecycle unmounted alone.
+- Finalizes lifecycle to stopped/unmounted before writing the final shutdown report, allowing `ccb cleanup` to run immediately after kill.
+- Adds regression coverage for prepared pid snapshots, remote lifecycle finalization, and shutdown intent ordering.
+
+</details>
+
+<details>
 <summary><b>v6.1.14</b> - macOS Claude Keychain Boundary Follow-up</summary>
 
 - Documents the managed Claude `Library/Keychains` fallback as agent-local secret auth compatibility state.

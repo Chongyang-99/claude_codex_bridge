@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.1.14-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.1.15-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,10 +74,10 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
-- **macOS Claude 登录继承兼容性更好**：当 `com.apple.security.plist` 不存在时，managed Claude home 会链接 `Library/Keychains`，让用户 login keychain 仍可被发现。
-- **Claude auth 清理保持对称**：关闭 auth 继承时会同时移除 Keychain preference 投影和 fallback Keychains 链接。
-- **Storage 诊断安全分类 fallback**：`ccb doctor storage` 会把 managed Claude Keychains 链接识别为 secret auth 状态，support bundle 也不会跟随该链接。
-- **Provider 存储继续瘦身**：Codex、Claude、Gemini 会共享或清理可重建资产，不再在每个 managed home 里重复堆积。
+- **`ccb kill` 会真正收停后台**：远程关闭会等待记录下来的 `ccbd` 和 keeper pid 退出，不再只依赖 lifecycle 显示 unmounted。
+- **kill 后可立即 cleanup**：远程 kill 会把 lifecycle finalize 到 stopped/unmounted，正常关闭后不再需要第二次 kill 才能 cleanup。
+- **孤儿 runtime 进程清理更可靠**：kill finalization 继续收集 provider-runtime pid 文件和 orphan process group，同时避开新的 backend generation。
+- **关闭诊断更清晰**：启动/诊断契约要求最终报告反映 shutdown 后状态，而不是 transient stopping 状态。
 
 完整历史见 [新版本记录](#新版本记录)。
 
@@ -297,6 +297,15 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.1.15</b> - Kill Shutdown Reliability Hotfix</summary>
+
+- 远程 `ccb kill` 会等待记录下来的 `ccbd` 和 keeper pid 退出，不再只信任 lifecycle unmounted。
+- 写最终 shutdown report 前会把 lifecycle finalize 到 stopped/unmounted，让 `ccb cleanup` 可在 kill 后直接运行。
+- 增加 prepared pid 快照、远程 lifecycle finalize 和 shutdown intent 顺序的回归测试。
+
+</details>
+
+<details>
 <summary><b>v6.1.14</b> - macOS Claude Keychain Boundary Follow-up</summary>
 
 - 将 managed Claude `Library/Keychains` fallback 记录为 agent-local secret auth 兼容状态。

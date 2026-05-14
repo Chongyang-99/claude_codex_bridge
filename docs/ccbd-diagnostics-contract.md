@@ -99,6 +99,7 @@ Rules:
 - normal server-side stop/shutdown must write a shutdown report
 - CLI fallback kill must also write a shutdown report
 - the final persisted shutdown report must reflect post-shutdown state, not an intermediate pre-unmount snapshot
+- remote `ccb kill` must finalize lifecycle state before recording the final shutdown report, so `inspection_after` reflects `phase=unmounted` / `desired_state=stopped` rather than a transient `stopping` state
 
 ### 3.4 Backend Logs
 
