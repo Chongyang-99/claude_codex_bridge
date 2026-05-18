@@ -240,6 +240,7 @@ jobs:
           export TERM=xterm-256color
           CCB_FASTPATH_STRESS_ASK_COUNT=12 \
           CCB_FASTPATH_STRESS_STUB_DELAY=0.3 \
+          CCB_FASTPATH_STRESS_P95_RECEIPT_MS=2500 \
           CCB_FASTPATH_STRESS_WATCH_TIMEOUT_S=240 \
             bash test/system_fastpath_stress.sh
 
