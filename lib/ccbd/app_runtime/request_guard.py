@@ -9,7 +9,6 @@ _STOPPING_GUARDED_OPS = frozenset({
     'ack',
     'resubmit',
     'retry',
-    'comms_recover',
 })
 
 
