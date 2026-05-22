@@ -100,6 +100,8 @@ def test_attach_runtime_updates_active_existing_runtime() -> None:
         health='healthy',
         runtime_pid=99,
         pane_title_marker='agent1-next',
+        tmux_window_name='ops',
+        tmux_window_id='@2',
     )
 
     assert updated is registry.last_upsert
@@ -111,6 +113,8 @@ def test_attach_runtime_updates_active_existing_runtime() -> None:
     assert updated.active_pane_id == '%9'
     assert updated.session_ref == 'session-9'
     assert updated.runtime_pid == 99
+    assert updated.tmux_window_name == 'ops'
+    assert updated.tmux_window_id == '@2'
     assert updated.pid == 99
     assert updated.binding_generation == 3
     assert updated.runtime_generation == 3
@@ -132,6 +136,7 @@ def test_attach_runtime_creates_new_runtime_with_runtime_ref_derived_fields() ->
         backend_type='pane-backed',
         runtime_ref='tmux:%4',
         session_ref='session-4',
+        tmux_window_name='main',
     )
 
     assert created is registry.last_upsert
@@ -142,6 +147,8 @@ def test_attach_runtime_creates_new_runtime_with_runtime_ref_derived_fields() ->
     assert created.terminal_backend == 'tmux'
     assert created.pane_id == '%4'
     assert created.active_pane_id == '%4'
+    assert created.tmux_window_name == 'main'
+    assert created.tmux_window_id is None
     assert created.session_ref == 'session-4'
     assert created.binding_generation == 1
     assert created.runtime_generation == 1

@@ -977,6 +977,8 @@ def test_ensure_agent_runtime_uses_assigned_tmux_pane(monkeypatch, tmp_path: Pat
     assert ('%43', '@ccb_label_style', visual.label_style) in tmux_state['options']
     assert ('%43', '@ccb_agent', 'agent1') in tmux_state['options']
     assert ('%43', '@ccb_project_id', ctx.project.project_id) in tmux_state['options']
+    session_option = next(value for pane, name, value in tmux_state['options'] if pane == '%43' and name == '@ccb_session_id')
+    assert session_option.startswith('ccb-agent1-')
     assert ('%43', visual.border_style, visual.active_border_style) in tmux_state['styles']
 
 

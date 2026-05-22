@@ -19,6 +19,7 @@ def _binding(**overrides):
         'pane_id': '%41',
         'tmux_socket_path': '/tmp/ccb.sock',
         'session_file': '',
+        'ccb_session_id': 'ccb-session-1',
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -104,6 +105,8 @@ def test_relabel_project_namespace_pane_applies_identity_for_project_socket() ->
                 'project_id': 'proj-1',
                 'order_index': 2,
                 'slot_key': 'agent1',
+                'window_name': None,
+                'session_id': 'ccb-session-1',
                 'namespace_epoch': 5,
                 'managed_by': 'ccbd',
             },

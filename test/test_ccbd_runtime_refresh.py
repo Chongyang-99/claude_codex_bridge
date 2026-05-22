@@ -136,6 +136,7 @@ def test_refresh_provider_binding_replaces_missing_project_pane_inside_workspace
             'pane_id': '%41',
             'agent_name': 'agent1',
             'ccb_project_id': 'proj-1',
+            'ccb_session_id': 'ccb-session-new',
             'work_dir': str(layout.workspace_path('agent1')),
             'start_cmd': 'codex --continue',
             'fake_session_id': 'session-new',
@@ -199,4 +200,4 @@ def test_refresh_provider_binding_replaces_missing_project_pane_inside_workspace
     assert session.data['pane_id'] == '%55'
     assert ('%55', 'cmd') not in backend.titles
     assert ('%55', 'agent1') in backend.titles
-
+    assert ('%55', '@ccb_session_id', 'ccb-session-new') in backend.options

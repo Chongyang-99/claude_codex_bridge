@@ -1,0 +1,901 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from agents.models import AgentState
+from ccbd.api_models import JobStatus, TargetKind
+from ccbd.models import MountState
+from ccbd.project_focus.tmux import backend_for_namespace
+from ccbd.services.dispatcher_runtime import comms_recoverability_for_job
+from ccbd.system import parse_utc_timestamp, utc_now
+
+from .activity import (
+    AgentActivityFacts,
+    PROVIDER_INPUT_STUCK_AFTER_S,
+    provider_prompt_idle,
+    provider_prompt_idle_after_request,
+    provider_prompt_input_stuck,
+    resolve_agent_activity,
+)
+from .sequence import ProjectViewSequenceCache
+
+PROJECT_VIEW_SCHEMA_VERSION = 1
+PROJECT_VIEW_TTL_MS = 1000
+PROJECT_VIEW_COMMS_LIMIT = 8
+_COMMS_RECENT_STATUSES = frozenset(
+    {
+        JobStatus.COMPLETED,
+        JobStatus.CANCELLED,
+        JobStatus.FAILED,
+        JobStatus.INCOMPLETE,
+    }
+)
+_COMMS_PENDING_STATUSES = frozenset({JobStatus.ACCEPTED, JobStatus.QUEUED})
+_COMMS_BODY_PREVIEW_LIMIT = 48
+_REPLY_DELIVERY_MESSAGE_TYPE = 'reply_delivery'
+_REPLY_DELIVERY_PROVIDER_OPTION = 'reply_delivery'
+_REPLY_DELIVERY_REPLY_ID_OPTION = 'reply_delivery_reply_id'
+
+
+@dataclass(frozen=True)
+class ProjectViewDependencies:
+    project_root: Path
+    project_id: str
+    config: object
+    registry: object
+    mount_manager: object
+    namespace_state_store: object
+    dispatcher: object
+    namespace_controller: object | None = None
+    state_store: object | None = None
+    clock: object = utc_now
+    sequence_cache: ProjectViewSequenceCache | None = None
+
+
+class ProjectViewService:
+    def __init__(self, deps: ProjectViewDependencies) -> None:
+        self._deps = deps
+        self._sequence_cache = deps.sequence_cache or ProjectViewSequenceCache()
+
+    def build_response(self, *, schema_version: int = PROJECT_VIEW_SCHEMA_VERSION) -> dict[str, object]:
+        if int(schema_version) != PROJECT_VIEW_SCHEMA_VERSION:
+            raise ValueError(f'project_view schema_version must be {PROJECT_VIEW_SCHEMA_VERSION}')
+        generated_at = self._deps.clock()
+        view = build_project_view(self._deps, generated_at=generated_at)
+        return {
+            'view': view,
+            'cache': {
+                'generated_at': generated_at,
+                'ttl_ms': PROJECT_VIEW_TTL_MS,
+                'sequence': self._sequence_cache.sequence_for(view),
+            },
+        }
+
+
+def build_project_view(deps: ProjectViewDependencies, *, generated_at: str) -> dict[str, object]:
+    lease = deps.mount_manager.load_state()
+    namespace = deps.namespace_state_store.load()
+    focus = _focus_snapshot(deps, namespace=namespace)
+    tmux_snapshot = _tmux_snapshot(deps, namespace=namespace)
+    namespace_mounted = lease is not None and lease.mount_state is MountState.MOUNTED
+    window_by_agent = _window_by_agent(deps.config)
+    active_jobs = _active_jobs_by_agent(deps.dispatcher)
+    queued_jobs = _queued_jobs_by_agent(deps.dispatcher)
+
+    agents = [
+        _agent_view(
+            deps=deps,
+            agent_name=agent_name,
+            window_name=window_by_agent[agent_name],
+            order=order,
+            namespace_mounted=namespace_mounted,
+            active_job=active_jobs.get(agent_name),
+            queued_jobs=queued_jobs.get(agent_name, ()),
+            generated_at=generated_at,
+            active=focus.get('active_agent') == agent_name,
+            namespace=namespace,
+        )
+        for order, agent_name in enumerate(_agent_order(deps.config))
+    ]
+
+    return {
+        'schema_version': PROJECT_VIEW_SCHEMA_VERSION,
+        'generated_at': generated_at,
+        'project': {
+            'id': deps.project_id,
+            'root': str(deps.project_root),
+            'display_name': deps.project_root.name,
+        },
+        'ccbd': _ccbd_view(lease),
+        'namespace': _namespace_view(config=deps.config, namespace=namespace, focus=focus),
+        'windows': _window_views(config=deps.config, focus=focus, tmux_snapshot=tmux_snapshot),
+        'agents': agents,
+        'comms': _comms_view(
+            deps,
+            namespace=namespace,
+            active_jobs=active_jobs,
+            queued_jobs=queued_jobs,
+            generated_at=generated_at,
+        ),
+    }
+
+
+def _agent_view(
+    *,
+    deps: ProjectViewDependencies,
+    agent_name: str,
+    window_name: str,
+    order: int,
+    namespace_mounted: bool,
+    active_job,
+    queued_jobs: tuple,
+    generated_at: str,
+    namespace,
+    active: bool = False,
+) -> dict[str, object]:
+    spec = deps.config.agents[agent_name]
+    runtime = deps.registry.get(agent_name)
+    job = active_job or (queued_jobs[0] if queued_jobs else None)
+    queue_depth = len(queued_jobs) + (1 if active_job is not None else 0)
+    activity = resolve_agent_activity(
+        AgentActivityFacts(
+            namespace_mounted=namespace_mounted,
+            runtime_state=_runtime_state(runtime),
+            runtime_health=getattr(runtime, 'health', None) if runtime is not None else None,
+            reconcile_state=getattr(runtime, 'reconcile_state', None) if runtime is not None else None,
+            desired_state=getattr(runtime, 'desired_state', None) if runtime is not None else None,
+            pane_id=getattr(runtime, 'pane_id', None) if runtime is not None else None,
+            pane_state=getattr(runtime, 'pane_state', None) if runtime is not None else None,
+            current_job_status=job.status.value if job is not None else None,
+            current_job_id=job.job_id if job is not None else None,
+            current_job_updated_at=job.updated_at if job is not None else None,
+            pane_text=_pane_text_hint(
+                deps,
+                namespace=namespace,
+                pane_id=getattr(runtime, 'pane_id', None) if runtime is not None else None,
+            ),
+            queue_depth=queue_depth,
+        ),
+        now=generated_at,
+    )
+    record = {
+        'name': agent_name,
+        'provider': spec.provider,
+        'window': window_name,
+        'order': order,
+        'pane_id': getattr(runtime, 'pane_id', None) if runtime is not None else None,
+        'active': bool(active),
+        **activity.to_record(),
+        'runtime_state': _runtime_state(runtime),
+        'runtime_health': getattr(runtime, 'health', None) if runtime is not None else None,
+        'reconcile_state': getattr(runtime, 'reconcile_state', None) if runtime is not None else None,
+        'queue_depth': queue_depth,
+        'workspace_path': getattr(runtime, 'workspace_path', None) if runtime is not None else None,
+    }
+    return record
+
+
+def _ccbd_view(lease) -> dict[str, object]:
+    return {
+        'state': lease.mount_state.value if lease is not None else 'unmounted',
+        'health': 'healthy' if lease is not None and lease.mount_state is MountState.MOUNTED else 'unmounted',
+        'generation': lease.generation if lease is not None else None,
+        'last_heartbeat_at': lease.last_heartbeat_at if lease is not None else None,
+    }
+
+
+def _namespace_view(*, config, namespace, focus: dict[str, object]) -> dict[str, object]:
+    return {
+        'epoch': namespace.namespace_epoch if namespace is not None else None,
+        'socket_path': namespace.tmux_socket_path if namespace is not None else None,
+        'session_name': namespace.tmux_session_name if namespace is not None else None,
+        'active_window': focus.get('active_window') or config.entry_window,
+        'active_pane_id': focus.get('active_pane_id'),
+        'entry_window': config.entry_window,
+        'sidebar': config.sidebar.to_record(),
+    }
+
+
+def _window_views(*, config, focus: dict[str, object], tmux_snapshot: dict[str, dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        {
+            'name': window.name,
+            'order': window.order,
+            'tmux_window_id': tmux_snapshot.get(window.name, {}).get('tmux_window_id'),
+            'tmux_window_index': tmux_snapshot.get(window.name, {}).get('tmux_window_index'),
+            'active': window.name == (focus.get('active_window') or config.entry_window),
+            'sidebar_pane_id': tmux_snapshot.get(window.name, {}).get('sidebar_pane_id'),
+            'agents': list(window.agent_names),
+        }
+        for window in config.windows
+    ]
+
+
+def _tmux_snapshot(deps: ProjectViewDependencies, *, namespace) -> dict[str, dict[str, object]]:
+    if namespace is None or deps.namespace_controller is None:
+        return {}
+    try:
+        backend = backend_for_namespace(deps.namespace_controller._backend_factory, namespace)
+    except Exception:
+        return {}
+    windows = _tmux_windows(backend, session_name=namespace.tmux_session_name)
+    sidebars = _tmux_sidebar_panes(
+        backend,
+        session_name=namespace.tmux_session_name,
+        project_id=deps.project_id,
+    )
+    result: dict[str, dict[str, object]] = {}
+    for window_name, window_facts in windows.items():
+        result[window_name] = dict(window_facts)
+    for window_name, pane_id in sidebars.items():
+        result.setdefault(window_name, {})['sidebar_pane_id'] = pane_id
+    return result
+
+
+def _tmux_windows(backend, *, session_name: str) -> dict[str, dict[str, object]]:
+    cp = _tmux_run_best_effort(
+        backend,
+        [
+            'list-windows',
+            '-t',
+            session_name,
+            '-F',
+            '#{window_name}\t#{window_id}\t#{window_index}',
+        ],
+    )
+    if cp is None:
+        return {}
+    result: dict[str, dict[str, object]] = {}
+    for line in (getattr(cp, 'stdout', '') or '').splitlines():
+        parts = line.split('\t')
+        if len(parts) != 3:
+            continue
+        window_name, window_id, window_index = (_clean_text(item) for item in parts)
+        if window_name is None:
+            continue
+        result[window_name] = {
+            'tmux_window_id': window_id,
+            'tmux_window_index': _coerce_int(window_index),
+        }
+    return result
+
+
+def _tmux_sidebar_panes(backend, *, session_name: str, project_id: str) -> dict[str, str]:
+    cp = _tmux_run_best_effort(
+        backend,
+        [
+            'list-panes',
+            '-a',
+            '-F',
+            '#{session_name}\t#{window_name}\t#{pane_id}\t#{@ccb_project_id}\t#{@ccb_role}\t#{@ccb_sidebar_instance}\t#{@ccb_window}',
+        ],
+    )
+    if cp is None:
+        return {}
+    result: dict[str, str] = {}
+    for line in (getattr(cp, 'stdout', '') or '').splitlines():
+        parts = line.split('\t')
+        if len(parts) != 7:
+            continue
+        session, window_name, pane_id, pane_project_id, role, sidebar_instance, ccb_window = (
+            _clean_text(item) for item in parts
+        )
+        if session != session_name or pane_project_id != project_id or role != 'sidebar':
+            continue
+        if pane_id is None or not pane_id.startswith('%'):
+            continue
+        resolved_window = sidebar_instance or ccb_window or window_name
+        if resolved_window is None or resolved_window in result:
+            continue
+        result[resolved_window] = pane_id
+    return result
+
+
+def _pane_text_hint(deps: ProjectViewDependencies, *, namespace, pane_id: object) -> str | None:
+    pane = str(pane_id or '').strip()
+    if namespace is None or deps.namespace_controller is None or not pane.startswith('%'):
+        return None
+    try:
+        backend = backend_for_namespace(deps.namespace_controller._backend_factory, namespace)
+    except Exception:
+        return None
+    cp = _tmux_run_best_effort(
+        backend,
+        [
+            'capture-pane',
+            '-p',
+            '-t',
+            pane,
+            '-S',
+            '-30',
+        ],
+    )
+    if cp is None:
+        return None
+    text = str(getattr(cp, 'stdout', '') or '')
+    return text or None
+
+
+def _tmux_run_best_effort(backend, args: list[str]):
+    runner = getattr(backend, '_tmux_run', None)
+    if not callable(runner):
+        return None
+    try:
+        cp = runner(args, capture=True, check=False, timeout=0.5)
+    except Exception:
+        return None
+    if getattr(cp, 'returncode', 1) != 0:
+        return None
+    return cp
+
+
+def _clean_text(value: Any) -> str | None:
+    text = str(value or '').strip()
+    return text or None
+
+
+def _coerce_int(value: str | None) -> int | None:
+    text = str(value or '').strip()
+    if not text.isdigit():
+        return None
+    return int(text)
+
+
+def _comms_view(
+    deps: ProjectViewDependencies,
+    *,
+    namespace,
+    active_jobs: dict[str, object],
+    queued_jobs: dict[str, tuple],
+    generated_at: str,
+) -> list[dict[str, object]]:
+    dispatcher = deps.dispatcher
+    dismissed_comms = _dismissed_comms(deps)
+    jobs = _project_jobs(dispatcher, active_jobs=active_jobs, queued_jobs=queued_jobs)
+    reply_deliveries = _reply_deliveries_by_source_job_id(dispatcher, jobs)
+    jobs = _latest_business_jobs_by_lineage(dispatcher, jobs, reply_deliveries=reply_deliveries)
+    configured_agents = _configured_agent_names(dispatcher)
+    rows = []
+    for job in jobs:
+        reply_delivery = reply_deliveries.get(job.job_id)
+        running_recover_hint = _running_recover_hint(deps, namespace=namespace, job=job, generated_at=generated_at)
+        rows.append(
+            (
+                _comm_sort_key(job, reply_delivery),
+                _comm_record(
+                    dispatcher,
+                    job,
+                    reply_delivery=reply_delivery,
+                    configured_agents=configured_agents,
+                    running_recover_hint=running_recover_hint,
+                ),
+            )
+        )
+    rows.sort(key=lambda item: item[0], reverse=True)
+    visible = [
+        record
+        for _sort_key, record in rows
+        if str(record.get('id') or '').strip() not in dismissed_comms
+    ]
+    return visible[:PROJECT_VIEW_COMMS_LIMIT]
+
+
+def _dismissed_comms(deps: ProjectViewDependencies) -> frozenset[str]:
+    store = deps.state_store
+    if store is None or not hasattr(store, 'load'):
+        return frozenset()
+    try:
+        state = store.load()
+    except Exception:
+        return frozenset()
+    return frozenset(str(item) for item in getattr(state, 'dismissed_comms', frozenset()))
+
+
+def _latest_business_jobs_by_lineage(
+    dispatcher,
+    jobs: tuple[object, ...],
+    *,
+    reply_deliveries: dict[str, object],
+) -> tuple[object, ...]:
+    attempts_by_job_id = _attempt_lineage_by_job_id(dispatcher, jobs)
+    latest_by_lineage: dict[tuple[str, ...], object] = {}
+    for job in jobs:
+        if not _is_business_comms_job(job):
+            continue
+        key = _comm_lineage_key(job, attempts_by_job_id)
+        current = latest_by_lineage.get(key)
+        if current is None or _comm_lineage_rank(job, attempts_by_job_id, reply_deliveries) >= _comm_lineage_rank(
+            current,
+            attempts_by_job_id,
+            reply_deliveries,
+        ):
+            latest_by_lineage[key] = job
+    return tuple(latest_by_lineage.values())
+
+
+def _attempt_lineage_by_job_id(dispatcher, jobs: tuple[object, ...]) -> dict[str, tuple[str, int]]:
+    control = getattr(dispatcher, '_message_bureau_control', None)
+    attempt_store = getattr(control, '_attempt_store', None) if control is not None else None
+    if attempt_store is None or not hasattr(attempt_store, 'get_latest_by_job_id'):
+        return {}
+    result: dict[str, tuple[str, int]] = {}
+    for job in jobs:
+        job_id = str(getattr(job, 'job_id', '') or '').strip()
+        if not job_id:
+            continue
+        try:
+            attempt = attempt_store.get_latest_by_job_id(job_id)
+        except Exception:
+            continue
+        message_id = str(getattr(attempt, 'message_id', '') or '').strip()
+        if not message_id:
+            continue
+        try:
+            retry_index = int(getattr(attempt, 'retry_index', 0) or 0)
+        except Exception:
+            retry_index = 0
+        result[job_id] = (message_id, retry_index)
+    return result
+
+
+def _comm_lineage_key(job, attempts_by_job_id: dict[str, tuple[str, int]]) -> tuple[str, ...]:
+    job_id = str(getattr(job, 'job_id', '') or '').strip()
+    target = str(getattr(job, 'target_name', '') or getattr(job, 'agent_name', '') or '').strip()
+    attempt = attempts_by_job_id.get(job_id)
+    if attempt is None:
+        return ('job', job_id)
+    return ('message', attempt[0], target)
+
+
+def _comm_lineage_rank(job, attempts_by_job_id: dict[str, tuple[str, int]], reply_deliveries: dict[str, object]) -> tuple[int, int, str]:
+    job_id = str(getattr(job, 'job_id', '') or '').strip()
+    attempt = attempts_by_job_id.get(job_id)
+    lineage_rank = 1 if attempt is not None else 0
+    retry_index = attempt[1] if attempt is not None else 0
+    return (lineage_rank, retry_index, _comm_sort_key(job, reply_deliveries.get(job_id)))
+
+
+def _project_jobs(dispatcher, *, active_jobs: dict[str, object], queued_jobs: dict[str, tuple]) -> tuple[object, ...]:
+    jobs = []
+    for job in active_jobs.values():
+        jobs.append(job)
+    for items in queued_jobs.values():
+        jobs.extend(items)
+    jobs.extend(_recent_jobs(dispatcher))
+    by_id = {}
+    for job in jobs:
+        by_id[job.job_id] = job
+    return tuple(by_id.values())
+
+
+def _running_recover_hint(deps: ProjectViewDependencies, *, namespace, job, generated_at: str) -> str | None:
+    if getattr(job, 'status', None) is not JobStatus.RUNNING:
+        return None
+    agent_name = str(getattr(job, 'agent_name', '') or '').strip()
+    runtime = deps.registry.get(agent_name) if agent_name else None
+    if runtime is None:
+        return None
+    provider = str(getattr(deps.config.agents.get(agent_name), 'provider', '') or '').strip().lower()
+    if provider not in {'claude', 'codex'}:
+        return None
+    pane_text = _pane_text_hint(
+        deps,
+        namespace=namespace,
+        pane_id=getattr(runtime, 'pane_id', None),
+    )
+    age = _job_age_seconds(generated_at, getattr(job, 'updated_at', None))
+    if (
+        age is not None
+        and age > PROVIDER_INPUT_STUCK_AFTER_S
+        and provider_prompt_idle_after_request(pane_text, getattr(job, 'job_id', None))
+    ):
+        return 'provider_prompt_idle'
+    if (
+        age is not None
+        and age > PROVIDER_INPUT_STUCK_AFTER_S
+        and provider_prompt_input_stuck(pane_text, getattr(job, 'job_id', None))
+    ):
+        return 'provider_prompt_input_stuck'
+    if age is not None and age > 120 and provider_prompt_idle(pane_text):
+        return 'provider_prompt_idle_stale'
+    return None
+
+
+def _job_age_seconds(now: str, timestamp: str | None) -> float | None:
+    if not timestamp:
+        return None
+    try:
+        return (parse_utc_timestamp(now) - parse_utc_timestamp(timestamp)).total_seconds()
+    except Exception:
+        return None
+
+
+def _recent_jobs(dispatcher) -> tuple[object, ...]:
+    store = getattr(dispatcher, '_job_store', None)
+    config = getattr(dispatcher, '_config', None)
+    agents = getattr(config, 'agents', {}) if config is not None else {}
+    if store is None or not hasattr(store, 'list_agent'):
+        return ()
+    jobs: list[object] = []
+    for agent_name in agents:
+        try:
+            records = store.list_agent(agent_name)
+        except Exception:
+            continue
+        latest_by_job: dict[str, object] = {}
+        for record in records:
+            latest_by_job[record.job_id] = record
+        jobs.extend(
+            record
+            for record in latest_by_job.values()
+            if getattr(record, 'status', None) in _COMMS_RECENT_STATUSES
+        )
+    return tuple(sorted(jobs, key=lambda item: item.updated_at, reverse=True))
+
+
+def _configured_agent_names(dispatcher) -> frozenset[str]:
+    config = getattr(dispatcher, '_config', None)
+    agents = getattr(config, 'agents', {}) if config is not None else {}
+    return frozenset(str(name) for name in agents)
+
+
+def _reply_deliveries_by_source_job_id(dispatcher, jobs: tuple[object, ...]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for job in jobs:
+        if not _is_reply_delivery_job(job):
+            continue
+        source_job_id = _reply_delivery_source_job_id(dispatcher, job)
+        if not source_job_id:
+            continue
+        current = result.get(source_job_id)
+        if current is None or str(job.updated_at) >= str(current.updated_at):
+            result[source_job_id] = job
+    return result
+
+
+def _is_business_comms_job(job) -> bool:
+    if _is_reply_delivery_job(job):
+        return False
+    message_type = str(getattr(job.request, 'message_type', '') or '').strip().lower()
+    return message_type in {'ask', ''}
+
+
+def _is_reply_delivery_job(job) -> bool:
+    message_type = str(getattr(job.request, 'message_type', '') or '').strip().lower()
+    if message_type == _REPLY_DELIVERY_MESSAGE_TYPE:
+        return True
+    return bool((getattr(job, 'provider_options', {}) or {}).get(_REPLY_DELIVERY_PROVIDER_OPTION))
+
+
+def _reply_delivery_source_job_id(dispatcher, job) -> str | None:
+    return (
+        _reply_delivery_source_job_id_from_reply_record(dispatcher, job)
+        or _reply_delivery_source_job_id_from_message_origin(dispatcher, job)
+        or _reply_delivery_source_job_id_from_body(job)
+    )
+
+
+def _reply_delivery_source_job_id_from_reply_record(dispatcher, job) -> str | None:
+    reply_id = str((getattr(job, 'provider_options', {}) or {}).get(_REPLY_DELIVERY_REPLY_ID_OPTION) or '').strip()
+    if not reply_id:
+        return None
+    control = getattr(dispatcher, '_message_bureau_control', None)
+    reply_store = getattr(control, '_reply_store', None) if control is not None else None
+    attempt_store = getattr(control, '_attempt_store', None) if control is not None else None
+    if reply_store is None or attempt_store is None:
+        return None
+    try:
+        reply = reply_store.get_latest(reply_id)
+        if reply is None:
+            return None
+        return _source_job_id_from_attempt_store(
+            attempt_store,
+            attempt_id=getattr(reply, 'attempt_id', None),
+            message_id=getattr(reply, 'message_id', None),
+            exclude_job_id=getattr(job, 'job_id', None),
+        )
+    except Exception:
+        return None
+
+
+def _reply_delivery_source_job_id_from_message_origin(dispatcher, job) -> str | None:
+    control = getattr(dispatcher, '_message_bureau_control', None)
+    attempt_store = getattr(control, '_attempt_store', None) if control is not None else None
+    message_store = getattr(control, '_message_store', None) if control is not None else None
+    if attempt_store is None or message_store is None:
+        return None
+    try:
+        delivery_attempt = attempt_store.get_latest_by_job_id(job.job_id)
+        if delivery_attempt is None:
+            return None
+        delivery_message = message_store.get_latest(delivery_attempt.message_id)
+        origin_message_id = str(getattr(delivery_message, 'origin_message_id', '') or '').strip()
+        if not origin_message_id:
+            return None
+        return _source_job_id_from_attempt_store(
+            attempt_store,
+            message_id=origin_message_id,
+            exclude_job_id=getattr(job, 'job_id', None),
+        )
+    except Exception:
+        return None
+
+
+def _source_job_id_from_attempt_store(
+    attempt_store,
+    *,
+    attempt_id: str | None = None,
+    message_id: str | None = None,
+    exclude_job_id: str | None = None,
+) -> str | None:
+    excluded = str(exclude_job_id or '').strip()
+    attempt_key = str(attempt_id or '').strip()
+    if attempt_key:
+        attempt = attempt_store.get_latest(attempt_key)
+        job_id = _attempt_job_id(attempt, exclude_job_id=excluded)
+        if job_id:
+            return job_id
+    message_key = str(message_id or '').strip()
+    if message_key:
+        for attempt in reversed(attempt_store.list_message(message_key)):
+            job_id = _attempt_job_id(attempt, exclude_job_id=excluded)
+            if job_id:
+                return job_id
+    return None
+
+
+def _attempt_job_id(attempt, *, exclude_job_id: str | None = None) -> str | None:
+    job_id = str(getattr(attempt, 'job_id', '') or '').strip()
+    if not job_id or job_id == str(exclude_job_id or '').strip():
+        return None
+    return job_id
+
+
+def _reply_delivery_source_job_id_from_body(job) -> str | None:
+    body = str(getattr(job.request, 'body', '') or '')
+    first_line = body.splitlines()[0] if body else ''
+    for token in first_line.split():
+        key, sep, value = token.partition('=')
+        if sep and key == 'job':
+            text = value.strip()
+            return text or None
+    return None
+
+
+def _comm_sort_key(job, reply_delivery) -> str:
+    updated_at = str(getattr(job, 'updated_at', '') or '')
+    if reply_delivery is not None:
+        updated_at = max(updated_at, str(getattr(reply_delivery, 'updated_at', '') or ''))
+    return updated_at
+
+
+def _comm_record(
+    dispatcher,
+    job,
+    *,
+    reply_delivery,
+    configured_agents: frozenset[str],
+    running_recover_hint: str | None = None,
+) -> dict[str, object]:
+    business_status, status_label = _comm_business_status(
+        job,
+        reply_delivery=reply_delivery,
+        configured_agents=configured_agents,
+    )
+    if running_recover_hint and getattr(job, 'status', None) is JobStatus.RUNNING:
+        business_status, status_label = 'blocked', 'stuck'
+    reply_status = reply_delivery.status.value if reply_delivery is not None else None
+    updated_at = _comm_sort_key(job, reply_delivery)
+    recoverability = comms_recoverability_for_job(
+        dispatcher,
+        job,
+        reply_delivery=reply_delivery,
+        running_hint=running_recover_hint,
+    )
+    return {
+        'id': job.job_id,
+        'short_id': _short_id(job.job_id),
+        'created_at': job.created_at,
+        'updated_at': updated_at,
+        'sender': job.request.from_actor,
+        'target': job.target_name,
+        'status': job.status.value,
+        'business_status': business_status,
+        'status_label': status_label,
+        'body_preview': _body_preview(job.request.body),
+        'reply_status': reply_status,
+        'reply_delivery_job_id': reply_delivery.job_id if reply_delivery is not None else None,
+        'callback': bool(getattr(job.request, 'reply_to', None)),
+        'short_reason': _short_reason(job),
+        **recoverability.to_record(),
+    }
+
+
+def _comm_business_status(job, *, reply_delivery, configured_agents: frozenset[str]) -> tuple[str, str]:
+    if job.status in _COMMS_PENDING_STATUSES:
+        return 'sending', 'send'
+    if job.status is JobStatus.RUNNING:
+        return 'replying', 'work'
+    if job.status is JobStatus.COMPLETED:
+        if bool(getattr(job.request, 'silence_on_success', False)):
+            return 'completed', 'done'
+        if _expects_reply_delivery(job, configured_agents):
+            if reply_delivery is None or reply_delivery.status in _COMMS_PENDING_STATUSES or reply_delivery.status is JobStatus.RUNNING:
+                return 'delivering', 'back'
+            if reply_delivery.status is JobStatus.COMPLETED:
+                return 'replied', 'done'
+            return 'delivery_failed', 'fail'
+        return 'replied', 'done'
+    if job.status is JobStatus.CANCELLED:
+        return 'cancelled', 'fail'
+    if job.status is JobStatus.INCOMPLETE:
+        return 'incomplete', 'fail'
+    if job.status is JobStatus.FAILED:
+        return 'failed', 'fail'
+    return job.status.value, job.status.value
+
+
+def _expects_reply_delivery(job, configured_agents: frozenset[str]) -> bool:
+    sender = str(getattr(job.request, 'from_actor', '') or '').strip()
+    target = str(getattr(job, 'target_name', '') or '').strip()
+    return sender in configured_agents and sender != target
+
+
+def _body_preview(value: object) -> str:
+    text = _clean_body_preview_text(str(value or ''))
+    if len(text) <= _COMMS_BODY_PREVIEW_LIMIT:
+        return text
+    return f'{text[: _COMMS_BODY_PREVIEW_LIMIT - 3]}...'
+
+
+def _clean_body_preview_text(value: str) -> str:
+    text = ' '.join(str(value or '').split())
+    if not text:
+        return ''
+    lowered = text.lower()
+    for prefix in (
+        'reply exactly:',
+        'reply exactly',
+        'only reply:',
+        'only reply',
+        'respond exactly:',
+        'respond exactly',
+    ):
+        if lowered.startswith(prefix):
+            return _summarize_token_preview(text[len(prefix):].strip(' :：'))
+    for prefix in ('只回复：', '只回复:', '只回复'):
+        if text.startswith(prefix):
+            return _summarize_token_preview(text[len(prefix):].strip(' :：'))
+    return _summarize_token_preview(text)
+
+
+def _summarize_token_preview(value: str) -> str:
+    text = value.strip()
+    token = text.strip(' .,:;，。；：')
+    if not token or ' ' in token:
+        return text
+    compact = token.replace('-', '_')
+    if not compact.replace('_', '').isalnum():
+        return text
+    if compact.upper() != compact:
+        return text
+    parts = [part for part in compact.split('_') if part]
+    if len(parts) < 2:
+        return text
+    suffix = parts[-1]
+    if suffix not in {'OK', 'FAIL', 'SHOULD', 'DELIVER'}:
+        return text
+    body_parts = parts[:-1]
+    if len(body_parts) == 1 or all(_looks_like_probe_part(part) for part in body_parts):
+        return f'probe: {body_parts[0]}'
+    return f'smoke: {" ".join(part.lower() for part in body_parts)}'
+
+
+def _looks_like_probe_part(value: str) -> bool:
+    text = value.strip()
+    return len(text) <= 6 and any(char.isdigit() for char in text)
+
+
+def _short_reason(job) -> str | None:
+    decision = job.terminal_decision or {}
+    reason = str(decision.get('reason') or '').strip()
+    return reason or None
+
+
+def _short_id(value: str) -> str:
+    text = str(value or '').strip()
+    return text[-4:] if len(text) > 4 else text
+
+
+def _agent_order(config) -> tuple[str, ...]:
+    names: list[str] = []
+    for window in config.windows:
+        names.extend(window.agent_names)
+    return tuple(names)
+
+
+def _window_by_agent(config) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for window in config.windows:
+        for agent_name in window.agent_names:
+            result[agent_name] = window.name
+    return result
+
+
+def _active_jobs_by_agent(dispatcher) -> dict[str, object]:
+    result = {}
+    for target_kind, target_name, job_id in dispatcher._state.active_items():
+        if target_kind is not TargetKind.AGENT:
+            continue
+        job = dispatcher.get(job_id)
+        if job is not None:
+            result[str(target_name)] = job
+    return result
+
+
+def _queued_jobs_by_agent(dispatcher) -> dict[str, tuple]:
+    result = {}
+    for target_kind, target_name in dispatcher._state.slots():
+        if target_kind is not TargetKind.AGENT:
+            continue
+        jobs = []
+        for job_id in dispatcher._state.queued_items_for(target_kind, target_name):
+            job = dispatcher.get(job_id)
+            if job is not None and job.status in {JobStatus.ACCEPTED, JobStatus.QUEUED}:
+                jobs.append(job)
+        if jobs:
+            result[str(target_name)] = tuple(jobs)
+    return result
+
+
+def _runtime_state(runtime) -> str | None:
+    if runtime is None:
+        return AgentState.STOPPED.value
+    return runtime.state.value
+
+
+def _focus_snapshot(deps: ProjectViewDependencies, *, namespace) -> dict[str, object]:
+    if namespace is None:
+        return {}
+    controller = getattr(deps, 'namespace_controller', None)
+    backend_factory = getattr(controller, '_backend_factory', None)
+    if backend_factory is None:
+        return {}
+    try:
+        backend = backend_for_namespace(backend_factory, namespace)
+        cp = backend._tmux_run(
+            [
+                'display-message',
+                '-p',
+                '-t',
+                namespace.tmux_session_name,
+                '#{window_name}\t#{pane_id}\t#{@ccb_role}\t#{@ccb_slot}',
+            ],
+            capture=True,
+            check=False,
+            timeout=0.5,
+        )
+    except Exception:
+        return {}
+    if getattr(cp, 'returncode', 1) != 0:
+        return {}
+    parts = ((getattr(cp, 'stdout', '') or '').splitlines() or [''])[0].split('\t')
+    if len(parts) != 4:
+        return {}
+    active_agent = parts[3].strip() if parts[2].strip() == 'agent' else None
+    return {
+        'active_window': parts[0].strip() or None,
+        'active_pane_id': parts[1].strip() or None,
+        'active_agent': active_agent or None,
+    }
+
+
+__all__ = [
+    'PROJECT_VIEW_SCHEMA_VERSION',
+    'PROJECT_VIEW_TTL_MS',
+    'ProjectViewDependencies',
+    'ProjectViewService',
+    'build_project_view',
+]

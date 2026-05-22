@@ -82,6 +82,23 @@ jobs:
           export TERM=xterm-256color
           python -m pytest -q -m provider_blackbox test/test_v2_phase2_entrypoint.py
 
+  rust-sidebar:
+    name: Rust sidebar
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run sidebar tests
+        run: cargo test --manifest-path tools/ccb-agent-sidebar/Cargo.toml
+
+      - name: Build sidebar binary
+        run: bin/build-ccb-agent-sidebar
+
   macos-install-smoke:
     name: macOS install smoke
     runs-on: macos-latest

@@ -53,6 +53,7 @@ class ProjectNamespaceController(ProjectNamespaceControllerStateMixin):
         self,
         *,
         layout_signature: str | None = None,
+        topology_plan=None,
         force_recreate: bool = False,
         recreate_reason: str | None = None,
         session_probe_timeout_s: float | None = None,
@@ -61,6 +62,7 @@ class ProjectNamespaceController(ProjectNamespaceControllerStateMixin):
         return ensure_project_namespace(
             self,
             layout_signature=layout_signature,
+            topology_plan=topology_plan,
             force_recreate=force_recreate,
             recreate_reason=recreate_reason,
             session_probe_timeout_s=session_probe_timeout_s,

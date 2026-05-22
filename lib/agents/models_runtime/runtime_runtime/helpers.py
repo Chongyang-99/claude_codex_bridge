@@ -35,6 +35,8 @@ def normalize_runtime_defaults(runtime) -> None:
         runtime.lifecycle_state = runtime.state.value
     runtime.desired_state = normalized_text(runtime.desired_state) or default_desired_state(runtime.state)
     runtime.reconcile_state = normalized_text(runtime.reconcile_state) or default_reconcile_state(runtime.state)
+    runtime.tmux_window_name = normalized_text(runtime.tmux_window_name)
+    runtime.tmux_window_id = normalized_text(runtime.tmux_window_id)
     runtime.last_reconcile_at = normalized_text(runtime.last_reconcile_at)
     runtime.last_failure_reason = normalized_text(runtime.last_failure_reason)
     runtime.mount_attempt_id = normalized_text(getattr(runtime, 'mount_attempt_id', None))

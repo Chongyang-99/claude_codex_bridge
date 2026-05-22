@@ -12,8 +12,11 @@ class AgentBinding:
     runtime_pid: int | None = None
     session_file: str | None = None
     session_id: str | None = None
+    ccb_session_id: str | None = None
     tmux_socket_name: str | None = None
     tmux_socket_path: str | None = None
+    tmux_window_name: str | None = None
+    tmux_window_id: str | None = None
     terminal: str | None = None
     pane_id: str | None = None
     active_pane_id: str | None = None

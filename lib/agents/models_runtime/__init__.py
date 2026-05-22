@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .config import AgentApiSpec, AgentSpec, ProjectConfig
+from .config_runtime.topology import SidebarSpec, WindowSpec
 from provider_profiles.models import ProviderProfileSpec
 
 from .enums import (
@@ -49,7 +50,9 @@ __all__ = [
     'RuntimeBindingSource',
     'RuntimeMode',
     'SCHEMA_VERSION',
+    'SidebarSpec',
     'WorkspaceMode',
+    'WindowSpec',
     'build_balanced_layout',
     'build_project_layout_plan',
     'iter_layout_names',

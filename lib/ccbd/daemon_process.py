@@ -65,11 +65,29 @@ def _wait_for_ccbd_ready(*, process: subprocess.Popen[bytes], socket_path: Path,
 def _ccbd_env(*, keeper_pid: int | None) -> dict[str, str]:
     env = control_plane_env(extra={'PYTHONUNBUFFERED': '1'})
     lib_root = str(Path(__file__).resolve().parents[1])
+    script_root = Path(__file__).resolve().parents[2]
+    _prepend_tool_paths(env, script_root)
     current_pythonpath = env.get('PYTHONPATH')
     env['PYTHONPATH'] = lib_root if not current_pythonpath else lib_root + os.pathsep + current_pythonpath
     if keeper_pid is not None and keeper_pid > 0:
         env['CCB_KEEPER_PID'] = str(int(keeper_pid))
     return env
+
+
+def _prepend_tool_paths(env: dict[str, str], script_root: Path) -> None:
+    current = env.get('PATH', '')
+    parts: list[str] = []
+    seen: set[str] = set()
+    for candidate in (script_root / 'bin', script_root):
+        text = str(candidate)
+        if candidate.exists() and text not in seen:
+            parts.append(text)
+            seen.add(text)
+    for item in current.split(os.pathsep):
+        if item and item not in seen:
+            parts.append(item)
+            seen.add(item)
+    env['PATH'] = os.pathsep.join(parts)
 
 
 __all__ = ['CcbdProcessError', 'spawn_ccbd_process']

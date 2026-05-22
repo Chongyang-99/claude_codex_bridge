@@ -76,7 +76,12 @@ def inject_project_slot_recovery_hints(session, context: ProjectSlotRecoveryCont
     data['ccb_replacement_parent_pane'] = context.workspace_root_pane_id
 
 
-def relabel_project_slot_pane(*, pane_id: str, context: ProjectSlotRecoveryContext | None) -> None:
+def relabel_project_slot_pane(
+    *,
+    pane_id: str,
+    context: ProjectSlotRecoveryContext | None,
+    session_id: str | None = None,
+) -> None:
     if context is None:
         return
     pane_text = str(pane_id or '').strip()
@@ -94,6 +99,7 @@ def relabel_project_slot_pane(*, pane_id: str, context: ProjectSlotRecoveryConte
         project_id=context.project_id,
         order_index=context.style_index,
         slot_key=context.slot_key,
+        session_id=session_id,
         namespace_epoch=context.namespace_epoch,
         managed_by='ccbd',
     )

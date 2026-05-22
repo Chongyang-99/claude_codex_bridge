@@ -41,17 +41,39 @@ def _record_outside_namespace(runtime, namespace_state, record) -> bool:
     if record is None:
         return True
     slot_key = str(getattr(runtime, 'slot_key', None) or getattr(runtime, 'agent_name', None) or '').strip() or None
-    if not record.matches(
-        tmux_session_name=namespace_state.tmux_session_name,
-        project_id=runtime.project_id,
-        role='agent',
-        slot_key=slot_key,
-        managed_by='ccbd',
-    ):
+    match_kwargs = {
+        'tmux_session_name': namespace_state.tmux_session_name,
+        'project_id': runtime.project_id,
+        'role': 'agent',
+        'slot_key': slot_key,
+        'managed_by': 'ccbd',
+    }
+    window_name = _runtime_window_name(runtime)
+    if window_name is not None:
+        match_kwargs['window_name'] = window_name
+    if not record.matches(**match_kwargs):
         return True
+    if _record_matches_runtime_window(runtime, record):
+        return False
     workspace_window_id = str(getattr(namespace_state, 'workspace_window_id', None) or '').strip()
     if workspace_window_id and str(getattr(record, 'window_id', None) or '').strip():
         return str(record.window_id).strip() != workspace_window_id
+    return False
+
+
+def _runtime_window_name(runtime) -> str | None:
+    window_name = str(getattr(runtime, 'tmux_window_name', None) or '').strip()
+    return window_name or None
+
+
+def _record_matches_runtime_window(runtime, record) -> bool:
+    window_name = _runtime_window_name(runtime)
+    if window_name is None:
+        return False
+    for field_name in ('ccb_window', 'window_name'):
+        value = str(getattr(record, field_name, None) or '').strip()
+        if value == window_name:
+            return True
     return False
 
 

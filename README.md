@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.2.9-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.3.0-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -89,7 +89,7 @@ See [Release Notes](#release-notes) for the full history.
 ```bash
 ccb                              # Start default agents from .ccb/ccb.config
 ccb -s                           # Safe start: keep configured/manual permission behavior
-ccb -n                           # Rebuild .ccb except ccb.config, then start fresh
+ccb -n                           # Rebuild runtime state; keep config and managed agent history
 ccb kill                         # Stop this project's background runtime
 ccb kill -f                      # Force cleanup before rebuilding state
 ```
@@ -338,6 +338,16 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v6.3.0</b> - Native Sidebar Control Release</summary>
+
+- Adds the native Rust `ccb-agent-sidebar` helper with per-window project view, fixed gray sidebar identity, colored agent status symbols, and mouse/keyboard focus switching.
+- Adds window/sidebar topology support while keeping the default no-config layout as one `main` window with `agent1`, `agent2`, and `agent3`.
+- Adds comms retry, cancel, and clear actions through ccbd-owned RPCs, with recoverability metadata in `project_view`.
+- Carries tmux window names and ids through runtime attach, startup results, `ps`, project view, and pane identity for stable cross-window focus.
+
+</details>
+
+<details>
 <summary><b>v6.2.9</b> - Callback Visibility And Diagnostics Release</summary>
 
 - Shows `callback_pending` for delegated callback root jobs while the child chain is still running, then resolves `ask get` and `watch` to the final message-bureau reply after continuation.
@@ -927,7 +937,7 @@ Historical note: older release notes below may mention `askd`, legacy flags, or 
 - **Safe Agent Churn**: Adding agents no longer disturbs existing worktrees; removing or renaming worktree agents retires clean branches and blocks on dirty or unmerged ones
 
 **🛠 Recovery & Reset Hardening:**
-- **Config-Preserving Reset**: `ccb -n` rebuilds project runtime state while keeping `.ccb/ccb.config`
+- **History-Preserving Reset**: `ccb -n` rebuilds project runtime state while keeping `.ccb/ccb.config`, project memory, and same-name managed agent history
 - **Stale Registration Cleanup**: Start and reset now prune missing registered git worktrees before rematerialization
 - **Kill Warnings**: `ccb kill` warns clearly when a worktree agent still has unmerged or dirty state
 

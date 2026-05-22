@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from agents.models import AgentSpec, PermissionMode, ProjectConfig, QueuePolicy, RestoreMode, RuntimeMode, WorkspaceMode
+from agents.models import AgentSpec, PermissionMode, ProjectConfig, QueuePolicy, RestoreMode, RuntimeMode, WindowSpec, WorkspaceMode
 from agents.models import build_project_layout_plan
 
 
@@ -70,3 +70,28 @@ def test_build_project_layout_plan_rejects_unknown_requested_agent() -> None:
 
     with pytest.raises(Exception, match='unknown agent'):
         build_project_layout_plan(config, requested_agents=('missing',))
+
+
+def test_build_project_layout_plan_can_select_agent_from_explicit_later_window() -> None:
+    agents = {
+        'agent1': _spec('agent1', 'codex'),
+        'agent2': _spec('agent2', 'claude'),
+    }
+    config = ProjectConfig(
+        version=2,
+        default_agents=('agent1', 'agent2'),
+        agents=agents,
+        cmd_enabled=False,
+        layout_spec='agent1:codex',
+        windows=(
+            WindowSpec(name='main', order=0, layout_spec='agent1:codex', agent_names=('agent1',)),
+            WindowSpec(name='ops', order=1, layout_spec='agent2:claude', agent_names=('agent2',)),
+        ),
+        entry_window='main',
+    )
+
+    plan = build_project_layout_plan(config, requested_agents=('agent2',))
+
+    assert plan.target_agent_names == ('agent2',)
+    assert plan.visible_leaf_names == ('agent2',)
+    assert plan.signature == 'agent2:claude'

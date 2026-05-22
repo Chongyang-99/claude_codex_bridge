@@ -6,10 +6,38 @@ from typing import Any
 import pytest
 
 import terminal_runtime.api as terminal
+import terminal_runtime.tmux_backend as tmux_backend_runtime
 
 
 def _cp(*, stdout: str = "", returncode: int = 0) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(args=["tmux"], returncode=returncode, stdout=stdout, stderr="")
+
+
+def test_tmux_backend_run_strips_outer_tmux_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+    monkeypatch.setenv('TMUX', '/tmp/tmux-1000/default,123,0')
+    monkeypatch.setenv('TMUX_PANE', '%77')
+    monkeypatch.setenv('CCB_TMUX_SOCKET', 'outer')
+    monkeypatch.setenv('CCB_TMUX_SOCKET_PATH', '/tmp/outer.sock')
+
+    def fake_run(args, **kwargs):
+        seen['args'] = args
+        seen['env'] = kwargs.get('env')
+        return _cp()
+
+    monkeypatch.setattr(tmux_backend_runtime, '_run', fake_run)
+
+    backend = terminal.TmuxBackend(socket_path='/tmp/project.sock')
+    backend._tmux_run(['display-message', '-p', 'ok'])
+
+    env = seen['env']
+    assert isinstance(env, dict)
+    assert 'TMUX' not in env
+    assert 'TMUX_PANE' not in env
+    assert 'CCB_TMUX_SOCKET' not in env
+    assert 'CCB_TMUX_SOCKET_PATH' not in env
+    assert seen['args'][:4] == ['tmux', '-f', '/dev/null', '-S']
+    assert seen['args'][4] == '/tmp/project.sock'
 
 
 def test_tmux_split_pane_builds_command_and_parses_pane_id(monkeypatch: pytest.MonkeyPatch) -> None:

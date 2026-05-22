@@ -51,6 +51,7 @@ def test_resolve_agent_binding_uses_ensure_pane_and_returns_updated_runtime_ref(
     assert binding is not None
     assert binding.runtime_ref == 'tmux:%99'
     assert binding.session_ref == 'session-1'
+    assert binding.ccb_session_id is None
     assert binding.tmux_socket_name is None
     assert binding.terminal == 'tmux'
     assert binding.pane_id == '%99'
@@ -149,6 +150,38 @@ def test_resolve_agent_binding_preserves_tmux_socket_name_from_session_data(
 
     assert binding is not None
     assert binding.tmux_socket_name == 'sock-demo'
+
+
+def test_resolve_agent_binding_exposes_ccb_session_id_from_session_data(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    session = _FakeSession(
+        pane_id='%41',
+        fake_session_id='provider-session-1',
+        ensure_ok=True,
+        data={'ccb_session_id': 'ccb-agent1-session'},
+    )
+    adapter = ProviderSessionBinding(
+        provider='codex',
+        load_session=lambda root, instance: session,
+        session_id_attr='fake_session_id',
+        session_path_attr='fake_session_path',
+    )
+
+    monkeypatch.setattr('cli.services.provider_binding._binding_adapter', lambda provider: adapter)
+
+    binding = resolve_agent_binding(
+        provider='codex',
+        agent_name='agent1',
+        workspace_path=tmp_path / 'workspace',
+        project_root=tmp_path / 'project',
+        ensure_usable=False,
+    )
+
+    assert binding is not None
+    assert binding.session_id == 'provider-session-1'
+    assert binding.ccb_session_id == 'ccb-agent1-session'
 
 
 def test_resolve_agent_binding_marks_missing_tmux_pane_without_marker_recovery(

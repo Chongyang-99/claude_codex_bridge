@@ -18,6 +18,7 @@ def resolve_runtime_binding_state(
     project_id: str,
     tmux_socket_path: str | None,
     namespace_epoch: int | None,
+    window_name: str | None = None,
     ensure_agent_runtime_fn,
     launch_binding_hint_fn,
     relabel_project_namespace_pane_fn,
@@ -46,6 +47,7 @@ def resolve_runtime_binding_state(
             style_index=style_index,
             tmux_socket_path=tmux_socket_path,
             namespace_epoch=namespace_epoch,
+            window_name=window_name,
             relabel_project_namespace_pane_fn=relabel_project_namespace_pane_fn,
         )
     )
@@ -126,6 +128,7 @@ def relabel_runtime_pane(
     style_index: int,
     tmux_socket_path: str | None,
     namespace_epoch: int | None,
+    window_name: str | None = None,
     relabel_project_namespace_pane_fn,
 ) -> tuple[str, ...]:
     if binding is None:
@@ -137,6 +140,7 @@ def relabel_runtime_pane(
         style_index=style_index,
         tmux_socket_path=tmux_socket_path,
         namespace_epoch=namespace_epoch,
+        window_name=window_name,
     )
     if relabeled_pane is None:
         return ()

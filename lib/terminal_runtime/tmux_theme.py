@@ -121,6 +121,12 @@ _AGENT_VISUALS_CONTRAST: tuple[TmuxPaneVisual, ...] = (
     _visual(bg='#f5bde6'),
 )
 
+_SIDEBAR_VISUAL = TmuxPaneVisual(
+    label_style='#[fg=#cdd6f4]#[bg=#45475a]#[bold]',
+    border_style='fg=#6c7086',
+    active_border_style='fg=#6c7086',
+)
+
 
 def _env(environ: Mapping[str, str] | None = None) -> Mapping[str, str]:
     return environ if environ is not None else os.environ
@@ -245,9 +251,12 @@ def pane_visual(
     slot_key: str | None = None,
     order_index: int | None = None,
     is_cmd: bool = False,
+    role: str | None = None,
     profile_name: str | None = None,
     environ: Mapping[str, str] | None = None,
 ) -> TmuxPaneVisual:
+    if str(role or '').strip().lower() == 'sidebar':
+        return _SIDEBAR_VISUAL
     resolved_profile = theme_profile_definition(profile_name, environ=environ).name
     visuals = _pane_palette(profile_name=resolved_profile, is_cmd=is_cmd)
     return _select_visual(visuals, project_id=project_id, slot_key=slot_key, fallback_index=order_index)

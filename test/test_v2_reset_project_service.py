@@ -9,6 +9,7 @@ from agents.models import PermissionMode, QueuePolicy, RestoreMode, RuntimeMode,
 from agents.models import AgentSpec
 from cli.services.reset_project import reset_project_state
 from project.resolver import bootstrap_project
+from storage.paths import PathLayout
 from workspace.materializer import WorkspaceMaterializer
 from workspace.planner import WorkspacePlanner
 
@@ -28,18 +29,74 @@ def _spec() -> AgentSpec:
     )
 
 
-def test_reset_project_state_preserves_only_ccb_config(tmp_path: Path, monkeypatch) -> None:
+def test_reset_project_state_preserves_config_memory_and_same_named_provider_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     project_root = tmp_path / 'repo-reset'
     ccb_dir = project_root / '.ccb'
     ccb_dir.mkdir(parents=True)
     (ccb_dir / 'ccb.config').write_text('cmd; agent1:codex, agent2:claude\n', encoding='utf-8')
+    (ccb_dir / 'ccb_memory.md').write_text('shared memory\n', encoding='utf-8')
+    (ccb_dir / 'history' / 'handoff.md').parent.mkdir(parents=True, exist_ok=True)
+    (ccb_dir / 'history' / 'handoff.md').write_text('handoff\n', encoding='utf-8')
     (ccb_dir / 'ccbd' / 'state.json').parent.mkdir(parents=True, exist_ok=True)
     (ccb_dir / 'ccbd' / 'state.json').write_text('{}', encoding='utf-8')
     (ccb_dir / 'agents' / 'agent1' / 'runtime.json').parent.mkdir(parents=True, exist_ok=True)
     (ccb_dir / 'agents' / 'agent1' / 'runtime.json').write_text('{}', encoding='utf-8')
+    (ccb_dir / 'agents' / 'agent1' / 'memory.md').write_text('private memory\n', encoding='utf-8')
+    (ccb_dir / 'agents' / 'agent1' / 'provider-state' / 'codex' / 'home' / 'sessions').mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    (ccb_dir / 'agents' / 'agent1' / 'provider-state' / 'codex' / 'home' / 'sessions' / 'rollout.jsonl').write_text(
+        'codex history\n',
+        encoding='utf-8',
+    )
+    (ccb_dir / 'agents' / 'agent1' / 'provider-state' / 'claude' / 'home').mkdir(parents=True, exist_ok=True)
+    (ccb_dir / 'agents' / 'agent1' / 'provider-state' / 'claude' / 'home' / 'old.jsonl').write_text(
+        'wrong provider\n',
+        encoding='utf-8',
+    )
+    (
+        ccb_dir
+        / 'agents'
+        / 'agent2'
+        / 'provider-state'
+        / 'claude'
+        / 'home'
+        / '.claude'
+        / 'projects'
+    ).mkdir(parents=True, exist_ok=True)
+    (
+        ccb_dir
+        / 'agents'
+        / 'agent2'
+        / 'provider-state'
+        / 'claude'
+        / 'home'
+        / '.claude'
+        / 'projects'
+        / 'conversation.jsonl'
+    ).write_text('claude history\n', encoding='utf-8')
+    (ccb_dir / 'agents' / 'agent2' / 'provider-runtime' / 'claude' / 'fifo').parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    (ccb_dir / 'agents' / 'agent2' / 'provider-runtime' / 'claude' / 'fifo').write_text(
+        'runtime\n',
+        encoding='utf-8',
+    )
+    (ccb_dir / 'agents' / 'agent3' / 'provider-state' / 'codex' / 'home').mkdir(parents=True, exist_ok=True)
+    (ccb_dir / 'agents' / 'agent3' / 'provider-state' / 'codex' / 'home' / 'old.jsonl').write_text(
+        'unconfigured\n',
+        encoding='utf-8',
+    )
     (ccb_dir / 'workspaces' / 'agent1' / 'memory.txt').parent.mkdir(parents=True, exist_ok=True)
     (ccb_dir / 'workspaces' / 'agent1' / 'memory.txt').write_text('old', encoding='utf-8')
     (ccb_dir / '.codex-agent1-session').write_text('session', encoding='utf-8')
+    (ccb_dir / '.claude-agent2-session').write_text('claude-session', encoding='utf-8')
+    (ccb_dir / '.codex-agent2-session').write_text('wrong-session', encoding='utf-8')
 
     seen: dict[str, object] = {}
 
@@ -52,10 +109,22 @@ def test_reset_project_state_preserves_only_ccb_config(tmp_path: Path, monkeypat
 
     assert summary.reset_performed is True
     assert summary.preserved_config is True
+    assert summary.preserved_provider_histories == 2
+    assert summary.preserved_session_files == 2
+    assert summary.preserved_user_files == 3
     assert seen['project_root'] == project_root.resolve()
     assert ccb_dir.is_dir()
     assert (ccb_dir / 'ccb.config').read_text(encoding='utf-8') == 'cmd; agent1:codex, agent2:claude\n'
-    assert sorted(path.relative_to(ccb_dir).as_posix() for path in ccb_dir.rglob('*') if path.is_file()) == ['ccb.config']
+    assert sorted(path.relative_to(ccb_dir).as_posix() for path in ccb_dir.rglob('*') if path.is_file()) == [
+        '.claude-agent2-session',
+        '.codex-agent1-session',
+        'agents/agent1/memory.md',
+        'agents/agent1/provider-state/codex/home/sessions/rollout.jsonl',
+        'agents/agent2/provider-state/claude/home/.claude/projects/conversation.jsonl',
+        'ccb.config',
+        'ccb_memory.md',
+        'history/handoff.md',
+    ]
 
 
 def test_reset_project_state_fails_fast_when_runtime_cleanup_cannot_stop_project(tmp_path: Path, monkeypatch) -> None:
@@ -111,6 +180,71 @@ def test_reset_project_state_drops_invalid_runtime_root_ref(tmp_path: Path, monk
     assert summary.reset_performed is True
     assert (ccb_dir / 'ccb.config').read_text(encoding='utf-8') == 'cmd; agent1:codex\n'
     assert (ccb_dir / 'runtime-root-ref.json').exists() is False
+
+
+def test_reset_project_state_preserves_relocated_same_named_provider_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo-reset-relocated-history'
+    ccb_dir = project_root / '.ccb'
+    relocated_root = tmp_path / 'state-root'
+    ccb_dir.mkdir(parents=True)
+    relocated_root.mkdir(parents=True)
+    (ccb_dir / 'ccb.config').write_text('agent1:codex\n', encoding='utf-8')
+    initial_layout = PathLayout(project_root)
+    (ccb_dir / 'runtime-root-ref.json').write_text(
+        '{"schema_version":1,"record_type":"ccb_runtime_root_ref","project_id":"'
+        + initial_layout.project_id
+        + '","runtime_state_root":"'
+        + str(relocated_root)
+        + '","created_at":"2026-05-22T00:00:00Z"}',
+        encoding='utf-8',
+    )
+    reset_layout = PathLayout(project_root)
+    reset_layout.ensure_runtime_state_root(created_at='2026-05-22T00:00:00Z')
+    provider_history = reset_layout.agent_provider_state_dir('agent1', 'codex') / 'home' / 'sessions' / 'keep.jsonl'
+    provider_history.parent.mkdir(parents=True, exist_ok=True)
+    provider_history.write_text('relocated history\n', encoding='utf-8')
+    runtime_junk = reset_layout.agent_provider_runtime_dir('agent1', 'codex') / 'completion' / 'job.json'
+    runtime_junk.parent.mkdir(parents=True, exist_ok=True)
+    runtime_junk.write_text('{}', encoding='utf-8')
+
+    monkeypatch.setattr('cli.services.reset_project._stop_project_runtime', lambda context: None)
+
+    summary = reset_project_state(project_root)
+
+    assert summary.reset_performed is True
+    assert summary.preserved_provider_histories == 1
+    assert provider_history.read_text(encoding='utf-8') == 'relocated history\n'
+    assert runtime_junk.exists() is False
+    assert (ccb_dir / 'runtime-root-ref.json').is_file()
+
+
+def test_reset_project_state_restores_staged_history_when_clear_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo-reset-clear-fails'
+    ccb_dir = project_root / '.ccb'
+    ccb_dir.mkdir(parents=True)
+    (ccb_dir / 'ccb.config').write_text('agent1:codex\n', encoding='utf-8')
+    history_file = ccb_dir / 'agents' / 'agent1' / 'provider-state' / 'codex' / 'home' / 'sessions' / 'keep.jsonl'
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text('history survives\n', encoding='utf-8')
+
+    monkeypatch.setattr('cli.services.reset_project._stop_project_runtime', lambda context: None)
+
+    def _fail_clear(layout) -> None:
+        del layout
+        raise RuntimeError('clear failed')
+
+    monkeypatch.setattr('cli.services.reset_project._clear_runtime_state', _fail_clear)
+
+    with pytest.raises(RuntimeError, match='clear failed'):
+        reset_project_state(project_root)
+
+    assert history_file.read_text(encoding='utf-8') == 'history survives\n'
 
 
 def test_reset_project_state_unregisters_git_worktrees_before_clearing_anchor(tmp_path: Path, monkeypatch) -> None:

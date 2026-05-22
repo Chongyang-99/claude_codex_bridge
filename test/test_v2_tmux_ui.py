@@ -73,10 +73,23 @@ def test_apply_project_tmux_ui_sets_session_theme_and_hook_from_current_install_
             calls.append(list(args))
             if capture and args[:4] == ['list-panes', '-t', 'ccb-demo', '-F']:
                 return SimpleNamespace(returncode=0, stdout='\n%9\n', stderr='')
+            if capture and args[:3] == ['list-panes', '-a', '-F']:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=(
+                        'ccb-demo\tmain\t%8\t0\tsidebar\tfg=#6c7086\tfg=#6c7086\n'
+                        'ccb-demo\tmain\t%9\t1\tagent\tfg=#f7768e\tfg=#f7768e,bold\n'
+                    ),
+                    stderr='',
+                )
             if capture and args[:4] == ['display-message', '-p', '-t', '%9']:
+                if args[4] == '#{@ccb_role}':
+                    return SimpleNamespace(returncode=0, stdout='agent\n', stderr='')
                 if args[4] == '#{@ccb_active_border_style}':
                     return SimpleNamespace(returncode=0, stdout='fg=#f7768e,bold\n', stderr='')
                 return SimpleNamespace(returncode=0, stdout='', stderr='')
+            if capture and args[:4] == ['list-windows', '-t', 'ccb-demo', '-F']:
+                return SimpleNamespace(returncode=0, stdout='main\nreview\n', stderr='')
             return SimpleNamespace(returncode=0, stdout='', stderr='')
 
     monkeypatch.setattr(tmux_helpers, 'current_install_root', lambda: tmp_path)
@@ -88,11 +101,16 @@ def test_apply_project_tmux_ui_sets_session_theme_and_hook_from_current_install_
     )
 
     assert ['set-option', '-t', 'ccb-demo', '@ccb_version', '9.9.9'] in calls
-    assert ['set-window-option', '-t', 'ccb-demo', 'pane-border-status', 'top'] in calls
-    assert ['set-window-option', '-t', 'ccb-demo', 'pane-border-style', 'fg=#3b4261,bold'] in calls
-    assert ['set-window-option', '-t', 'ccb-demo', 'pane-active-border-style', 'fg=#7aa2f7,bold'] in calls
+    assert ['set-window-option', '-t', 'ccb-demo:main', 'pane-border-status', 'top'] in calls
+    assert ['set-window-option', '-t', 'ccb-demo:review', 'pane-border-status', 'top'] in calls
+    assert ['set-window-option', '-t', 'ccb-demo:main', 'pane-border-style', 'fg=#f7768e'] in calls
+    assert ['set-window-option', '-t', 'ccb-demo:main', 'pane-active-border-style', 'fg=#f7768e,bold'] in calls
     assert any(
-        call[:4] == ['set-window-option', '-t', 'ccb-demo', 'pane-border-format']
+        call[:4] == ['set-window-option', '-t', 'ccb-demo:main', 'pane-border-format']
+        for call in calls
+    )
+    assert any(
+        call[:4] == ['set-window-option', '-t', 'ccb-demo:review', 'pane-border-format']
         for call in calls
     )
     assert any(

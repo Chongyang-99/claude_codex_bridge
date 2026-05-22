@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from ccbd.services.project_namespace import ProjectNamespaceController
+from ccbd.services.project_namespace_runtime import build_namespace_topology_plan
 from ccbd.services.project_namespace_runtime.backend import prepare_server
 from ccbd.services.project_namespace_state import (
     ProjectNamespaceEvent,
@@ -13,6 +14,7 @@ from ccbd.services.project_namespace_state import (
     ProjectNamespaceStateStore,
 )
 from storage.paths import PathLayout
+from agents.config_loader import load_project_config
 
 
 def test_project_namespace_state_store_round_trip(tmp_path: Path) -> None:
@@ -90,6 +92,28 @@ class _FakeTmuxBackend:
         self.active_windows.setdefault(session_name, window_name)
         return record
 
+    def split_pane(
+        self,
+        parent_pane_id: str,
+        direction: str,
+        percent: int,
+        cmd: str | None = None,
+        cwd: str | None = None,
+    ) -> str:
+        del direction, percent, cmd, cwd
+        for windows in self.sessions.values():
+            for record in windows:
+                panes = record['panes']
+                if parent_pane_id in panes:
+                    pane_id = self._alloc_pane()
+                    panes.append(pane_id)
+                    return pane_id
+        raise RuntimeError(f'pane not found: {parent_pane_id}')
+
+    def respawn_pane(self, pane_id: str, *, cmd: str, cwd: str | None = None, remain_on_exit: bool = True) -> None:
+        del cwd, remain_on_exit
+        self.pane_options.setdefault(pane_id, {})['@respawn_cmd'] = cmd
+
     def _window_record(self, target: str) -> dict[str, object] | None:
         session_name, _, maybe_window = target.partition(':')
         windows = self.sessions.get(session_name, [])
@@ -166,12 +190,16 @@ class _FakeTmuxBackend:
             return SimpleNamespace(returncode=0, stdout='', stderr='')
         if len(args) >= 4 and args[:2] == ['list-windows', '-t']:
             session_name = args[2]
+            fmt = args[4] if len(args) >= 5 and args[3] == '-F' else ''
             rows = []
             for record in self.sessions.get(session_name, []):
                 if not self._window_visible(session_name, str(record['name'])):
                     continue
                 active = '1' if self.active_windows.get(session_name) == record['name'] else '0'
-                rows.append(f"{record['id']}\t{record['name']}\t{active}")
+                if fmt == '#{window_name}':
+                    rows.append(str(record['name']))
+                else:
+                    rows.append(f"{record['id']}\t{record['name']}\t{active}")
             return SimpleNamespace(returncode=0, stdout='\n'.join(rows), stderr='')
         if len(args) >= 4 and args[:2] == ['list-panes', '-t']:
             window = self._window_record(args[2])
@@ -290,12 +318,71 @@ def test_project_namespace_controller_creates_state_and_lifecycle_event(tmp_path
     assert backend.pane_options['%2']['@ccb_slot'] == 'cmd'
     assert backend.pane_options['%2']['@ccb_namespace_epoch'] == '1'
     assert backend.pane_options['%2']['@ccb_managed_by'] == 'ccbd'
-    assert backend.window_options[layout.ccbd_tmux_session_name]['pane-border-status'] == 'top'
+    assert backend.window_options[
+        f'{layout.ccbd_tmux_session_name}:{layout.ccbd_tmux_workspace_window_name}'
+    ]['pane-border-status'] == 'top'
     assert 'after-select-pane' in backend.hooks[layout.ccbd_tmux_session_name]
     assert latest_event is not None
     assert latest_event.event_kind == 'namespace_created'
     assert latest_event.details['recreated'] is False
     assert latest_event.details['reason'] == 'initial_create'
+
+
+def test_project_namespace_controller_materializes_explicit_windows_and_sidebar(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-topology'
+    (project_root / '.ccb').mkdir(parents=True)
+    (project_root / '.ccb' / 'ccb.config').write_text(
+        """version = 2
+entry_window = "review"
+
+[windows]
+main = "agent1:codex"
+review = "agent2:codex, agent3:claude"
+
+[ui.sidebar]
+mode = "every_window"
+width = "15%"
+bottom_height = 20
+""",
+        encoding='utf-8',
+    )
+    config = load_project_config(project_root).config
+    layout = PathLayout(project_root)
+    backend = _FakeTmuxBackend()
+    controller = ProjectNamespaceController(
+        layout,
+        'proj-topology',
+        clock=lambda: '2026-04-03T02:15:00Z',
+        backend_factory=lambda socket_path=None: backend,
+    )
+
+    namespace = controller.ensure(
+        topology_plan=build_namespace_topology_plan(
+            config,
+            ccbd_socket_path=str(layout.ccbd_socket_path),
+            project_root=str(project_root),
+        )
+    )
+
+    windows = {
+        str(record['name']): record
+        for record in backend.sessions[layout.ccbd_tmux_session_name]
+    }
+    assert set(windows) == {'main', 'review'}
+    assert namespace.workspace_window_name == 'review'
+    assert backend.active_windows[layout.ccbd_tmux_session_name] == 'review'
+    assert backend.pane_options['%1']['@ccb_role'] == 'sidebar'
+    assert backend.pane_options['%1']['@ccb_sidebar_instance'] == 'main'
+    assert backend.pane_options['%3']['@ccb_role'] == 'sidebar'
+    assert backend.pane_options['%3']['@ccb_sidebar_instance'] == 'review'
+    assert backend.pane_options['%2']['@ccb_slot'] == 'agent1'
+    assert backend.pane_options['%4']['@ccb_slot'] == 'agent2'
+    assert backend.pane_options['%5']['@ccb_slot'] == 'agent3'
+    assert controller._last_materialized_agent_panes == {
+        'agent1': '%2',
+        'agent2': '%4',
+        'agent3': '%5',
+    }
 
 
 def test_project_namespace_controller_applies_server_policy_when_reusing_session(tmp_path: Path) -> None:

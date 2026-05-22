@@ -404,11 +404,22 @@ Foreground command split:
 - `ccb -n`
   - is an explicit destructive project reset before start
   - must require interactive confirmation
-  - must clear and rebuild all project-owned `.ccb` runtime state, logs, sessions, workspaces, and mail/message residue
+  - must clear and rebuild project-owned runtime state, logs, workspaces, and mail/message residue
   - must preserve `.ccb/ccb.config` exactly when it exists
+  - must preserve user-owned `.ccb/ccb_memory.md`, `.ccb/history/`, and
+    `.ccb/agents/<agent>/memory.md` files
+  - must preserve managed provider conversation history for the same normalized
+    agent name and provider present in the effective config, including
+    `.ccb/agents/<agent>/provider-state/<provider>/` under the effective
+    `PathLayout` runtime root and the matching project session file such as
+    `.codex-<agent>-session`
+  - must not preserve provider-runtime, mailbox, jobs, pane, helper, or
+    non-configured/wrong-provider agent residue
   - if `.ccb/ccb.config` does not exist, startup may bootstrap the default config after reset
   - the same invocation must then continue through the normal `ccb` start transaction rather than using a separate startup implementation
-  - that first post-reset startup must force `restore=false` so provider-global history cannot silently reattach old conversations
+  - that first post-reset startup must force `restore=false` so provider-global
+    history cannot silently reattach old conversations outside the preserved
+    managed provider-state boundary
   - after the fresh post-reset startup completes, later ordinary `ccb` runs return to the default `-a -r` semantics
 - removed attach-only commands
   - the foreground attach stage belongs to `ccb`

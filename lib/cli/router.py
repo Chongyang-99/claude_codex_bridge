@@ -61,7 +61,7 @@ def print_start_help(*, file=None) -> None:
             Primary workflow:
               ccb                  Start project agents from `.ccb/ccb.config`.
               ccb -s               Safe start. Disable CLI auto-permission override.
-              ccb -n               Rebuild .ccb except ccb.config, then start fresh.
+              ccb -n               Rebuild runtime state while preserving config and managed agent history.
               ccb kill             Stop the current project's background runtime.
               ccb kill -f          Force cleanup project-owned runtime residue.
               ccb cleanup          Prune safe provider rebuildable caches after ccbd is stopped.
@@ -107,7 +107,7 @@ def print_kill_help(*, file=None) -> None:
             Notes:
               - `kill` is project-scoped. It does not bootstrap a missing `.ccb`.
               - `kill` still works when `.ccb` exists but `ccb.config` is missing or stale.
-              - Use `ccb -n` after `ccb kill` when you want to rebuild `.ccb` but keep `ccb.config`.
+              - Use `ccb -n` after `ccb kill` when you want to rebuild runtime state but keep config and managed agent history.
             """
         ).strip(),
         file=file,

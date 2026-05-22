@@ -4,10 +4,15 @@ from ccbd.handlers import (
     build_ack_handler,
     build_attach_handler,
     build_cancel_handler,
+    build_comms_recover_handler,
     build_get_handler,
     build_inbox_handler,
     build_mailbox_head_handler,
     build_ping_handler,
+    build_project_focus_agent_handler,
+    build_project_focus_window_handler,
+    build_project_view_dismiss_comms_handler,
+    build_project_view_handler,
     build_queue_handler,
     build_resubmit_handler,
     build_restore_handler,
@@ -29,10 +34,24 @@ def register_handlers(app) -> None:
     app.socket_server.register_handler('trace', build_trace_handler(app.dispatcher))
     app.socket_server.register_handler('resubmit', build_resubmit_handler(app.dispatcher))
     app.socket_server.register_handler('retry', build_retry_handler(app.dispatcher))
+    app.socket_server.register_handler('comms_recover', build_comms_recover_handler(app.dispatcher))
     app.socket_server.register_handler('inbox', build_inbox_handler(app.dispatcher))
     app.socket_server.register_handler('mailbox_head', build_mailbox_head_handler(app.dispatcher))
     app.socket_server.register_handler('ack', build_ack_handler(app.dispatcher))
     app.socket_server.register_handler('cancel', build_cancel_handler(app.dispatcher))
+    app.socket_server.register_handler('project_view', build_project_view_handler(app.project_view_service))
+    app.socket_server.register_handler(
+        'project_view_dismiss_comms',
+        build_project_view_dismiss_comms_handler(app.project_view_state_store),
+    )
+    app.socket_server.register_handler(
+        'project_focus_window',
+        build_project_focus_window_handler(app.project_focus_service),
+    )
+    app.socket_server.register_handler(
+        'project_focus_agent',
+        build_project_focus_agent_handler(app.project_focus_service),
+    )
     app.socket_server.register_handler(
         'ping',
         build_ping_handler(

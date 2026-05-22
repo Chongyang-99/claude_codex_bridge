@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-6.2.9-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-6.3.0-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -89,7 +89,7 @@
 ```bash
 ccb                    # 按 .ccb/ccb.config 启动默认 agent
 ccb -s                 # 安全启动：保留 agent 自身配置的权限策略
-ccb -n                 # 重建 .ccb（保留 ccb.config），再重新启动
+ccb -n                 # 重建运行态，保留配置和同名 managed agent 历史
 ccb kill               # 停止当前项目相关后台
 ccb kill -f            # 强制清理项目残留后再配合 ccb -n 使用
 ```
@@ -329,6 +329,16 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v6.3.0</b> - Native Sidebar Control Release</summary>
+
+- 新增 Rust `ccb-agent-sidebar` 原生侧边栏 helper，支持每个 window 的 project view、固定灰色侧边栏身份、彩色 agent 状态符号，以及鼠标/键盘 focus 切换。
+- 新增 window/sidebar topology 支持，同时保留无配置时默认一个 `main` window，包含 `agent1`、`agent2`、`agent3`。
+- 新增 comms retry、cancel、clear 操作，统一通过 ccbd RPC 执行，并在 `project_view` 中提供可恢复状态元数据。
+- runtime attach、startup results、`ps`、project view、pane identity 现在携带 tmux window name/id，让跨 window focus 更稳定。
+
+</details>
+
+<details>
 <summary><b>v6.2.9</b> - Callback Visibility And Diagnostics Release</summary>
 
 - 委派式 callback root job 在子链路运行期间显示 `callback_pending`，continuation 完成后 `ask get` 和 `watch` 会解析到最终 message-bureau reply。
@@ -918,7 +928,7 @@ ccb reinstall
 - **Agent 变更更稳**：新增 agent 不再影响已有 worktree；删除或改名 worktree agent 时，干净分支会自动退休，脏分支或未合并分支会阻断并提醒
 
 **🛠 重建与恢复加固：**
-- **保留配置重建**：`ccb -n` 会重建项目运行时状态，但保留 `.ccb/ccb.config`
+- **保留历史重建**：`ccb -n` 会重建项目运行时状态，但保留 `.ccb/ccb.config`、项目记忆和同名 managed agent 历史
 - **陈旧注册清理**：启动与重建前会先清理已注册但路径丢失的 git worktree
 - **Kill 提醒**：`ccb kill` 在发现 worktree agent 仍有未合并或脏状态时会显著提醒用户
 

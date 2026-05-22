@@ -50,6 +50,8 @@ def test_agent_stores_roundtrip(tmp_path: Path) -> None:
         queue_depth=0,
         socket_path=str(layout.ccbd_socket_path),
         health='healthy',
+        tmux_window_name='main',
+        tmux_window_id='@1',
         binding_source=RuntimeBindingSource.EXTERNAL_ATTACH,
         daemon_generation=3,
         desired_state='mounted',

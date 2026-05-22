@@ -128,7 +128,11 @@ def refresh_provider_binding(
     if recover and pane_id is None:
         return runtime
     if pane_id is not None:
-        relabel_project_slot_pane(pane_id=pane_id, context=replacement_context)
+        relabel_project_slot_pane(
+            pane_id=pane_id,
+            context=replacement_context,
+            session_id=_session_ccb_session_id(session),
+        )
     facts = build_provider_runtime_facts(
         session,
         binding=binding,
@@ -149,3 +153,15 @@ def refresh_provider_binding(
             replacement_context.workspace_epoch if replacement_context is not None else getattr(runtime, 'workspace_epoch', None)
         ),
     )
+
+
+def _session_ccb_session_id(session) -> str | None:
+    text = str(getattr(session, 'ccb_session_id', '') or '').strip()
+    if text:
+        return text
+    data = getattr(session, 'data', None)
+    if isinstance(data, dict):
+        text = str(data.get('ccb_session_id') or '').strip()
+        if text:
+            return text
+    return None

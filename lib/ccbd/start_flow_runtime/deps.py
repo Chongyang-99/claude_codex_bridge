@@ -22,6 +22,7 @@ class StartFlowDeps:
     build_restore_state_impl: object
     cleanup_start_tmux_orphans_impl: object
     set_tmux_ui_active_fn: object
+    apply_project_tmux_ui_fn: object
     prepare_tmux_start_layout_fn: object
     ensure_agent_runtime_fn: object
     resolve_agent_binding_fn: object

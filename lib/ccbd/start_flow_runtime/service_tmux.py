@@ -33,12 +33,22 @@ def tmux_layout_for_start(
     interactive_tmux_layout: bool,
     tmux_backend,
     root_pane_id: str | None,
+    namespace_agent_panes: dict[str, str] | None,
     actions_taken: list[str],
 ) -> TmuxStartLayout:
     if not interactive_tmux_layout:
         return TmuxStartLayout(cmd_pane_id=None, agent_panes={})
     deps.set_tmux_ui_active_fn(True)
     launch_targets = tuple(item.agent_name for item in prepared_agents if item.binding is None)
+    if getattr(config, 'windows_explicit', False) and namespace_agent_panes:
+        assigned = {
+            name: pane
+            for name, pane in dict(namespace_agent_panes).items()
+            if name in set(launch_targets)
+        }
+        if assigned:
+            actions_taken.append(f'use_namespace_topology:{",".join(sorted(assigned))}')
+            return TmuxStartLayout(cmd_pane_id=None, agent_panes=assigned)
     if launch_targets:
         actions_taken.append(f'prepare_tmux_layout:{",".join(launch_targets)}')
     return prepare_start_layout(
@@ -62,8 +72,13 @@ def project_socket_active_panes(
     tmux_socket_path: str | None,
     config,
     root_pane_id: str | None,
+    namespace_active_panes: tuple[str, ...] | None = None,
 ) -> tuple[list[str], str | None]:
     active_panes: list[str] = []
+    for pane_id in tuple(namespace_active_panes or ()):
+        pane_text = str(pane_id or '').strip()
+        if pane_text.startswith('%') and pane_text not in active_panes:
+            active_panes.append(pane_text)
     if root_pane_id and tmux_socket_path is not None:
         active_panes.append(root_pane_id)
     cmd_pane_id = tmux_layout.cmd_pane_id

@@ -137,6 +137,8 @@ def _agent_runtime_from_record(record: dict) -> AgentRuntime:
         pane_state=record.get('pane_state'),
         tmux_socket_name=record.get('tmux_socket_name'),
         tmux_socket_path=record.get('tmux_socket_path'),
+        tmux_window_name=record.get('tmux_window_name'),
+        tmux_window_id=record.get('tmux_window_id'),
         session_file=record.get('session_file'),
         session_id=record.get('session_id'),
         slot_key=record.get('slot_key'),

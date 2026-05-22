@@ -11,6 +11,8 @@ from provider_execution.active import PreparedActiveStart, prepare_active_start
 from provider_execution.base import ProviderRuntimeContext, ProviderSubmission
 from provider_execution.common import no_wrap_requested, normalize_session_path, send_prompt_to_runtime_target
 
+from .readiness import wait_for_runtime_ready
+
 
 def start_active_submission(
     adapter,
@@ -42,6 +44,7 @@ def start_active_submission(
     request_anchor = request_anchor_fn(job.job_id)
     no_wrap = no_wrap_requested(job)
     prompt = job.request.body if no_wrap else wrap_prompt_fn(job.request.body, request_anchor)
+    wait_for_runtime_ready(prepared.backend, prepared.pane_id)
     send_prompt_to_runtime_target(prepared.backend, prepared.pane_id, prompt)
 
     return ProviderSubmission(

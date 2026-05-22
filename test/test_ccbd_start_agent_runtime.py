@@ -34,6 +34,8 @@ class _RuntimeService:
             terminal_backend=kwargs['terminal_backend'],
             tmux_socket_name=kwargs['tmux_socket_name'],
             tmux_socket_path=kwargs['tmux_socket_path'],
+            tmux_window_name=kwargs['tmux_window_name'],
+            tmux_window_id=kwargs['tmux_window_id'],
             pane_id=kwargs['pane_id'],
             active_pane_id=kwargs['active_pane_id'],
             pane_state=kwargs['pane_state'],
@@ -152,6 +154,7 @@ def test_start_agent_runtime_degrades_unresolved_stale_binding() -> None:
 def test_start_agent_runtime_reuses_binding_and_restores_when_requested() -> None:
     runtime_service = _RuntimeService()
     binding = _binding()
+    relabel_calls: list[dict[str, object]] = []
 
     execution = start_agent_runtime(
         context=object(),
@@ -170,8 +173,9 @@ def test_start_agent_runtime_reuses_binding_and_restores_when_requested() -> Non
         namespace_epoch=3,
         ensure_agent_runtime_fn=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('should not relaunch')),
         launch_binding_hint_fn=lambda **kwargs: None,
-        relabel_project_namespace_pane_fn=lambda **kwargs: '%5',
+        relabel_project_namespace_pane_fn=lambda **kwargs: relabel_calls.append(kwargs) or '%5',
         same_tmux_socket_path_fn=lambda left, right: left == right,
+        window_name='main',
     )
 
     assert execution.agent_result.action == 'attached'
@@ -183,6 +187,9 @@ def test_start_agent_runtime_reuses_binding_and_restores_when_requested() -> Non
     assert execution.runtime_pane_id == '%5'
     assert execution.project_socket_active_pane_id == '%5'
     assert runtime_service.restore_calls == ['agent1']
+    assert relabel_calls[-1]['window_name'] == 'main'
+    assert runtime_service.attach_calls[-1]['tmux_window_name'] == 'main'
+    assert execution.agent_result.tmux_window_name == 'main'
 
 
 def test_start_agent_runtime_relaunches_and_tracks_project_socket_pane() -> None:
@@ -317,6 +324,8 @@ def test_start_agent_runtime_uses_mount_attempt_scoped_attach_during_supervision
             'pane_state': 'alive',
             'tmux_socket_name': 'sock-a',
             'tmux_socket_path': '/tmp/ccb.sock',
+            'tmux_window_name': None,
+            'tmux_window_id': None,
             'session_file': '/tmp/session.json',
             'session_id': 'session-5',
             'slot_key': 'agent1',

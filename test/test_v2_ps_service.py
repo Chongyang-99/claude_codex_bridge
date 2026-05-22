@@ -28,6 +28,8 @@ def test_ps_summary_includes_tmux_socket_and_pane_observation(tmp_path, monkeypa
         terminal_backend='tmux',
         tmux_socket_name='sock-a',
         tmux_socket_path='/tmp/ccb.sock',
+        tmux_window_name='main',
+        tmux_window_id='@1',
         pane_id='%41',
         active_pane_id='%52',
         pane_title_marker='CCB-agent1-demo',
@@ -53,6 +55,8 @@ def test_ps_summary_includes_tmux_socket_and_pane_observation(tmp_path, monkeypa
     assert agent['session_ref'] == 'session-2'
     assert agent['tmux_socket_name'] == 'sock-a'
     assert agent['tmux_socket_path'] == '/tmp/ccb.sock'
+    assert agent['tmux_window_name'] == 'main'
+    assert agent['tmux_window_id'] == '@1'
     assert agent['pane_id'] == '%41'
     assert agent['active_pane_id'] == '%52'
     assert agent['pane_title_marker'] == 'CCB-agent1-demo'

@@ -76,6 +76,7 @@ def launch_tmux_runtime(
         project_id=context.project.project_id,
         order_index=style_index,
         slot_key=spec.name,
+        session_id=launch_session_id,
     )
 
     provider_payload = launcher.build_session_payload(

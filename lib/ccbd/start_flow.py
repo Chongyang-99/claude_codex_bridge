@@ -26,7 +26,7 @@ from cli.services.runtime_launch import ensure_agent_runtime
 from cli.services.tmux_cleanup_history import TmuxCleanupHistoryStore
 from cli.services.tmux_project_cleanup import ProjectTmuxCleanupSummary, cleanup_project_tmux_orphans_by_socket
 from cli.services.tmux_start_layout import prepare_tmux_start_layout
-from cli.services.tmux_ui import set_tmux_ui_active
+from cli.services.tmux_ui import apply_project_tmux_ui, set_tmux_ui_active
 from provider_core.session_binding_evidence import resolve_agent_binding
 from terminal_runtime import TmuxBackend
 from terminal_runtime.tmux_identity import apply_ccb_pane_identity
@@ -51,6 +51,7 @@ def _deps() -> StartFlowDeps:
         build_restore_state_impl=build_restore_state_impl,
         cleanup_start_tmux_orphans_impl=cleanup_start_tmux_orphans_impl,
         set_tmux_ui_active_fn=set_tmux_ui_active,
+        apply_project_tmux_ui_fn=apply_project_tmux_ui,
         prepare_tmux_start_layout_fn=prepare_tmux_start_layout,
         ensure_agent_runtime_fn=ensure_agent_runtime,
         resolve_agent_binding_fn=resolve_agent_binding,
@@ -81,6 +82,8 @@ def run_start_flow(
     namespace_epoch: int | None = None,
     workspace_window_id: str | None = None,
     workspace_epoch: int | None = None,
+    namespace_agent_panes: dict[str, str] | None = None,
+    namespace_active_panes: tuple[str, ...] | None = None,
     fresh_namespace: bool = False,
     fresh_workspace: bool = False,
     clock=utc_now,
@@ -102,6 +105,8 @@ def run_start_flow(
         namespace_epoch=namespace_epoch,
         workspace_window_id=workspace_window_id,
         workspace_epoch=workspace_epoch,
+        namespace_agent_panes=namespace_agent_panes,
+        namespace_active_panes=namespace_active_panes,
         fresh_namespace=fresh_namespace,
         fresh_workspace=fresh_workspace,
         clock=clock,

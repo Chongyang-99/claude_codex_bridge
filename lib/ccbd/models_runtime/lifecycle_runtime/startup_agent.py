@@ -24,6 +24,8 @@ class CcbdStartupAgentResult:
     terminal_backend: str | None = None
     tmux_socket_name: str | None = None
     tmux_socket_path: str | None = None
+    tmux_window_name: str | None = None
+    tmux_window_id: str | None = None
     pane_id: str | None = None
     active_pane_id: str | None = None
     pane_state: str | None = None
@@ -55,6 +57,8 @@ class CcbdStartupAgentResult:
             'terminal_backend': self.terminal_backend,
             'tmux_socket_name': self.tmux_socket_name,
             'tmux_socket_path': self.tmux_socket_path,
+            'tmux_window_name': self.tmux_window_name,
+            'tmux_window_id': self.tmux_window_id,
             'pane_id': self.pane_id,
             'active_pane_id': self.active_pane_id,
             'pane_state': self.pane_state,
@@ -83,6 +87,8 @@ class CcbdStartupAgentResult:
             terminal_backend=clean_text(record.get('terminal_backend')),
             tmux_socket_name=clean_text(record.get('tmux_socket_name')),
             tmux_socket_path=clean_text(record.get('tmux_socket_path')),
+            tmux_window_name=clean_text(record.get('tmux_window_name')),
+            tmux_window_id=clean_text(record.get('tmux_window_id')),
             pane_id=clean_text(record.get('pane_id')),
             active_pane_id=clean_text(record.get('active_pane_id')),
             pane_state=clean_text(record.get('pane_state')),

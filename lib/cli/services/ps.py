@@ -45,6 +45,8 @@ def _agent_summary(context: CliContext, *, agent_name: str, spec, runtime) -> di
         'terminal': _runtime_attr(runtime, 'terminal_backend'),
         'tmux_socket_name': _runtime_attr(runtime, 'tmux_socket_name'),
         'tmux_socket_path': _runtime_attr(runtime, 'tmux_socket_path'),
+        'tmux_window_name': _runtime_attr(runtime, 'tmux_window_name'),
+        'tmux_window_id': _runtime_attr(runtime, 'tmux_window_id'),
         'pane_id': _runtime_attr(runtime, 'pane_id'),
         'active_pane_id': _runtime_attr(runtime, 'active_pane_id'),
         'pane_title_marker': _runtime_attr(runtime, 'pane_title_marker'),

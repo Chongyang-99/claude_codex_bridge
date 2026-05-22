@@ -324,11 +324,9 @@ def test_runtime_supervisor_start_passes_visible_layout_signature_to_namespace(t
         interactive_tmux_layout=True,
     )
 
-    assert seen == {
-        'layout_signature': 'cmd, agent1:codex; agent2:codex, agent3:claude',
-        'force_recreate': False,
-        'recreate_reason': None,
-    }
+    assert seen['layout_signature'] == app.runtime_supervisor._config.topology_signature
+    assert seen['force_recreate'] is False
+    assert seen['recreate_reason'] is None
 
 
 def test_runtime_supervisor_start_syncs_namespace_epoch_into_lifecycle_authority(tmp_path: Path, monkeypatch) -> None:
@@ -526,11 +524,12 @@ def test_runtime_supervisor_relabels_reused_project_namespace_pane_by_agent_name
             'title': 'demo',
             'agent_label': 'demo',
             'project_id': app.project_id,
-            'order_index': 0,
-            'slot_key': 'demo',
-            'namespace_epoch': 3,
-            'managed_by': 'ccbd',
-        }
+                'order_index': 0,
+                'slot_key': 'demo',
+                'window_name': 'main',
+                'namespace_epoch': 3,
+                'managed_by': 'ccbd',
+            }
     ]
     assert 'relabel_runtime_pane:demo:%77' in summary.actions_taken
 

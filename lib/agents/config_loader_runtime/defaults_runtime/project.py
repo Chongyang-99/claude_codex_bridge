@@ -7,6 +7,7 @@ from agents.models import (
     QueuePolicy,
     RestoreMode,
     RuntimeMode,
+    WindowSpec,
     WorkspaceMode,
 )
 
@@ -17,6 +18,7 @@ DEFAULT_AGENT_PROVIDERS = (
     ('agent2', 'codex'),
     ('agent3', 'claude'),
 )
+DEFAULT_WINDOW_LAYOUT = 'agent1:codex, agent2:codex, agent3:claude'
 
 
 def build_default_project_config() -> ProjectConfig:
@@ -28,7 +30,18 @@ def build_default_project_config() -> ProjectConfig:
         version=2,
         default_agents=DEFAULT_DEFAULT_AGENTS,
         agents=agents,
-        cmd_enabled=True,
+        cmd_enabled=False,
+        layout_spec=DEFAULT_WINDOW_LAYOUT,
+        windows=(
+            WindowSpec(
+                name='main',
+                order=0,
+                layout_spec=DEFAULT_WINDOW_LAYOUT,
+                agent_names=DEFAULT_DEFAULT_AGENTS,
+            ),
+        ),
+        entry_window='main',
+        windows_explicit=True,
     )
 
 
@@ -46,4 +59,9 @@ def build_default_agent_spec(*, name: str, provider: str) -> AgentSpec:
     )
 
 
-__all__ = ['DEFAULT_AGENT_PROVIDERS', 'build_default_agent_spec', 'build_default_project_config']
+__all__ = [
+    'DEFAULT_AGENT_PROVIDERS',
+    'DEFAULT_WINDOW_LAYOUT',
+    'build_default_agent_spec',
+    'build_default_project_config',
+]

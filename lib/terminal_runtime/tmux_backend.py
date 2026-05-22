@@ -6,6 +6,7 @@ import re
 import subprocess
 
 from terminal_runtime.backend_types import TerminalBackend
+from terminal_runtime.env import isolated_tmux_env as _isolated_tmux_env_impl
 from terminal_runtime.env import subprocess_kwargs as _subprocess_kwargs_impl
 from terminal_runtime.tmux import tmux_base as _tmux_base_impl
 from terminal_runtime.tmux_backend_control import TmuxBackendControlMixin
@@ -22,6 +23,10 @@ from terminal_runtime.tmux_backend_runtime import (
 
 def _subprocess_kwargs() -> dict:
     return _subprocess_kwargs_impl()
+
+
+def _isolated_tmux_env() -> dict[str, str]:
+    return _isolated_tmux_env_impl()
 
 
 def _run(*args, **kwargs):
@@ -78,6 +83,7 @@ class TmuxBackend(
             kwargs['input'] = input_bytes
         if timeout is not None:
             kwargs['timeout'] = timeout
+        kwargs['env'] = _isolated_tmux_env()
         return _run([*self._tmux_base(), *args], check=check, **kwargs)
 
     @staticmethod

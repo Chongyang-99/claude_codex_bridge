@@ -17,6 +17,7 @@ from .service_runtime import (
     poll_updates,
     restore_submission,
 )
+from .common import interrupt_and_clear_runtime_target
 
 
 class ExecutionService(ExecutionServiceStateMixin):
@@ -57,7 +58,9 @@ class ExecutionService(ExecutionServiceStateMixin):
         return submission
 
     def cancel(self, job_id: str) -> None:
-        self._active.pop(job_id, None)
+        submission = self._active.pop(job_id, None)
+        if submission is not None:
+            interrupt_active_submission(submission)
         self._runtime_contexts.pop(job_id, None)
         self._pending_replays.pop(job_id, None)
         if self._state_store is not None:
@@ -97,6 +100,14 @@ class ExecutionService(ExecutionServiceStateMixin):
             pending_items=pending_items,
             applied_event_seqs=applied_event_seqs,
         )
+
+
+def interrupt_active_submission(submission: ProviderSubmission) -> None:
+    backend = submission.runtime_state.get("backend")
+    pane_id = str(submission.runtime_state.get("pane_id") or "").strip()
+    if backend is None or not pane_id:
+        return
+    interrupt_and_clear_runtime_target(backend, pane_id)
 
 
 __all__ = ["ExecutionRestoreResult", "ExecutionService", "ExecutionUpdate"]

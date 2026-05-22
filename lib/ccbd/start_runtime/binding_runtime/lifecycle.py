@@ -11,6 +11,7 @@ def launch_binding_hint(
     assigned_pane_id: str | None,
     tmux_socket_path: str | None,
     same_tmux_socket_path_fn,
+    raw_binding_window_name: str | None = None,
 ):
     if binding is not None:
         return binding
@@ -32,6 +33,7 @@ def relabel_project_namespace_pane(
     tmux_backend_factory,
     same_tmux_socket_path_fn,
     apply_ccb_pane_identity_fn,
+    window_name: str | None = None,
 ) -> str | None:
     if not same_tmux_socket_path_fn(getattr(binding, 'tmux_socket_path', None), tmux_socket_path):
         return None
@@ -46,17 +48,20 @@ def relabel_project_namespace_pane(
         return None
     if not callable(getattr(backend, 'set_pane_user_option', None)):
         return None
-    apply_ccb_pane_identity_fn(
-        backend,
-        pane_id,
-        title=agent_name,
-        agent_label=agent_name,
-        project_id=project_id,
-        order_index=style_index,
-        slot_key=agent_name,
-        namespace_epoch=namespace_epoch,
-        managed_by='ccbd',
-    )
+    identity_kwargs = {
+        'title': agent_name,
+        'agent_label': agent_name,
+        'project_id': project_id,
+        'order_index': style_index,
+        'slot_key': agent_name,
+        'window_name': window_name,
+        'namespace_epoch': namespace_epoch,
+        'managed_by': 'ccbd',
+    }
+    ccb_session_id = str(getattr(binding, 'ccb_session_id', '') or '').strip()
+    if ccb_session_id:
+        identity_kwargs['session_id'] = ccb_session_id
+    apply_ccb_pane_identity_fn(backend, pane_id, **identity_kwargs)
     return pane_id
 
 

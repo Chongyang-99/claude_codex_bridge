@@ -18,6 +18,7 @@ class ProjectNamespacePaneRecord:
     window_name: str | None = None
     role: str | None = None
     slot_key: str | None = None
+    ccb_window: str | None = None
     project_id: str | None = None
     managed_by: str | None = None
     namespace_epoch: int | None = None
@@ -38,6 +39,7 @@ class ProjectNamespacePaneRecord:
         slot_key: str | None = None,
         managed_by: str | None = 'ccbd',
         window_id: str | None = None,
+        window_name: str | None = None,
     ) -> bool:
         if not self._matches_field(
             self.session_name,
@@ -51,11 +53,18 @@ class ProjectNamespacePaneRecord:
             return False
         if slot_key is not None and not self._matches_field(self.slot_key, slot_key):
             return False
+        if window_name is not None and not self._matches_window_name(window_name):
+            return False
         if managed_by is not None and not self._matches_field(self.managed_by, managed_by):
             return False
         if window_id is not None and not self._matches_field(self.window_id, window_id):
             return False
         return bool(self.alive)
+
+    def _matches_window_name(self, expected: str) -> bool:
+        if self.ccb_window is not None:
+            return self._matches_field(self.ccb_window, expected)
+        return self._matches_field(self.window_name, expected, allow_missing=True)
 
 
 def inspect_project_namespace_pane(backend, pane_id: str) -> ProjectNamespacePaneRecord | None:
@@ -74,6 +83,7 @@ def inspect_project_namespace_pane(backend, pane_id: str) -> ProjectNamespacePan
         window_name=_clean(details.get('window_name')),
         role=_clean(details.get('@ccb_role')),
         slot_key=_clean(details.get('@ccb_slot')),
+        ccb_window=_clean(details.get('@ccb_window')),
         project_id=_clean(details.get('@ccb_project_id')),
         managed_by=_clean(details.get('@ccb_managed_by')),
         namespace_epoch=_clean_int(details.get('@ccb_namespace_epoch')),
@@ -119,6 +129,7 @@ def _describe_pane_via_tmux(backend, pane_id: str) -> dict[str, str] | None:
                         '#{pane_dead}',
                         '#{@ccb_role}',
                         '#{@ccb_slot}',
+                        '#{@ccb_window}',
                         '#{@ccb_project_id}',
                         '#{@ccb_managed_by}',
                         '#{@ccb_namespace_epoch}',
@@ -159,11 +170,26 @@ def _decode_tmux_pane_description(line: str) -> dict[str, str] | None:
             'pane_dead': parts[2].strip(),
             '@ccb_role': parts[3].strip(),
             '@ccb_slot': parts[4].strip(),
+            '@ccb_window': '',
             '@ccb_project_id': parts[5].strip(),
             '@ccb_managed_by': parts[6].strip(),
             '@ccb_namespace_epoch': '',
         }
-    if len(parts) != 10:
+    if len(parts) == 10:
+        return {
+            'pane_id': parts[0].strip(),
+            'session_name': parts[1].strip(),
+            'window_id': parts[2].strip(),
+            'window_name': parts[3].strip(),
+            'pane_dead': parts[4].strip(),
+            '@ccb_role': parts[5].strip(),
+            '@ccb_slot': parts[6].strip(),
+            '@ccb_window': '',
+            '@ccb_project_id': parts[7].strip(),
+            '@ccb_managed_by': parts[8].strip(),
+            '@ccb_namespace_epoch': parts[9].strip(),
+        }
+    if len(parts) != 11:
         return None
     return {
         'pane_id': parts[0].strip(),
@@ -173,9 +199,10 @@ def _decode_tmux_pane_description(line: str) -> dict[str, str] | None:
         'pane_dead': parts[4].strip(),
         '@ccb_role': parts[5].strip(),
         '@ccb_slot': parts[6].strip(),
-        '@ccb_project_id': parts[7].strip(),
-        '@ccb_managed_by': parts[8].strip(),
-        '@ccb_namespace_epoch': parts[9].strip(),
+        '@ccb_window': parts[7].strip(),
+        '@ccb_project_id': parts[8].strip(),
+        '@ccb_managed_by': parts[9].strip(),
+        '@ccb_namespace_epoch': parts[10].strip(),
     }
 
 
@@ -186,7 +213,14 @@ def _describe_pane_via_backend(backend, pane_id: str) -> dict[str, str] | None:
     try:
         described = descriptor(
             pane_id,
-            user_options=('@ccb_role', '@ccb_slot', '@ccb_project_id', '@ccb_managed_by', '@ccb_namespace_epoch'),
+            user_options=(
+                '@ccb_role',
+                '@ccb_slot',
+                '@ccb_window',
+                '@ccb_project_id',
+                '@ccb_managed_by',
+                '@ccb_namespace_epoch',
+            ),
         )
     except Exception:
         return None

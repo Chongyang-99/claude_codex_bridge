@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+target/
 .venv/
 .pytest_cache/
 .architec/

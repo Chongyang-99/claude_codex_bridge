@@ -6,6 +6,7 @@ from .reporting import ownership_error_text
 from .session import (
     session_display_title,
     session_pane_title_marker,
+    session_slot_user_option_lookup,
     session_user_option_lookup,
 )
 
@@ -16,5 +17,6 @@ __all__ = [
     'ownership_error_text',
     'session_display_title',
     'session_pane_title_marker',
+    'session_slot_user_option_lookup',
     'session_user_option_lookup',
 ]

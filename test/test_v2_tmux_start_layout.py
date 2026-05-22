@@ -27,6 +27,9 @@ def _context(project_root: Path) -> CliContext:
 
 def test_prepare_tmux_start_layout_uses_current_pane_as_cmd_anchor(monkeypatch, tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-layout'
+    project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text('cmd, agent1:codex; agent2:codex, agent3:claude\n', encoding='utf-8')
     ctx = _context(project_root)
     config = load_project_config(project_root).config
     calls: list[tuple[str, str, str]] = []
@@ -74,6 +77,9 @@ def test_prepare_tmux_start_layout_uses_current_pane_as_cmd_anchor(monkeypatch, 
 
 def test_prepare_tmux_start_layout_assigns_slot_stable_styles(monkeypatch, tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-layout-styles'
+    project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text('cmd, agent1:codex; agent2:codex, agent3:claude\n', encoding='utf-8')
     ctx = _context(project_root)
     config = load_project_config(project_root).config
     options: dict[tuple[str, str], str] = {}
@@ -229,7 +235,7 @@ def test_prepare_tmux_start_layout_creates_split_panes_with_placeholder(monkeypa
         targets=('agent1', 'agent2', 'agent3'),
     )
 
-    assert layout.agent_panes == {'agent1': '%2', 'agent2': '%1', 'agent3': '%3'}
+    assert layout.agent_panes == {'agent1': '%0', 'agent2': '%2', 'agent3': '%1'}
     assert created
     assert all(cmd == pane_placeholder_cmd() for cmd, _parent in created)
 

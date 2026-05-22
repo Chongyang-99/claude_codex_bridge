@@ -103,13 +103,19 @@ def test_load_project_config_uses_builtin_default_when_project_config_is_missing
     monkeypatch.setenv('HOME', str(tmp_path / 'empty-home'))
     config = build_default_project_config()
     assert config.default_agents == ('agent1', 'agent2', 'agent3')
-    assert config.cmd_enabled is True
+    assert config.cmd_enabled is False
+    assert config.windows_explicit is True
+    assert config.entry_window == 'main'
+    assert [window.name for window in config.windows] == ['main']
     loaded = load_project_config(project_root)
     assert loaded.source_path is None
     assert loaded.source_kind == CONFIG_SOURCE_BUILTIN_DEFAULT
     assert loaded.used_default is True
     assert loaded.config.default_agents == ('agent1', 'agent2', 'agent3')
-    assert loaded.config.cmd_enabled is True
+    assert loaded.config.cmd_enabled is False
+    assert loaded.config.windows_explicit is True
+    assert loaded.config.entry_window == 'main'
+    assert [window.name for window in loaded.config.windows] == ['main']
     assert set(loaded.config.agents) == {'agent1', 'agent2', 'agent3'}
     assert loaded.config.agents['agent1'].provider == 'codex'
     assert loaded.config.agents['agent2'].provider == 'codex'
@@ -868,6 +874,123 @@ inherit_auth = true
         ConfigValidationError,
         match='key/url cannot be combined with agents\\.agent1\\.provider_profile\\.inherit_auth = true',
     ):
+        load_project_config(project_root)
+
+
+def test_load_project_config_supports_windows_topology_without_default_agents(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-windows-topology'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+entry_window = "main"
+
+[windows]
+main = "agent1:codex"
+review = "agent2:codex, agent3:claude"
+
+[ui.sidebar]
+mode = "every_window"
+width = "15%"
+bottom_height = 20
+""",
+    )
+
+    result = load_project_config(project_root)
+
+    assert result.config.default_agents == ('agent1', 'agent2', 'agent3')
+    assert result.config.entry_window == 'main'
+    assert [window.name for window in result.config.windows] == ['main', 'review']
+    assert result.config.windows[0].agent_names == ('agent1',)
+    assert result.config.windows[1].agent_names == ('agent2', 'agent3')
+    assert result.config.agents['agent1'].provider == 'codex'
+    assert result.config.agents['agent2'].provider == 'codex'
+    assert result.config.agents['agent3'].provider == 'claude'
+    assert result.config.sidebar.mode == 'every_window'
+    assert result.config.sidebar.width == '15%'
+    assert result.config.sidebar.bottom_height == 20
+
+
+def test_load_project_config_supports_windows_topology_agent_overrides(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-windows-agent-overrides'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+
+[windows]
+main = "agent1:codex"
+
+[agents.agent1]
+provider = "codex"
+target = "."
+workspace_mode = "git-worktree"
+restore = "fresh"
+permission = "auto"
+model = "gpt-5"
+""",
+    )
+
+    result = load_project_config(project_root)
+    spec = result.config.agents['agent1']
+
+    assert result.config.default_agents == ('agent1',)
+    assert spec.workspace_mode is WorkspaceMode.GIT_WORKTREE
+    assert spec.restore_default is RestoreMode.FRESH
+    assert spec.permission_default is PermissionMode.AUTO
+    assert spec.model == 'gpt-5'
+
+
+@pytest.mark.parametrize(
+    ('extra', 'message'),
+    [
+        ('default_agents = ["agent1"]\n', 'default_agents is not supported with windows topology'),
+        ('layout = "agent1:codex"\n', 'layout is not supported with windows topology'),
+        ('cmd_enabled = true\n', 'cmd_enabled is not supported with windows topology'),
+    ],
+)
+def test_load_project_config_rejects_windows_topology_mixed_legacy_fields(
+    tmp_path: Path,
+    extra: str,
+    message: str,
+) -> None:
+    project_root = tmp_path / 'repo-windows-mixed'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        f"""version = 2
+{extra}
+[windows]
+main = "agent1:codex"
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match=message):
+        load_project_config(project_root)
+
+
+def test_load_project_config_rejects_topology_fields_without_windows(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-sidebar-without-windows'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+default_agents = ["agent1"]
+layout = "agent1:codex"
+
+[agents.agent1]
+provider = "codex"
+target = "."
+workspace_mode = "inplace"
+restore = "auto"
+permission = "manual"
+
+[ui.sidebar]
+mode = "every_window"
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match='ui\\.sidebar requires windows topology'):
         load_project_config(project_root)
 
 

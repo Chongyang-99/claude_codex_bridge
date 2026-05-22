@@ -46,6 +46,20 @@ def _payload_retry(target: str) -> dict:
     return {'target': target}
 
 
+def _payload_comms_recover(
+    job_id: str,
+    *,
+    reply_delivery_job_id: str | None = None,
+    block_reason: str | None = None,
+) -> dict:
+    payload = {'job_id': job_id}
+    if reply_delivery_job_id:
+        payload['reply_delivery_job_id'] = reply_delivery_job_id
+    if block_reason:
+        payload['block_reason'] = block_reason
+    return payload
+
+
 def _payload_inbox(agent_name: str, *, detail: bool | None = None) -> dict:
     payload = {'agent_name': agent_name}
     if detail is not None:
@@ -105,6 +119,8 @@ def _payload_attach(
     pane_title_marker: str | None = None,
     pane_state: str | None = None,
     tmux_socket_name: str | None = None,
+    tmux_window_name: str | None = None,
+    tmux_window_id: str | None = None,
     session_file: str | None = None,
     session_id: str | None = None,
     lifecycle_state: str | None = None,
@@ -128,6 +144,8 @@ def _payload_attach(
         'pane_title_marker': pane_title_marker,
         'pane_state': pane_state,
         'tmux_socket_name': tmux_socket_name,
+        'tmux_window_name': tmux_window_name,
+        'tmux_window_id': tmux_window_id,
         'session_file': session_file,
         'session_id': session_id,
         'lifecycle_state': lifecycle_state,
@@ -152,6 +170,28 @@ def _payload_stop_all(*, force: bool = False) -> dict:
     return {'force': bool(force)}
 
 
+def _payload_project_view(*, schema_version: int = 1) -> dict:
+    return {'schema_version': int(schema_version)}
+
+
+def _payload_project_view_dismiss_comms(comms_id: str) -> dict:
+    return {'id': comms_id}
+
+
+def _payload_project_focus_window(window: str, *, namespace_epoch: int | None = None) -> dict:
+    payload = {'window': window}
+    if namespace_epoch is not None:
+        payload['namespace_epoch'] = int(namespace_epoch)
+    return payload
+
+
+def _payload_project_focus_agent(agent: str, *, namespace_epoch: int | None = None) -> dict:
+    payload = {'agent': agent}
+    if namespace_epoch is not None:
+        payload['namespace_epoch'] = int(namespace_epoch)
+    return payload
+
+
 client_endpoints = {
     'submit': ('submit', _payload_submit),
     'get': ('get', _payload_get),
@@ -160,6 +200,7 @@ client_endpoints = {
     'trace': ('trace', _payload_trace),
     'resubmit': ('resubmit', _payload_resubmit),
     'retry': ('retry', _payload_retry),
+    'comms_recover': ('comms_recover', _payload_comms_recover),
     'inbox': ('inbox', _payload_inbox),
     'mailbox_head': ('mailbox_head', _payload_mailbox_head),
     'ack': ('ack', _payload_ack),
@@ -170,6 +211,10 @@ client_endpoints = {
     'ping': ('ping', _payload_ping),
     'shutdown': ('shutdown', _payload_shutdown),
     'stop_all': ('stop-all', _payload_stop_all),
+    'project_view': ('project_view', _payload_project_view),
+    'project_view_dismiss_comms': ('project_view_dismiss_comms', _payload_project_view_dismiss_comms),
+    'project_focus_window': ('project_focus_window', _payload_project_focus_window),
+    'project_focus_agent': ('project_focus_agent', _payload_project_focus_agent),
 }
 
 

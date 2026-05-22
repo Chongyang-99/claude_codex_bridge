@@ -18,6 +18,7 @@ class FakeTmuxBackend:
         self.created: list[tuple[str, str]] = []
         self.titles: list[tuple[str, str]] = []
         self.options: list[tuple[str, str, str]] = []
+        self.pane_details: dict[str, dict[str, str]] = {}
 
     def is_alive(self, pane_id: str) -> bool:
         return bool(self.alive.get(pane_id, False))
@@ -50,6 +51,20 @@ class FakeTmuxBackend:
 
     def set_pane_user_option(self, pane_id: str, name: str, value: str) -> None:
         self.options.append((pane_id, name, value))
+        self.pane_details.setdefault(pane_id, {})[name] = value
+
+    def describe_pane(self, pane_id: str, *, user_options: tuple[str, ...] = ()) -> dict[str, str] | None:
+        detail = self.pane_details.get(pane_id)
+        if detail is None:
+            return None
+        described = {
+            'pane_id': pane_id,
+            'pane_title': detail.get('pane_title', ''),
+            'pane_dead': '0' if self.is_alive(pane_id) else '1',
+        }
+        for name in user_options:
+            described[name] = detail.get(name, '')
+        return described
 
 
 def test_codex_ensure_pane_respawns_dead_pane(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -84,6 +99,10 @@ def test_codex_ensure_pane_respawns_dead_pane(tmp_path: Path, monkeypatch: pytes
 
     data = json.loads(session_path.read_text(encoding="utf-8"))
     assert data["pane_id"] == "%1"
+    assert ("@ccb_session_id", "test-session") in [
+        (name, value)
+        for _pane_id, name, value in backend.options
+    ]
 
 
 def test_codex_ensure_pane_prefers_full_start_cmd_when_legacy_codex_resume_cmd_is_bare(
@@ -158,6 +177,54 @@ def test_codex_ensure_pane_already_alive(tmp_path: Path, monkeypatch: pytest.Mon
     assert ok is True
     assert pane == "%1"
     assert backend.respawned == []  # No respawn needed
+
+
+def test_codex_ensure_pane_respawns_live_project_slot_placeholder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session_path = tmp_path / ".codex-session"
+    session_path.write_text(
+        json.dumps({
+            "ccb_session_id": "test-session",
+            "agent_name": "agent1",
+            "ccb_project_id": "proj-1",
+            "ccb_slot": "agent1",
+            "ccb_managed_by": "ccbd",
+            "terminal": "tmux",
+            "pane_id": "%1",
+            "tmux_session": "%1",
+            "pane_title_marker": "CCB-agent1-proj",
+            "runtime_dir": str(tmp_path),
+            "work_dir": str(tmp_path),
+            "active": True,
+            "codex_start_cmd": "codex resume deadbeef",
+        }),
+        encoding="utf-8",
+    )
+
+    backend = FakeTmuxBackend()
+    backend.alive = {"%1": True}
+    backend.exists = {"%1": True}
+    backend.pane_details = {
+        "%1": {
+            "@ccb_agent": "agent1",
+            "@ccb_project_id": "proj-1",
+            "@ccb_slot": "agent1",
+            "@ccb_managed_by": "ccbd",
+        }
+    }
+    monkeypatch.setattr(codex_session, "get_backend_for_session", lambda data: backend)
+    monkeypatch.setattr(codex_session, "find_project_session_file", lambda work_dir, instance=None: session_path)
+
+    sess = codex_session.load_project_session(tmp_path)
+    assert sess is not None
+
+    ok, pane = sess.ensure_pane()
+
+    assert ok is True
+    assert pane == "%1"
+    assert backend.respawned == ["%1"]
+    assert ("%1", "@ccb_session_id", "test-session") in backend.options
 
 
 def test_codex_ensure_pane_does_not_rediscover_different_pane_without_start_cmd(

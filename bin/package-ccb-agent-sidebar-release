@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ARTIFACT_NAME="${CCB_AGENT_SIDEBAR_ARTIFACT_NAME:-ccb-agent-sidebar-linux-x86_64}"
+SOURCE_BIN="$REPO_ROOT/bin/ccb-agent-sidebar"
+STAGE_DIR="$REPO_ROOT/dist/$ARTIFACT_NAME"
+OUT_TAR="$REPO_ROOT/dist/$ARTIFACT_NAME.tar.gz"
+OUT_SHA="$OUT_TAR.sha256"
+
+if [[ ! -x "$SOURCE_BIN" ]]; then
+  echo "ERROR: missing executable $SOURCE_BIN" >&2
+  exit 1
+fi
+
+rm -rf "$STAGE_DIR" "$OUT_TAR" "$OUT_SHA"
+mkdir -p "$STAGE_DIR/bin"
+cp -f "$SOURCE_BIN" "$STAGE_DIR/bin/ccb-agent-sidebar"
+chmod +x "$STAGE_DIR/bin/ccb-agent-sidebar"
+tar -C "$REPO_ROOT/dist" -czf "$OUT_TAR" "$ARTIFACT_NAME"
+sha256sum "$OUT_TAR" > "$OUT_SHA"
+echo "Packaged $OUT_TAR"
+echo "Checksum $OUT_SHA"

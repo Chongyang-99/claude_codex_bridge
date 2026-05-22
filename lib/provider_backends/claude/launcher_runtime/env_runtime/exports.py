@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+from pathlib import Path
 
 from provider_profiles import provider_api_env_keys
 
@@ -30,6 +31,22 @@ def build_claude_env_prefix(
     if export_statement:
         parts.append(export_statement)
     return "; ".join(parts)
+
+
+def runtime_home_env_parts(*, profile=None) -> list[str]:
+    if profile is None or not profile.runtime_home:
+        return []
+    runtime_home = Path(profile.runtime_home).expanduser()
+    projects_root = runtime_home / ".claude" / "projects"
+    session_env_root = runtime_home / ".claude" / "session-env"
+    return [
+        "unset CODEX_HOME",
+        "unset CODEX_SESSION_ROOT",
+        f"export HOME={shlex.quote(str(runtime_home))}",
+        f"export CLAUDE_CONFIG_DIR={shlex.quote(str(runtime_home / '.claude'))}",
+        f"export CLAUDE_PROJECTS_ROOT={shlex.quote(str(projects_root))}",
+        f"export CLAUDE_SESSION_ENV_ROOT={shlex.quote(str(session_env_root))}",
+    ]
 
 
 def collect_explicit_api_env(*, profile=None, extra_env: dict[str, str] | None, api_keys: set[str]) -> dict[str, str]:

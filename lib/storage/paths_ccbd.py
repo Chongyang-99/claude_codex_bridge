@@ -106,6 +106,10 @@ class CcbdMountPathMixin:
         return self.ccbd_dir / 'state.json'
 
     @property
+    def ccbd_project_view_state_path(self):
+        return self.ccbd_dir / 'project-view-state.json'
+
+    @property
     def ccbd_start_policy_path(self):
         return self.ccbd_dir / 'start-policy.json'
 

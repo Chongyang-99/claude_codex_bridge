@@ -19,6 +19,7 @@ class PreparedStartAgent:
     agent_name: str
     spec: object
     plan: object
+    window_name: str | None
     raw_binding: object | None
     binding: object | None
     stale_binding: bool
@@ -54,6 +55,7 @@ def prepare_start_agents(
 
     for agent_name in targets:
         spec = config.agents[agent_name]
+        window_name = _window_name_for_agent(config, agent_name)
         spec_store.save(spec)
         policy = resolve_agent_launch_policy(
             spec,
@@ -99,6 +101,7 @@ def prepare_start_agents(
                 workspace_window_id=workspace_window_id,
                 agent_name=agent_name,
                 project_id=project_id,
+                window_name=window_name,
             )
         else:
             binding = resolve_agent_binding_fn(
@@ -117,6 +120,7 @@ def prepare_start_agents(
                 agent_name=agent_name,
                 spec=spec,
                 plan=plan,
+                window_name=window_name,
                 raw_binding=raw_binding,
                 binding=binding,
                 stale_binding=raw_binding is not None and binding is None,
@@ -124,6 +128,13 @@ def prepare_start_agents(
         )
 
     return tuple(prepared)
+
+
+def _window_name_for_agent(config, agent_name: str) -> str | None:
+    for window in getattr(config, 'windows', ()) or ():
+        if agent_name in tuple(getattr(window, 'agent_names', ()) or ()):
+            return str(getattr(window, 'name', '') or '').strip() or None
+    return None
 
 
 __all__ = ['PreparedStartAgent', 'prepare_start_agents']

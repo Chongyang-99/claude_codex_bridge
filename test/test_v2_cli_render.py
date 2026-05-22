@@ -510,6 +510,8 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
                 'terminal': 'tmux',
                 'tmux_socket_name': 'sock-a',
                 'tmux_socket_path': None,
+                'tmux_window_name': 'main',
+                'tmux_window_id': '@1',
                 'pane_id': '%1',
                 'active_pane_id': '%1',
                 'pane_title_marker': 'CCB-codex',
@@ -625,6 +627,8 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
                 'terminal': 'tmux',
                 'tmux_socket_name': 'sock-a',
                 'tmux_socket_path': None,
+                'tmux_window_name': 'main',
+                'tmux_window_id': '@1',
                 'pane_id': '%1',
                 'active_pane_id': '%1',
                 'pane_title_marker': 'CCB-codex',
@@ -667,7 +671,8 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
     assert ps_lines[3] == (
         'binding: status=ready runtime=tmux:%1 session=/tmp/.codex-session '
         'source=provider-session workspace=/tmp/ws/codex terminal=tmux '
-        'socket=sock-a socket_path=None pane=%1 active_pane=%1 pane_state=alive marker=CCB-codex'
+        'socket=sock-a socket_path=None window=main window_id=@1 '
+        'pane=%1 active_pane=%1 pane_state=alive marker=CCB-codex'
     )
 
     assert doctor_lines[0] == 'project: /tmp/repo'
@@ -698,7 +703,8 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
     assert (
         'binding: status=ready runtime=tmux:%1 session=/tmp/.codex-session '
         'source=external-attach workspace=/tmp/ws/codex terminal=tmux '
-        'socket=sock-a socket_path=None pane=%1 active_pane=%1 pane_state=alive marker=CCB-codex'
+        'socket=sock-a socket_path=None window=main window_id=@1 '
+        'pane=%1 active_pane=%1 pane_state=alive marker=CCB-codex'
     ) in doctor_lines
     assert 'restore: supported=True mode=provider_resume reason=None' in doctor_lines
     assert (

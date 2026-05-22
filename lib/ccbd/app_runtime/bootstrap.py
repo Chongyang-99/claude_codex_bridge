@@ -10,6 +10,8 @@ from agents.config_identity import project_config_identity_payload
 from agents.config_loader import load_project_config
 from agents.store import AgentRestoreStore
 from ccbd.lifecycle_report_store import CcbdShutdownReportStore, CcbdStartupReportStore
+from ccbd.project_focus import ProjectFocusDependencies, ProjectFocusService
+from ccbd.project_view import ProjectViewDependencies, ProjectViewService, ProjectViewStateStore
 from ccbd.restore_report_store import CcbdRestoreReportStore
 from ccbd.services import (
     AgentRegistry,
@@ -68,6 +70,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
     app.shutdown_report_store = CcbdShutdownReportStore(app.paths)
     app.namespace_state_store = ProjectNamespaceStateStore(app.paths)
     app.namespace_event_store = ProjectNamespaceEventStore(app.paths)
+    app.project_view_state_store = ProjectViewStateStore(app.paths, project_id=app.project_id)
     app.start_policy_store = CcbdStartPolicyStore(app.paths)
     app.ownership_guard = OwnershipGuard(app.paths, app.mount_manager, clock=app.clock)
     app.registry = AgentRegistry(app.paths, app.config)
@@ -140,6 +143,27 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
         snapshot_writer=app.snapshot_writer,
         timing_sink=app.control_plane_metrics,
         clock=app.clock,
+    )
+    app.project_view_service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=app.project_root,
+            project_id=app.project_id,
+            config=app.config,
+            registry=app.registry,
+            mount_manager=app.mount_manager,
+            namespace_state_store=app.namespace_state_store,
+            dispatcher=app.dispatcher,
+            namespace_controller=app.project_namespace,
+            state_store=app.project_view_state_store,
+            clock=app.clock,
+        )
+    )
+    app.project_focus_service = ProjectFocusService(
+        ProjectFocusDependencies(
+            project_id=app.project_id,
+            config=app.config,
+            namespace_controller=app.project_namespace,
+        )
     )
     app.heartbeat_state_store = HeartbeatStateStore(app.paths)
     app.job_heartbeat = JobHeartbeatService(

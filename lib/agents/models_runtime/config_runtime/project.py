@@ -4,6 +4,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..names import SCHEMA_VERSION, AgentValidationError
+from .topology import (
+    SidebarSpec,
+    WindowSpec,
+    default_sidebar_spec,
+    normalize_windows,
+    topology_signature,
+    topology_signature_payload,
+    validate_entry_window,
+    validate_windows_reference_agents,
+)
 from .validation import normalize_agent_specs, normalize_default_agents, resolve_layout_spec
 
 
@@ -14,22 +24,52 @@ class ProjectConfig:
     agents: dict[str, object]
     cmd_enabled: bool = False
     layout_spec: str | None = None
+    windows: tuple[WindowSpec, ...] | None = None
+    entry_window: str | None = None
+    sidebar: SidebarSpec | None = None
     source_path: str | None = None
+    windows_explicit: bool | None = None
 
     def __post_init__(self) -> None:
         if self.version != SCHEMA_VERSION:
             raise AgentValidationError(f'version must be {SCHEMA_VERSION}')
         normalized_agents = normalize_agent_specs(self.agents)
         defaults = normalize_default_agents(self.default_agents, normalized_agents=normalized_agents)
-        rendered_layout = resolve_layout_spec(
+        explicit_windows = bool(self.windows_explicit) if self.windows_explicit is not None else self.windows is not None
+        if explicit_windows:
+            windows_input = tuple(self.windows or ())
+            rendered_layout = str(self.layout_spec or (windows_input[0].layout_spec if windows_input else '')).strip()
+            if not rendered_layout:
+                raise AgentValidationError('layout_spec cannot be empty when windows are configured')
+        else:
+            rendered_layout = resolve_layout_spec(
+                default_agents=defaults,
+                normalized_agents=normalized_agents,
+                cmd_enabled=bool(self.cmd_enabled),
+                layout_spec=self.layout_spec,
+            )
+        sidebar = self.sidebar if self.sidebar is not None else default_sidebar_spec()
+        windows = normalize_windows(
+            self.windows,
+            layout_spec=rendered_layout,
             default_agents=defaults,
-            normalized_agents=normalized_agents,
-            cmd_enabled=bool(self.cmd_enabled),
-            layout_spec=self.layout_spec,
+        )
+        validate_windows_reference_agents(windows, normalized_agents=normalized_agents)
+        entry_window = validate_entry_window(self.entry_window, windows=windows)
+        signature_payload = topology_signature_payload(
+            windows=windows,
+            entry_window=entry_window,
+            sidebar=sidebar,
         )
         object.__setattr__(self, 'default_agents', defaults)
         object.__setattr__(self, 'agents', normalized_agents)
         object.__setattr__(self, 'layout_spec', rendered_layout)
+        object.__setattr__(self, 'windows', windows)
+        object.__setattr__(self, 'entry_window', entry_window)
+        object.__setattr__(self, 'sidebar', sidebar)
+        object.__setattr__(self, 'windows_explicit', explicit_windows)
+        object.__setattr__(self, 'topology_signature_payload', signature_payload)
+        object.__setattr__(self, 'topology_signature', topology_signature(signature_payload))
 
     def to_record(self) -> dict[str, Any]:
         return {
@@ -40,6 +80,12 @@ class ProjectConfig:
             'agents': {name: spec.to_record() for name, spec in self.agents.items()},
             'cmd_enabled': bool(self.cmd_enabled),
             'layout_spec': self.layout_spec,
+            'windows': [window.to_record() for window in self.windows],
+            'entry_window': self.entry_window,
+            'sidebar': self.sidebar.to_record(),
+            'windows_explicit': self.windows_explicit,
+            'topology_signature_payload': self.topology_signature_payload,
+            'topology_signature': self.topology_signature,
             'source_path': self.source_path,
         }
 

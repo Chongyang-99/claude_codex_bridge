@@ -51,6 +51,7 @@ def test_rebind_runtime_uses_provider_facts_and_clears_degraded_state() -> None:
         tmux_socket_path='/tmp/tmux.sock',
         session_file='/tmp/session.json',
         session_id='sid-9',
+        ccb_session_id='ccb-sid-9',
     )
     captured = {}
     monitor = SimpleNamespace(

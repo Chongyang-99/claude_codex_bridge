@@ -23,6 +23,8 @@ class AttachRuntimeValues:
     pane_state: str | None
     tmux_socket_name: str | None
     tmux_socket_path: str | None
+    tmux_window_name: str | None
+    tmux_window_id: str | None
     session_file: str | None
     session_id: str | None
     slot_key: str | None

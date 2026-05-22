@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Callable
 
-from provider_core.tmux_ownership import inspect_tmux_pane_ownership, ownership_error_text
+from provider_core.tmux_ownership import (
+    inspect_tmux_pane_ownership,
+    ownership_error_text,
+    session_slot_user_option_lookup,
+)
 
 from .lifecycle_common import (
     activate_rebound_pane,
@@ -65,7 +69,7 @@ def respawn_existing_pane(
     if not pane_exists(backend, str(pane_id)):
         return 'pane target no longer exists'
     ownership = inspect_tmux_pane_ownership(session, backend, str(pane_id))
-    if not ownership.is_owned:
+    if not ownership.is_owned and not can_reclaim_project_slot_pane(session, backend, str(pane_id)):
         return ownership_error_text(ownership, pane_id=str(pane_id))
     try:
         persist_crash_log(session, backend, str(pane_id))
@@ -82,6 +86,14 @@ def respawn_existing_pane(
         return None
     except Exception as exc:
         return f'{exc}'
+
+
+def can_reclaim_project_slot_pane(session, backend: object, pane_id: str) -> bool:
+    expected = session_slot_user_option_lookup(session)
+    if not expected:
+        return False
+    ownership = inspect_tmux_pane_ownership(_SlotOwnershipSession(expected), backend, pane_id)
+    return ownership.is_owned
 
 
 def create_replacement_pane(
@@ -125,3 +137,11 @@ __all__ = [
     'respawn_existing_pane',
     'tmux_rebound_pane',
 ]
+
+
+class _SlotOwnershipSession:
+    def __init__(self, expected: dict[str, str]) -> None:
+        self._expected = expected
+
+    def user_option_lookup(self) -> dict[str, str]:
+        return dict(self._expected)

@@ -23,6 +23,40 @@ def session_user_option_lookup(session) -> dict[str, str]:
     project_id = str(data.get('ccb_project_id') or '').strip()
     if project_id:
         lookup['@ccb_project_id'] = project_id
+    session_id = str(data.get('ccb_session_id') or '').strip()
+    if session_id:
+        lookup['@ccb_session_id'] = session_id
+    return lookup
+
+
+def session_slot_user_option_lookup(session) -> dict[str, str]:
+    resolver = getattr(session, 'slot_user_option_lookup', None)
+    if callable(resolver):
+        try:
+            resolved = resolver()
+        except Exception:
+            resolved = None
+        if isinstance(resolved, dict):
+            normalized = _normalize_option_map(resolved)
+            if normalized:
+                return normalized
+
+    data = getattr(session, 'data', None)
+    if not isinstance(data, dict):
+        return {}
+    lookup: dict[str, str] = {}
+    agent_name = str(data.get('agent_name') or '').strip()
+    if agent_name:
+        lookup['@ccb_agent'] = agent_name
+    project_id = str(data.get('ccb_project_id') or '').strip()
+    if project_id:
+        lookup['@ccb_project_id'] = project_id
+    slot_key = str(data.get('ccb_slot') or '').strip()
+    if slot_key:
+        lookup['@ccb_slot'] = slot_key
+    managed_by = str(data.get('ccb_managed_by') or '').strip()
+    if managed_by:
+        lookup['@ccb_managed_by'] = managed_by
     return lookup
 
 
@@ -67,5 +101,6 @@ def _normalize_option_map(values: dict[object, object]) -> dict[str, str]:
 __all__ = [
     'session_display_title',
     'session_pane_title_marker',
+    'session_slot_user_option_lookup',
     'session_user_option_lookup',
 ]

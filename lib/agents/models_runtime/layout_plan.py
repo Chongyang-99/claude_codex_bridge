@@ -43,9 +43,10 @@ def build_project_layout_plan(
         if target_agent_names is not None
         else select_project_layout_targets(config, requested_agents=requested_agents)
     )
+    layout_source = _layout_source(config)
     include_names: tuple[str, ...] = (('cmd',) if config.cmd_enabled else ()) + targets
     pruned_layout = prune_layout(
-        parse_layout_spec(str(config.layout_spec or '')),
+        parse_layout_spec(layout_source),
         include_names=include_names,
     )
     if pruned_layout is None:
@@ -73,6 +74,12 @@ def project_layout_signature(
         requested_agents=requested_agents,
         target_agent_names=target_agent_names,
     ).signature
+
+
+def _layout_source(config: ProjectConfig) -> str:
+    if getattr(config, 'windows_explicit', False):
+        return '; '.join(str(window.layout_spec) for window in config.windows)
+    return str(config.layout_spec or '')
 
 
 __all__ = [

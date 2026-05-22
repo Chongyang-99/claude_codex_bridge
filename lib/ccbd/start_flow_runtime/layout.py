@@ -14,6 +14,7 @@ def prepare_start_layout(
     layout_plan=None,
     tmux_backend=None,
     root_pane_id: str | None = None,
+    window_name: str | None = None,
 ) -> TmuxStartLayout:
     return deps.prepare_start_layout_impl(
         context,
@@ -22,6 +23,7 @@ def prepare_start_layout(
         layout_plan=layout_plan,
         tmux_backend=tmux_backend,
         root_pane_id=root_pane_id,
+        window_name=window_name,
         inside_tmux_fn=deps.inside_tmux_impl,
         prepare_tmux_start_layout_fn=deps.prepare_tmux_start_layout_fn,
     )

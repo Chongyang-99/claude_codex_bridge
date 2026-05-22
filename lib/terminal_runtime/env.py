@@ -47,6 +47,18 @@ def subprocess_kwargs() -> dict:
     return {}
 
 
+def isolated_tmux_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    isolated = dict(os.environ if env is None else env)
+    for key in (
+        "TMUX",
+        "TMUX_PANE",
+        "CCB_TMUX_SOCKET",
+        "CCB_TMUX_SOCKET_PATH",
+    ):
+        isolated.pop(key, None)
+    return isolated
+
+
 def is_wsl() -> bool:
     try:
         return "microsoft" in Path("/proc/version").read_text().lower()

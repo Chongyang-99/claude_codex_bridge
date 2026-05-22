@@ -34,6 +34,8 @@ def run_start_flow(
     namespace_epoch: int | None,
     workspace_window_id: str | None,
     workspace_epoch: int | None,
+    namespace_agent_panes: dict[str, str] | None,
+    namespace_active_panes: tuple[str, ...] | None,
     fresh_namespace: bool,
     fresh_workspace: bool,
     clock,
@@ -87,6 +89,7 @@ def run_start_flow(
         interactive_tmux_layout=interactive_tmux_layout,
         tmux_backend=tmux_backend,
         root_pane_id=root_pane_id,
+        namespace_agent_panes=namespace_agent_panes,
         actions_taken=actions_taken,
     )
 
@@ -96,6 +99,7 @@ def run_start_flow(
         tmux_socket_path=tmux_socket_path,
         config=config,
         root_pane_id=root_pane_id,
+        namespace_active_panes=namespace_active_panes,
     )
     bootstrap_cmd_pane_if_needed(
         deps,
@@ -127,6 +131,7 @@ def run_start_flow(
             namespace_epoch=namespace_epoch,
             workspace_window_id=workspace_window_id,
             workspace_epoch=workspace_epoch,
+            window_name=prepared.window_name,
             ensure_agent_runtime_fn=deps.ensure_agent_runtime_fn,
             launch_binding_hint_fn=lambda **kwargs: launch_binding_hint(deps, **kwargs),
             relabel_project_namespace_pane_fn=lambda **kwargs: relabel_project_namespace_pane(deps, **kwargs),

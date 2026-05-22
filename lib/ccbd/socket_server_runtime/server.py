@@ -19,6 +19,7 @@ class CcbdSocketServer:
         'ack',
         'resubmit',
         'retry',
+        'comms_recover',
         'stop-all',
     })
 

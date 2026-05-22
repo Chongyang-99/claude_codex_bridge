@@ -12,6 +12,7 @@ class BindingValidationContext:
     workspace_window_id: str | None
     agent_name: str
     project_id: str
+    window_name: str | None
     tmux_backend_factory: object
     inspect_project_namespace_pane_fn: object
     same_tmux_socket_path_fn: object
@@ -39,6 +40,7 @@ def build_binding_validation_context(
     tmux_backend_factory,
     inspect_project_namespace_pane_fn,
     same_tmux_socket_path_fn,
+    window_name: str | None = None,
 ) -> BindingValidationContext:
     return BindingValidationContext(
         tmux_socket_path=tmux_socket_path,
@@ -46,6 +48,7 @@ def build_binding_validation_context(
         workspace_window_id=workspace_window_id,
         agent_name=agent_name,
         project_id=project_id,
+        window_name=window_name,
         tmux_backend_factory=tmux_backend_factory,
         inspect_project_namespace_pane_fn=inspect_project_namespace_pane_fn,
         same_tmux_socket_path_fn=same_tmux_socket_path_fn,
@@ -60,6 +63,7 @@ def matching_namespace_binding(binding, *, context: BindingValidationContext):
         workspace_window_id=context.workspace_window_id,
         agent_name=context.agent_name,
         project_id=context.project_id,
+        window_name=context.window_name,
         tmux_backend_factory=context.tmux_backend_factory,
         inspect_project_namespace_pane_fn=context.inspect_project_namespace_pane_fn,
     )

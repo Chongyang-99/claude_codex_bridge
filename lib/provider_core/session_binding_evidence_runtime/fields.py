@@ -45,6 +45,13 @@ def session_id(session, *, session_id_attr: str) -> str | None:
     return text or None
 
 
+def session_ccb_session_id(session) -> str | None:
+    text = str(getattr(session, 'ccb_session_id', '') or '').strip()
+    if text:
+        return text
+    return _session_data_text(session, 'ccb_session_id')
+
+
 def session_file(session) -> str | None:
     session_path = getattr(session, 'session_file', None)
     if session_path is None:
@@ -165,6 +172,7 @@ def read_pid_file(path: Path) -> int | None:
 
 
 __all__ = [
+    'session_ccb_session_id',
     'session_file',
     'session_id',
     'session_pane_title_marker',

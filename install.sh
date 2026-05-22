@@ -153,6 +153,8 @@ require_non_root_execution() {
 SCRIPTS_TO_LINK=(
   bin/ask
   bin/autonew
+  bin/build-ccb-agent-sidebar
+  bin/ccb-agent-sidebar
   bin/ctx-transfer
   ccb
 )
@@ -1212,6 +1214,7 @@ copy_project() {
       --exclude '.pytest_cache/' \
       --exclude '.mypy_cache/' \
       --exclude '.venv/' \
+      --exclude 'target/' \
       --exclude 'lib/web/' \
       --exclude 'bin/ccb-web' \
       "$REPO_ROOT"/ "$staging"/
@@ -1222,6 +1225,7 @@ copy_project() {
       --exclude '.pytest_cache' \
       --exclude '.mypy_cache' \
       --exclude '.venv' \
+      --exclude 'target' \
       --exclude 'lib/web' \
       --exclude 'bin/ccb-web' \
       -cf - . | tar -C "$staging" -xf -
@@ -1453,6 +1457,15 @@ write_managed_venv_python_wrapper() {
   write_python_entrypoint_wrapper "$(managed_venv_python)" "$source_path" "$destination_path"
 }
 
+is_python_entrypoint() {
+  local source_path="$1"
+  local first_line=""
+  if [[ -f "$source_path" ]]; then
+    IFS= read -r first_line < "$source_path" || true
+  fi
+  [[ "$first_line" == '#!'*python* ]]
+}
+
 install_entrypoint_executable() {
   local source_path="$1"
   local destination_path="$2"
@@ -1465,6 +1478,10 @@ install_entrypoint_executable() {
   local absolute_source="$source_path"
   if [[ "$absolute_source" != /* ]]; then
     absolute_source="$(cd "$(dirname "$source_path")" && pwd)/$(basename "$source_path")"
+  fi
+  if ! is_python_entrypoint "$absolute_source"; then
+    install_owned_executable "$source_path" "$destination_path"
+    return 0
   fi
   if use_managed_venv && [[ "$absolute_source" == "$INSTALL_PREFIX/"* ]]; then
     write_managed_venv_python_wrapper "$absolute_source" "$destination_path"
@@ -1481,6 +1498,62 @@ install_entrypoint_executable() {
   fi
 
   install_owned_executable "$source_path" "$destination_path"
+}
+
+is_sidebar_wrapper() {
+  local path="$1"
+  [[ -f "$path" ]] && grep -q 'CCB_AGENT_SIDEBAR_WRAPPER' "$path" 2>/dev/null
+}
+
+build_sidebar_helper_if_possible() {
+  local asset_root crate_dir binary target
+  asset_root="$(resolve_install_asset_root)"
+  crate_dir="$asset_root/tools/ccb-agent-sidebar"
+  binary="$crate_dir/target/release/ccb-agent-sidebar"
+  target="$asset_root/bin/ccb-agent-sidebar"
+
+  if [[ ! -f "$crate_dir/Cargo.toml" ]]; then
+    return
+  fi
+
+  if install_uses_live_source; then
+    if [[ -x "$binary" ]]; then
+      return
+    fi
+    if command -v cargo >/dev/null 2>&1; then
+      echo "Building ccb-agent-sidebar..."
+      if cargo build --release --manifest-path "$crate_dir/Cargo.toml" >/dev/null 2>&1 && [[ -x "$binary" ]]; then
+        echo "Built ccb-agent-sidebar"
+        return
+      fi
+    fi
+    echo "WARN: ccb-agent-sidebar binary not available; sidebar panes will show a helper-missing message"
+    return
+  fi
+
+  mkdir -p "$asset_root/bin"
+  if [[ -x "$target" ]] && ! is_sidebar_wrapper "$target"; then
+    return
+  fi
+
+  if [[ -x "$binary" ]]; then
+    cp -f "$binary" "$target"
+    chmod +x "$target" 2>/dev/null || true
+    echo "Installed prebuilt ccb-agent-sidebar"
+    return
+  fi
+
+  if command -v cargo >/dev/null 2>&1; then
+    echo "Building ccb-agent-sidebar..."
+    if cargo build --release --manifest-path "$crate_dir/Cargo.toml" >/dev/null 2>&1 && [[ -x "$binary" ]]; then
+      cp -f "$binary" "$target"
+      chmod +x "$target" 2>/dev/null || true
+      echo "Built ccb-agent-sidebar"
+      return
+    fi
+  fi
+
+  echo "WARN: ccb-agent-sidebar binary not available; sidebar panes will show a helper-missing message"
 }
 
 install_bin_links() {
@@ -2467,6 +2540,7 @@ install_all() {
   if ! install_uses_live_source; then
     write_install_metadata
   fi
+  build_sidebar_helper_if_possible
   install_bin_links
   verify_installed_entrypoints
   ensure_path_configured
@@ -2841,6 +2915,7 @@ main() {
   esac
 }
 
+# Test harness split marker: main "$@"
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
-  main "$@"
+  main "${@}"
 fi

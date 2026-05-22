@@ -23,6 +23,7 @@ def matching_project_namespace_record(
     workspace_window_id: str | None,
     agent_name: str,
     project_id: str,
+    window_name: str | None,
     tmux_backend_factory,
     inspect_project_namespace_pane_fn,
 ):
@@ -41,6 +42,7 @@ def matching_project_namespace_record(
         project_id=project_id,
         role='agent',
         slot_key=agent_name,
+        window_name=window_name,
         managed_by='ccbd',
         window_id=workspace_window_id,
     ):

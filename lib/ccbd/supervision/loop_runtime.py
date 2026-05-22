@@ -110,11 +110,19 @@ def runtime_requires_mount(runtime) -> bool:
 
 
 def runtime_requires_mount_from_foreign_pane(ctx: RuntimeSupervisionContext, runtime) -> bool:
-    return runtime_health(runtime) == 'pane-foreign' and not should_reflow_project_namespace(ctx, runtime)
+    if runtime_health(runtime) != 'pane-foreign':
+        return False
+    if explicit_topology_project_socket_foreign_pane(ctx, runtime):
+        return False
+    return not should_reflow_project_namespace(ctx, runtime)
 
 
 def runtime_requires_recovery(ctx: RuntimeSupervisionContext, runtime) -> bool:
-    return should_reflow_project_namespace(ctx, runtime) or should_attempt_background_recovery(runtime)
+    return (
+        should_reflow_project_namespace(ctx, runtime)
+        or explicit_topology_project_socket_foreign_pane(ctx, runtime)
+        or should_attempt_background_recovery(runtime)
+    )
 
 
 def runtime_health(runtime) -> str:
@@ -125,6 +133,8 @@ def should_reflow_project_namespace(ctx: RuntimeSupervisionContext, runtime, *, 
     if recovered is not None and recovered_replacement_requires_workspace_reflow(ctx, runtime, recovered):
         return True
     if not runtime_in_project_namespace_reflow_health(runtime):
+        return False
+    if explicit_topology_project_socket_foreign_pane(ctx, runtime):
         return False
     if not project_namespace_reflow_safe(ctx, runtime.agent_name):
         return False
@@ -170,13 +180,21 @@ def runtime_in_project_namespace_reflow_health(runtime) -> bool:
 
 
 def recovered_replacement_requires_workspace_reflow(ctx: RuntimeSupervisionContext, runtime, recovered) -> bool:
-    if runtime_health(runtime) not in {'pane-dead', 'pane-missing'}:
+    if runtime_health(runtime) not in {'pane-dead', 'pane-missing', 'pane-foreign'}:
         return False
     if not project_namespace_reflow_safe(ctx, runtime.agent_name):
         return False
     if not runtime_belongs_to_project_socket(ctx, recovered):
         return False
     return recovered_pane_replaced(runtime, recovered)
+
+
+def explicit_topology_project_socket_foreign_pane(ctx: RuntimeSupervisionContext, runtime) -> bool:
+    if not bool(getattr(ctx.config, 'windows_explicit', False)):
+        return False
+    if runtime_health(runtime) != 'pane-foreign':
+        return False
+    return runtime_belongs_to_project_socket(ctx, runtime)
 
 
 def runtime_belongs_to_project_socket(ctx: RuntimeSupervisionContext, runtime) -> bool:

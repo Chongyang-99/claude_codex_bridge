@@ -13,6 +13,7 @@ def usable_project_binding(
     workspace_window_id: str | None,
     agent_name: str,
     project_id: str,
+    window_name: str | None = None,
 ):
     return deps.usable_project_binding_impl(
         binding,
@@ -22,6 +23,7 @@ def usable_project_binding(
         workspace_window_id=workspace_window_id,
         agent_name=agent_name,
         project_id=project_id,
+        window_name=window_name,
         tmux_backend_factory=deps.tmux_backend_cls,
         inspect_project_namespace_pane_fn=deps.inspect_project_namespace_pane_fn,
         same_tmux_socket_path_fn=deps.same_tmux_socket_path_fn,
@@ -56,6 +58,7 @@ def relabel_project_namespace_pane(
     style_index: int,
     tmux_socket_path: str | None,
     namespace_epoch: int | None,
+    window_name: str | None = None,
 ) -> str | None:
     return deps.relabel_project_namespace_pane_impl(
         binding=binding,
@@ -63,6 +66,7 @@ def relabel_project_namespace_pane(
         project_id=project_id,
         style_index=style_index,
         tmux_socket_path=tmux_socket_path,
+        window_name=window_name,
         namespace_epoch=namespace_epoch,
         tmux_backend_factory=deps.tmux_backend_cls,
         same_tmux_socket_path_fn=deps.same_tmux_socket_path_fn,

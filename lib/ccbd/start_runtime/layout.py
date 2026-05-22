@@ -23,6 +23,7 @@ def prepare_start_layout(
     layout_plan=None,
     tmux_backend=None,
     root_pane_id: str | None = None,
+    window_name: str | None = None,
     inside_tmux_fn,
     prepare_tmux_start_layout_fn,
 ) -> TmuxStartLayout:
@@ -37,6 +38,7 @@ def prepare_start_layout(
         layout_plan=layout_plan,
         tmux_backend=tmux_backend,
         root_pane_id=root_pane_id,
+        window_name=window_name,
     )
 
 

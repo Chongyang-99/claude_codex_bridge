@@ -28,6 +28,7 @@ def start_agent_runtime(
     same_tmux_socket_path_fn,
     workspace_window_id: str | None = None,
     workspace_epoch: int | None = None,
+    window_name: str | None = None,
 ) -> StartAgentExecution:
     binding_state = resolve_runtime_binding_state(
         context=context,
@@ -43,6 +44,7 @@ def start_agent_runtime(
         project_id=project_id,
         tmux_socket_path=tmux_socket_path,
         namespace_epoch=namespace_epoch,
+        window_name=window_name,
         ensure_agent_runtime_fn=ensure_agent_runtime_fn,
         launch_binding_hint_fn=launch_binding_hint_fn,
         relabel_project_namespace_pane_fn=relabel_project_namespace_pane_fn,
@@ -65,6 +67,8 @@ def start_agent_runtime(
         pane_state=getattr(binding_state.binding, 'pane_state', None),
         tmux_socket_name=getattr(binding_state.binding, 'tmux_socket_name', None),
         tmux_socket_path=getattr(binding_state.binding, 'tmux_socket_path', None),
+        tmux_window_name=window_name or getattr(binding_state.binding, 'tmux_window_name', None),
+        tmux_window_id=getattr(binding_state.binding, 'tmux_window_id', None),
         session_file=getattr(binding_state.binding, 'session_file', None),
         session_id=getattr(binding_state.binding, 'session_id', None),
         slot_key=agent_name,
@@ -108,6 +112,8 @@ def start_agent_runtime(
             terminal_backend=runtime.terminal_backend,
             tmux_socket_name=runtime.tmux_socket_name,
             tmux_socket_path=runtime.tmux_socket_path,
+            tmux_window_name=runtime.tmux_window_name,
+            tmux_window_id=runtime.tmux_window_id,
             pane_id=runtime.pane_id,
             active_pane_id=runtime.active_pane_id,
             pane_state=runtime.pane_state,

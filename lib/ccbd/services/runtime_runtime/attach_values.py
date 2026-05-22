@@ -35,6 +35,8 @@ def resolve_attach_runtime_values(
     pane_state: str | None,
     tmux_socket_name: str | None,
     tmux_socket_path: str | None,
+    tmux_window_name: str | None,
+    tmux_window_id: str | None,
     session_file: str | None,
     session_id: str | None,
     slot_key: str | None,
@@ -75,6 +77,8 @@ def resolve_attach_runtime_values(
     active_pane_id_value = preferred_active_pane_id(existing, active_pane_id=active_pane_id, pane_id_value=pane_id_value)
     tmux_socket_name_value = preferred_text(existing, 'tmux_socket_name', tmux_socket_name)
     tmux_socket_path_value = preferred_text(existing, 'tmux_socket_path', tmux_socket_path)
+    tmux_window_name_value = preferred_text(existing, 'tmux_window_name', tmux_window_name)
+    tmux_window_id_value = preferred_text(existing, 'tmux_window_id', tmux_window_id)
     daemon_generation_value = next_daemon_generation(existing, daemon_generation=daemon_generation)
     authority_epoch_changed = runtime_authority_changed(
         existing,
@@ -86,6 +90,8 @@ def resolve_attach_runtime_values(
         active_pane_id=active_pane_id_value,
         tmux_socket_name=tmux_socket_name_value,
         tmux_socket_path=tmux_socket_path_value,
+        tmux_window_name=tmux_window_name_value,
+        tmux_window_id=tmux_window_id_value,
         daemon_generation=daemon_generation_value,
     )
     binding_generation, runtime_generation = next_authority_epoch_generations(
@@ -109,6 +115,8 @@ def resolve_attach_runtime_values(
         pane_state=preferred_text(existing, 'pane_state', pane_state),
         tmux_socket_name=tmux_socket_name_value,
         tmux_socket_path=tmux_socket_path_value,
+        tmux_window_name=tmux_window_name_value,
+        tmux_window_id=tmux_window_id_value,
         session_file=session_file_value,
         session_id=session_id_value,
         slot_key=preferred_slot_key(existing, spec_name=spec.name, slot_key=slot_key),
@@ -236,6 +244,8 @@ def runtime_authority_changed(
     active_pane_id: str | None,
     tmux_socket_name: str | None,
     tmux_socket_path: str | None,
+    tmux_window_name: str | None,
+    tmux_window_id: str | None,
     daemon_generation: int | None,
 ) -> bool:
     if existing is None:
@@ -250,6 +260,8 @@ def runtime_authority_changed(
             active_pane_id != getattr(existing, 'active_pane_id', None),
             tmux_socket_name != getattr(existing, 'tmux_socket_name', None),
             tmux_socket_path != getattr(existing, 'tmux_socket_path', None),
+            tmux_window_name != getattr(existing, 'tmux_window_name', None),
+            tmux_window_id != getattr(existing, 'tmux_window_id', None),
         )
     )
     current_daemon_generation = getattr(existing, 'daemon_generation', None)

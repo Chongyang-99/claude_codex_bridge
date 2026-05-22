@@ -46,6 +46,26 @@ def session_tmux_identity_lookup(data: dict) -> dict[str, str]:
     project_id = str(data.get("ccb_project_id") or "").strip()
     if project_id:
         lookup["@ccb_project_id"] = project_id
+    session_id = str(data.get("ccb_session_id") or "").strip()
+    if session_id:
+        lookup["@ccb_session_id"] = session_id
+    slot_key = str(data.get("ccb_slot") or "").strip()
+    if slot_key:
+        lookup["@ccb_slot"] = slot_key
+    managed_by = str(data.get("ccb_managed_by") or "").strip()
+    if managed_by:
+        lookup["@ccb_managed_by"] = managed_by
+    return lookup
+
+
+def session_tmux_slot_identity_lookup(data: dict) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    agent_name = str(data.get("agent_name") or "").strip()
+    if agent_name:
+        lookup["@ccb_agent"] = agent_name
+    project_id = str(data.get("ccb_project_id") or "").strip()
+    if project_id:
+        lookup["@ccb_project_id"] = project_id
     slot_key = str(data.get("ccb_slot") or "").strip()
     if slot_key:
         lookup["@ccb_slot"] = slot_key
@@ -89,6 +109,9 @@ class PaneLogProjectSessionBase:
 
     def user_option_lookup(self) -> dict[str, str]:
         return session_tmux_identity_lookup(self.data)
+
+    def slot_user_option_lookup(self) -> dict[str, str]:
+        return session_tmux_slot_identity_lookup(self.data)
 
     def _attach_pane_log(self, backend: object, pane_id: str) -> None:
         attach_pane_log_impl(self, backend, pane_id)
@@ -185,4 +208,5 @@ __all__ = [
     "now_str",
     "read_session_json",
     "session_tmux_identity_lookup",
+    "session_tmux_slot_identity_lookup",
 ]

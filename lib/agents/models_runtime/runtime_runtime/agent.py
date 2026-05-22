@@ -34,6 +34,8 @@ class AgentRuntime:
     pane_state: str | None = None
     tmux_socket_name: str | None = None
     tmux_socket_path: str | None = None
+    tmux_window_name: str | None = None
+    tmux_window_id: str | None = None
     session_file: str | None = None
     session_id: str | None = None
     slot_key: str | None = None
@@ -84,6 +86,8 @@ class AgentRuntime:
             'pane_state': self.pane_state,
             'tmux_socket_name': self.tmux_socket_name,
             'tmux_socket_path': self.tmux_socket_path,
+            'tmux_window_name': self.tmux_window_name,
+            'tmux_window_id': self.tmux_window_id,
             'session_file': self.session_file,
             'session_id': self.session_id,
             'slot_key': self.slot_key,

@@ -12,7 +12,7 @@ CONFIG_SOURCE_BUILTIN_DEFAULT = 'builtin_default'
 CONFIG_SOURCE_KINDS = (CONFIG_SOURCE_PROJECT, CONFIG_SOURCE_USER, CONFIG_SOURCE_BUILTIN_DEFAULT)
 DEFAULT_AGENT_ORDER = ('agent1', 'agent2', 'agent3')
 DEFAULT_DEFAULT_AGENTS = DEFAULT_AGENT_ORDER
-ALLOWED_TOP_LEVEL_KEYS = {'version', 'default_agents', 'agents', 'cmd_enabled', 'layout'}
+ALLOWED_TOP_LEVEL_KEYS = {'version', 'default_agents', 'agents', 'cmd_enabled', 'layout', 'ui', 'windows', 'entry_window'}
 ALLOWED_PROVIDER_PROFILE_KEYS = {
     'mode',
     'home',

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from provider_core.instance_resolution import named_agent_instance
 from provider_core.session_binding_evidence import (
+    session_ccb_session_id,
     session_file,
     session_id,
     session_pane_title_marker,
@@ -32,6 +33,7 @@ class ProviderRuntimeFacts:
     tmux_socket_path: str | None
     session_file: str | None
     session_id: str | None
+    ccb_session_id: str | None
 
 
 def load_provider_session(binding, workspace_path: Path, agent_name: str):
@@ -77,6 +79,7 @@ def build_provider_runtime_facts(
         tmux_socket_path=session_tmux_socket_path(session),
         session_file=session_file(session),
         session_id=session_id(session, session_id_attr=binding.session_id_attr),
+        ccb_session_id=session_ccb_session_id(session),
     )
 
 

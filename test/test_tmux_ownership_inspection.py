@@ -9,14 +9,15 @@ def test_tmux_ownership_prefers_described_pane_match() -> None:
     class Backend:
         def describe_pane(self, pane_id: str, user_options: tuple[str, ...]):
             assert pane_id == "%12"
-            assert user_options == ("@ccb_agent", "@ccb_project_id")
+            assert user_options == ("@ccb_agent", "@ccb_project_id", "@ccb_session_id")
             return {
                 "pane_title": "agent1",
                 "@ccb_agent": "agent1",
                 "@ccb_project_id": "proj_1",
+                "@ccb_session_id": "sess_1",
             }
 
-    session = SimpleNamespace(data={"agent_name": "agent1", "ccb_project_id": "proj_1"})
+    session = SimpleNamespace(data={"agent_name": "agent1", "ccb_project_id": "proj_1", "ccb_session_id": "sess_1"})
 
     ownership = inspect_tmux_pane_ownership(session, Backend(), "%12")
 
@@ -25,6 +26,7 @@ def test_tmux_ownership_prefers_described_pane_match() -> None:
     assert ownership.actual_options == (
         ("@ccb_agent", "agent1"),
         ("@ccb_project_id", "proj_1"),
+        ("@ccb_session_id", "sess_1"),
     )
 
 

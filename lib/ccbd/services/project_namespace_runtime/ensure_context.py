@@ -16,6 +16,7 @@ class NamespaceEnsureContext:
     desired_layout_signature: str | None
     desired_control_window_name: str
     desired_workspace_window_name: str
+    topology_plan: object | None
     recreate_cause: str | None
 
     def with_updates(
@@ -39,12 +40,18 @@ def desired_namespace_state(
     controller,
     *,
     layout_signature: str | None,
+    topology_plan: object | None = None,
 ) -> tuple[str, str, str | None, str, str]:
     desired_socket_path = str(controller._layout.ccbd_tmux_socket_path)
     desired_session_name = controller._layout.ccbd_tmux_session_name
-    desired_layout_signature = normalized_layout_signature(layout_signature)
+    desired_layout_signature = normalized_layout_signature(
+        getattr(topology_plan, 'signature', None) or layout_signature
+    )
     desired_control_window_name = controller._layout.ccbd_tmux_control_window_name
-    desired_workspace_window_name = controller._layout.ccbd_tmux_workspace_window_name
+    desired_workspace_window_name = (
+        str(getattr(topology_plan, 'entry_window', '') or '').strip()
+        or controller._layout.ccbd_tmux_workspace_window_name
+    )
     return (
         desired_socket_path,
         desired_session_name,
@@ -58,6 +65,7 @@ def load_namespace_context(
     controller,
     *,
     layout_signature: str | None,
+    topology_plan: object | None = None,
     recreate_reason: str | None,
 ) -> NamespaceEnsureContext:
     (
@@ -67,7 +75,11 @@ def load_namespace_context(
         desired_control_window_name,
         desired_workspace_window_name,
     ) = (
-        desired_namespace_state(controller, layout_signature=layout_signature)
+        desired_namespace_state(
+            controller,
+            layout_signature=layout_signature,
+            topology_plan=topology_plan,
+        )
     )
     current = controller._state_store.load()
     backend = build_backend(controller._backend_factory, socket_path=desired_socket_path)
@@ -80,6 +92,7 @@ def load_namespace_context(
         desired_layout_signature=desired_layout_signature,
         desired_control_window_name=desired_control_window_name,
         desired_workspace_window_name=desired_workspace_window_name,
+        topology_plan=topology_plan,
         recreate_cause=str(recreate_reason or '').strip() or None,
     )
 

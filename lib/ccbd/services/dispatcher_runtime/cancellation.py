@@ -11,7 +11,7 @@ from .finalization_runtime.artifacts import spill_terminal_reply_if_needed
 from .reply_delivery import resolve_reply_delivery_terminal
 
 
-def cancel_job(dispatcher, job_id: str) -> CancelReceipt:
+def cancel_job(dispatcher, job_id: str, *, record_reply: bool = True) -> CancelReceipt:
     current = dispatcher.get(job_id)
     if current is None:
         raise dispatcher._dispatch_error(f'unknown job: {job_id}')
@@ -39,10 +39,10 @@ def cancel_job(dispatcher, job_id: str) -> CancelReceipt:
 
     snapshot = dispatcher._snapshot_writer.load(job_id)
     reply = snapshot.latest_decision.reply if snapshot is not None else ''
-    return cancel_with_decision(dispatcher, marked, cancelled_at, reply, snapshot)
+    return cancel_with_decision(dispatcher, marked, cancelled_at, reply, snapshot, record_reply=record_reply)
 
 
-def cancel_with_decision(dispatcher, current, cancelled_at: str, reply: str, snapshot) -> CancelReceipt:
+def cancel_with_decision(dispatcher, current, cancelled_at: str, reply: str, snapshot, *, record_reply: bool = True) -> CancelReceipt:
     decision = CompletionDecision(
         terminal=True,
         status=CompletionStatus.CANCELLED,
@@ -86,7 +86,7 @@ def cancel_with_decision(dispatcher, current, cancelled_at: str, reply: str, sna
     if current.target_kind is TargetKind.AGENT:
         dispatcher._sync_runtime(current.agent_name, state=AgentState.IDLE)
     if dispatcher._message_bureau is not None:
-        dispatcher._message_bureau.record_terminal(terminal, decision, finished_at=cancelled_at)
+        dispatcher._message_bureau.record_terminal(terminal, decision, finished_at=cancelled_at, record_reply=record_reply)
     resolve_reply_delivery_terminal(dispatcher, terminal, finished_at=cancelled_at)
     return CancelReceipt(
         job_id=terminal.job_id,

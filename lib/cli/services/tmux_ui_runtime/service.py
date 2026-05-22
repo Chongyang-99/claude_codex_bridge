@@ -46,8 +46,16 @@ def _apply_session_theme(backend, *, session_name: str, rendered_theme) -> None:
 
 
 def _apply_pane_theme(backend, *, session_name: str, border_script: str | None, rendered_theme) -> None:
-    for option, value in rendered_theme.window_options.items():
-        tmux_run(backend, ['set-window-option', '-t', session_name, option, value])
+    windows = _session_windows(backend, session_name=session_name)
+    targets = windows or (session_name,)
+    active_window_styles = _active_window_pane_styles(backend, session_name=session_name)
+    for target in targets:
+        window_name = _window_name_from_target(session_name=session_name, target=target)
+        window_styles = active_window_styles.get(window_name, {})
+        options = dict(rendered_theme.window_options)
+        options.update(window_styles)
+        for option, value in options.items():
+            tmux_run(backend, ['set-window-option', '-t', target, option, value])
     if border_script is not None:
         hook = f'run-shell "{border_script} \\"#{{pane_id}}\\""'
         tmux_run(backend, ['set-hook', '-t', session_name, 'after-select-pane', hook])
@@ -66,6 +74,68 @@ def _apply_active_pane_border(backend, *, session_name: str) -> None:
         backend,
         ['set-option', '-p', '-t', active_pane_id, 'pane-active-border-style', style],
     )
+
+
+def _session_windows(backend, *, session_name: str) -> tuple[str, ...]:
+    try:
+        cp = backend._tmux_run(  # type: ignore[attr-defined]
+            ['list-windows', '-t', session_name, '-F', '#{window_name}'],
+            check=False,
+            capture=True,
+        )
+    except Exception:
+        return ()
+    if getattr(cp, 'returncode', 0) != 0:
+        return ()
+    names = []
+    for line in str(getattr(cp, 'stdout', '') or '').splitlines():
+        name = line.strip()
+        if name:
+            names.append(f'{session_name}:{name}')
+    return tuple(names)
+
+
+def _active_window_pane_styles(backend, *, session_name: str) -> dict[str, dict[str, str]]:
+    try:
+        cp = backend._tmux_run(  # type: ignore[attr-defined]
+            [
+                'list-panes',
+                '-a',
+                '-F',
+                '#{session_name}\t#{window_name}\t#{pane_id}\t#{pane_active}\t#{@ccb_role}\t#{@ccb_border_style}\t#{@ccb_active_border_style}',
+            ],
+            check=False,
+            capture=True,
+        )
+    except Exception:
+        return {}
+    if getattr(cp, 'returncode', 0) != 0:
+        return {}
+    styles: dict[str, dict[str, str]] = {}
+    for line in str(getattr(cp, 'stdout', '') or '').splitlines():
+        parts = line.split('\t')
+        if len(parts) != 7:
+            continue
+        pane_session, window_name, _pane_id, pane_active, role, border_style, active_border_style = (
+            item.strip() for item in parts
+        )
+        if pane_session != session_name or pane_active != '1' or role != 'agent':
+            continue
+        window_styles: dict[str, str] = {}
+        if border_style:
+            window_styles['pane-border-style'] = border_style
+        if active_border_style:
+            window_styles['pane-active-border-style'] = active_border_style
+        if window_styles:
+            styles[window_name] = window_styles
+    return styles
+
+
+def _window_name_from_target(*, session_name: str, target: str) -> str:
+    prefix = f'{session_name}:'
+    if target.startswith(prefix):
+        return target[len(prefix) :]
+    return ''
 
 
 __all__ = ['apply_project_tmux_ui']

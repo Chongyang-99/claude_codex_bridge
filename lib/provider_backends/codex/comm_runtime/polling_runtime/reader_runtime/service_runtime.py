@@ -55,16 +55,16 @@ def read_matching_since(
         switched = maybe_rotate_log(reader, cursor=cursor, log_path=log_path)
         if switched:
             if not block:
-                return no_match_state(cursor.current_path, cursor)
+                return empty_match_state(cursor.current_path, cursor)
             time.sleep(reader._poll_interval)
             continue
 
         if not block:
-            return no_match_state(log_path, cursor)
+            return empty_match_state(log_path, cursor)
 
         time.sleep(reader._poll_interval)
         if time.time() >= cursor.deadline:
-            return no_match_state(log_path, cursor)
+            return empty_match_state(log_path, cursor)
 
 
 def no_match_state(log_path, cursor) -> tuple[None, dict[str, Any]]:
@@ -129,6 +129,10 @@ def maybe_rotate_log(reader, *, cursor, log_path) -> bool:
         rescan_interval=cursor.rescan_interval,
     )
     return switched
+
+
+def empty_match_state(log_path, cursor) -> tuple[None, dict[str, Any]]:
+    return None, state_payload(log_path, cursor.offset, last_rescan=cursor.last_rescan)
 
 
 def file_size(log_path) -> int | None:
