@@ -25,6 +25,7 @@ from ccbd.project_view import (
     ProjectViewStateStore,
     resolve_agent_activity,
 )
+import ccbd.project_view.service as project_view_service
 from ccbd.services.dispatcher import JobDispatcher
 from ccbd.services.mount import MountManager
 from ccbd.services.project_namespace import ProjectNamespaceController
@@ -439,6 +440,7 @@ def test_project_view_filters_dismissed_comms_from_shared_state(tmp_path: Path) 
             dispatcher=dispatcher,
             state_store=state_store,
             clock=lambda: NOW,
+            cache_ttl_ms=0,
         )
     )
 
@@ -765,6 +767,242 @@ def test_project_view_comms_folds_reply_delivery_by_reply_record_without_body_jo
     assert comms[0]['body_preview'] == 'check structured reply delivery folding'
 
 
+def test_project_view_resolves_reply_delivery_sources_without_jsonl_list_all(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-comms-indexed-replies'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    for index in range(3):
+        source = _job(
+            project_id,
+            job_id=f'job_source_indexed_{index}',
+            sender='agent2',
+            target='agent3',
+            status=JobStatus.COMPLETED,
+            updated_at=f'2026-05-20T12:00:0{index}Z',
+            body=f'indexed reply delivery {index}',
+        )
+        dispatcher._append_job(source)
+        _record_reply_for_source(dispatcher, source, reply_id=f'reply_indexed_{index}')
+        dispatcher._append_job(
+            _reply_delivery_job(
+                project_id,
+                job_id=f'job_delivery_indexed_{index}',
+                source_agent='agent3',
+                source_job_id='',
+                target='agent2',
+                status=JobStatus.COMPLETED,
+                updated_at=f'2026-05-20T12:00:1{index}Z',
+                reply_id=f'reply_indexed_{index}',
+                body=f'CCB_REPLY from=agent3 reply=reply_indexed_{index} status=completed\n\nOK',
+            )
+        )
+    attempt_store = dispatcher._message_bureau_control._attempt_store
+    reply_store = dispatcher._message_bureau_control._reply_store
+    message_store = dispatcher._message_bureau_control._message_store
+    monkeypatch.setattr(attempt_store, 'list_all', lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected attempt list_all')))
+    monkeypatch.setattr(attempt_store, 'list_message', lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected attempt list_message')))
+    monkeypatch.setattr(reply_store, 'list_all', lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected reply list_all')))
+    monkeypatch.setattr(message_store, 'list_all', lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected message list_all')))
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            clock=lambda: NOW,
+        )
+    )
+
+    comms = service.build_response()['view']['comms']
+
+    assert [item['id'] for item in comms] == [
+        'job_source_indexed_2',
+        'job_source_indexed_1',
+        'job_source_indexed_0',
+    ]
+    assert {item['business_status'] for item in comms} == {'replied'}
+
+
+def test_reply_delivery_lookup_fallback_avoids_jsonl_list_all(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-comms-fallback'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    source = _job(
+        project_id,
+        job_id='job_source_fallback',
+        sender='agent2',
+        target='agent3',
+        status=JobStatus.COMPLETED,
+        updated_at='2026-05-20T12:00:01Z',
+        body='fallback reply delivery',
+    )
+    dispatcher._append_job(source)
+    _record_reply_for_source(dispatcher, source, reply_id='reply_fallback')
+    delivery = _reply_delivery_job(
+        project_id,
+        job_id='job_delivery_fallback',
+        source_agent='agent3',
+        source_job_id='',
+        target='agent2',
+        status=JobStatus.COMPLETED,
+        updated_at='2026-05-20T12:00:02Z',
+        reply_id='reply_fallback',
+        body='CCB_REPLY from=agent3 reply=reply_fallback status=completed\n\nOK',
+    )
+    dispatcher._append_job(delivery)
+    attempt_store = dispatcher._message_bureau_control._attempt_store
+    reply_store = dispatcher._message_bureau_control._reply_store
+    message_store = dispatcher._message_bureau_control._message_store
+    monkeypatch.setattr(attempt_store, 'list_all', lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected attempt list_all')))
+    monkeypatch.setattr(attempt_store, 'list_message', lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected attempt list_message')))
+    monkeypatch.setattr(reply_store, 'list_all', lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected reply list_all')))
+    monkeypatch.setattr(message_store, 'list_all', lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected message list_all')))
+
+    deliveries = project_view_service._reply_deliveries_by_source_job_id(dispatcher, (source, delivery))
+
+    assert deliveries == {source.job_id: delivery}
+
+
+def test_project_view_recent_jobs_uses_bounded_tail_reads(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-comms-tail'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    for index in range(160):
+        dispatcher._append_job(
+            _job(
+                project_id,
+                job_id=f'job_tail_{index:03d}',
+                sender='cmd',
+                target='agent1',
+                status=JobStatus.COMPLETED,
+                updated_at=f'2026-05-20T12:{index // 60:02d}:{index % 60:02d}Z',
+                body=f'tail job {index}',
+            )
+        )
+    monkeypatch.setattr(
+        dispatcher._job_store,
+        'list_agent',
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError('unexpected full list_agent')),
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            clock=lambda: NOW,
+        )
+    )
+
+    comms = service.build_response()['view']['comms']
+
+    assert [item['id'] for item in comms] == [
+        'job_tail_159',
+        'job_tail_158',
+        'job_tail_157',
+        'job_tail_156',
+        'job_tail_155',
+        'job_tail_154',
+        'job_tail_153',
+        'job_tail_152',
+    ]
+
+
+def test_project_view_backfills_reply_delivery_source_outside_recent_tail(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-comms-delivery-tail'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    source = _job(
+        project_id,
+        job_id='job_old_reply_source',
+        sender='agent2',
+        target='agent3',
+        status=JobStatus.COMPLETED,
+        updated_at='2026-05-20T10:00:00Z',
+        body='old source outside recent tail',
+    )
+    dispatcher._append_job(source)
+    _record_reply_for_source(dispatcher, source, reply_id='reply_old_source')
+    for index in range(140):
+        dispatcher._append_job(
+            _job(
+                project_id,
+                job_id=f'job_tail_filler_{index:03d}',
+                sender='cmd',
+                target='agent3',
+                status=JobStatus.COMPLETED,
+                updated_at=f'2026-05-20T11:{index // 60:02d}:{index % 60:02d}Z',
+                body=f'filler {index}',
+            )
+        )
+    delivery = _reply_delivery_job(
+        project_id,
+        job_id='job_recent_reply_delivery',
+        source_agent='agent3',
+        source_job_id='',
+        target='agent2',
+        status=JobStatus.COMPLETED,
+        updated_at='2026-05-20T12:00:30Z',
+        reply_id='reply_old_source',
+        body='CCB_REPLY from=agent3 reply=reply_old_source status=completed\n\nOK',
+    )
+    dispatcher._append_job(delivery)
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            clock=lambda: NOW,
+        )
+    )
+
+    comms = service.build_response()['view']['comms']
+
+    assert comms[0]['id'] == source.job_id
+    assert comms[0]['business_status'] == 'replied'
+    assert comms[0]['reply_delivery_job_id'] == delivery.job_id
+
+
 def test_project_view_comms_marks_agent_reply_delivery_pending(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-comms-pending-reply'
     project_root.mkdir()
@@ -915,8 +1153,8 @@ def test_project_view_sequence_ignores_generated_at_only(tmp_path: Path) -> None
     first = service.build_response()
     second = service.build_response()
 
-    assert first['cache']['generated_at'] != second['cache']['generated_at']
-    assert first['view']['generated_at'] != second['view']['generated_at']
+    assert first['cache']['generated_at'] == second['cache']['generated_at']
+    assert first['view']['generated_at'] == second['view']['generated_at']
     assert first['cache']['sequence'] == second['cache']['sequence']
 
 
@@ -942,6 +1180,7 @@ def test_project_view_sequence_changes_when_content_changes(tmp_path: Path) -> N
             dispatcher=dispatcher,
             clock=lambda: NOW,
             sequence_cache=ProjectViewSequenceCache(),
+            cache_ttl_ms=0,
         )
     )
 
@@ -961,6 +1200,54 @@ def test_project_view_sequence_changes_when_content_changes(tmp_path: Path) -> N
     assert [item['id'] for item in second['view']['comms']] == ['job_running_1234']
 
 
+def test_project_view_cache_hit_skips_tmux_calls(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-cache-tmux'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('agent1', project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    ProjectNamespaceStateStore(layout).save(
+        ProjectNamespaceState(
+            project_id=project_id,
+            namespace_epoch=3,
+            tmux_socket_path=str(layout.ccbd_tmux_socket_path),
+            tmux_session_name='ccb-cache-tmux',
+            layout_version=2,
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    backend = _SnapshotBackend()
+    controller = ProjectNamespaceController(
+        layout,
+        project_id,
+        backend_factory=lambda socket_path=None: backend,
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            namespace_controller=controller,
+            clock=lambda: NOW,
+        )
+    )
+
+    first = service.build_response()
+    backend.calls.clear()
+    second = service.build_response()
+
+    assert first is second
+    assert backend.calls == []
+
+
 class _FocusBackend:
     def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
         del check, timeout
@@ -971,7 +1258,14 @@ class _FocusBackend:
 
 
 class _SnapshotBackend:
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
     def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
+        self.calls.append(list(args))
+        return self._snapshot_run(args, capture=capture, check=check, timeout=timeout)
+
+    def _snapshot_run(self, args: list[str], *, capture=False, check=False, timeout=None):
         del check, timeout
         assert capture is True
         if args[:3] == ['display-message', '-p', '-t']:
@@ -1007,6 +1301,7 @@ class _SnapshotBackend:
 
 class _ProviderPromptBackend(_SnapshotBackend):
     def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
+        self.calls.append(list(args))
         if args[:3] == ['capture-pane', '-p', '-t']:
             return type(
                 'CP',
@@ -1021,14 +1316,16 @@ class _ProviderPromptBackend(_SnapshotBackend):
                     'stderr': '',
                 },
             )()
-        return super()._tmux_run(args, capture=capture, check=check, timeout=timeout)
+        return self._snapshot_run(args, capture=capture, check=check, timeout=timeout)
 
 
 class _ProviderIdleAfterRequestBackend(_SnapshotBackend):
     def __init__(self, job_id: str) -> None:
+        super().__init__()
         self._job_id = job_id
 
     def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
+        self.calls.append(list(args))
         if args[:3] == ['capture-pane', '-p', '-t']:
             return type(
                 'CP',
@@ -1046,11 +1343,12 @@ class _ProviderIdleAfterRequestBackend(_SnapshotBackend):
                     'stderr': '',
                 },
             )()
-        return super()._tmux_run(args, capture=capture, check=check, timeout=timeout)
+        return self._snapshot_run(args, capture=capture, check=check, timeout=timeout)
 
 
 class _ProviderIdleWithoutAnchorBackend(_SnapshotBackend):
     def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
+        self.calls.append(list(args))
         if args[:3] == ['capture-pane', '-p', '-t']:
             return type(
                 'CP',
@@ -1067,7 +1365,7 @@ class _ProviderIdleWithoutAnchorBackend(_SnapshotBackend):
                     'stderr': '',
                 },
             )()
-        return super()._tmux_run(args, capture=capture, check=check, timeout=timeout)
+        return self._snapshot_run(args, capture=capture, check=check, timeout=timeout)
 
 
 def test_project_view_marks_active_window_and_agent_from_namespace_focus(tmp_path: Path) -> None:
@@ -1163,6 +1461,122 @@ def test_project_view_reads_window_and_sidebar_tmux_metadata(tmp_path: Path) -> 
         ('main', '@1', 0, '%90'),
         ('ops', '@2', 1, '%91'),
     ]
+
+
+def test_project_view_captures_each_running_pane_once_per_build(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-capture-once'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('agent3', project_id=project_id, state=AgentState.BUSY))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    ProjectNamespaceStateStore(layout).save(
+        ProjectNamespaceState(
+            project_id=project_id,
+            namespace_epoch=3,
+            tmux_socket_path=str(layout.ccbd_tmux_socket_path),
+            tmux_session_name='ccb-capture-once',
+            layout_version=2,
+        )
+    )
+    old_job = _job(
+        project_id,
+        job_id='job_capture_once',
+        sender='agent1',
+        target='agent3',
+        status=JobStatus.RUNNING,
+        updated_at='2026-05-20T11:57:00Z',
+    )
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    dispatcher._append_job(old_job)
+    dispatcher._state.mark_active_for(TargetKind.AGENT, 'agent3', old_job.job_id)
+    backend = _ProviderIdleWithoutAnchorBackend()
+    controller = ProjectNamespaceController(
+        layout,
+        project_id,
+        backend_factory=lambda socket_path=None: backend,
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            namespace_controller=controller,
+            clock=lambda: NOW,
+        )
+    )
+
+    view = service.build_response()['view']
+
+    assert view['comms'][0]['id'] == old_job.job_id
+    assert [
+        args
+        for args in backend.calls
+        if args[:3] == ['capture-pane', '-p', '-t'] and args[3] == '%3'
+    ] == [['capture-pane', '-p', '-t', '%3', '-S', '-30']]
+
+
+def test_project_view_reuses_namespace_backend_within_build(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-backend-once'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('agent3', project_id=project_id, state=AgentState.BUSY))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    ProjectNamespaceStateStore(layout).save(
+        ProjectNamespaceState(
+            project_id=project_id,
+            namespace_epoch=3,
+            tmux_socket_path=str(layout.ccbd_tmux_socket_path),
+            tmux_session_name='ccb-backend-once',
+            layout_version=2,
+        )
+    )
+    old_job = _job(
+        project_id,
+        job_id='job_backend_once',
+        sender='agent1',
+        target='agent3',
+        status=JobStatus.RUNNING,
+        updated_at='2026-05-20T11:57:00Z',
+    )
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    dispatcher._append_job(old_job)
+    dispatcher._state.mark_active_for(TargetKind.AGENT, 'agent3', old_job.job_id)
+    backend = _ProviderIdleWithoutAnchorBackend()
+    backend_factory_calls = []
+    controller = ProjectNamespaceController(
+        layout,
+        project_id,
+        backend_factory=lambda socket_path=None: backend_factory_calls.append(socket_path) or backend,
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            namespace_controller=controller,
+            clock=lambda: NOW,
+        )
+    )
+
+    service.build_response()
+
+    assert backend_factory_calls == [str(layout.ccbd_tmux_socket_path)]
 
 
 def test_project_view_marks_provider_prompt_as_pending(tmp_path: Path) -> None:

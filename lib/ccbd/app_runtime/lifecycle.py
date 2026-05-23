@@ -11,6 +11,8 @@ from storage.path_helpers import socket_placement_payload
 
 from .request_guard import lifecycle_is_stopping
 
+DEFAULT_CCBD_POLL_INTERVAL_S = 1.0
+
 
 def start(app):
     with app.ownership_guard.startup_lock():
@@ -114,7 +116,7 @@ def _end_maintenance_tick(app) -> None:
         return
 
 
-def serve_forever(app, *, poll_interval: float = 0.2) -> None:
+def serve_forever(app, *, poll_interval: float = DEFAULT_CCBD_POLL_INTERVAL_S) -> None:
     if app.lease is None:
         start(app)
     try:
@@ -344,7 +346,7 @@ def effective_poll_interval(poll_interval: float) -> float:
     try:
         requested = float(poll_interval)
     except Exception:
-        requested = 0.2
+        requested = DEFAULT_CCBD_POLL_INTERVAL_S
     try:
         minimum = float(os.environ.get('CCB_CCBD_MIN_POLL_INTERVAL_S', '0'))
     except Exception:

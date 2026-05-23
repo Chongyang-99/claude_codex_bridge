@@ -54,6 +54,28 @@ class AttemptStore:
             loader=AttemptRecord.from_record,
         )
 
+    def get_latest_by_message_id(self, message_id: str, *, exclude_job_id: str | None = None) -> AttemptRecord | None:
+        excluded = str(exclude_job_id or '').strip()
+        return self._store.find_last(
+            self._layout.ccbd_attempts_path,
+            predicate=lambda payload: (
+                str(payload.get('message_id') or '') == message_id
+                and (not excluded or str(payload.get('job_id') or '') != excluded)
+            ),
+            loader=AttemptRecord.from_record,
+        )
+
+    def get_latest_by_message_agent(self, message_id: str, agent_name: str) -> AttemptRecord | None:
+        normalized = normalize_agent_name(agent_name)
+        return self._store.find_last(
+            self._layout.ccbd_attempts_path,
+            predicate=lambda payload: (
+                str(payload.get('message_id') or '') == message_id
+                and normalize_agent_name(str(payload.get('agent_name') or '')) == normalized
+            ),
+            loader=AttemptRecord.from_record,
+        )
+
     def list_message(self, message_id: str) -> list[AttemptRecord]:
         return [record for record in self.list_all() if record.message_id == message_id]
 

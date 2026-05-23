@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ccbd.app_runtime.lifecycle import DEFAULT_CCBD_POLL_INTERVAL_S
 from ccbd.app_runtime import (
     execute_project_stop as execute_project_stop_impl,
     finalize_project_stop as finalize_project_stop_impl,
@@ -39,7 +40,7 @@ class CcbdApp:
     def heartbeat(self):
         return heartbeat_impl(self)
 
-    def serve_forever(self, *, poll_interval: float = 0.2) -> None:
+    def serve_forever(self, *, poll_interval: float = DEFAULT_CCBD_POLL_INTERVAL_S) -> None:
         serve_forever_impl(self, poll_interval=poll_interval)
 
     def request_shutdown(self) -> None:

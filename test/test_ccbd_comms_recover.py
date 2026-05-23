@@ -361,6 +361,7 @@ def test_project_view_marks_recoverable_and_clears_after_recovery(tmp_path: Path
             namespace_state_store=ProjectNamespaceStateStore(layout),
             dispatcher=dispatcher,
             clock=lambda: NOW,
+            cache_ttl_ms=0,
         )
     )
 

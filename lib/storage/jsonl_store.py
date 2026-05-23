@@ -68,6 +68,49 @@ class JsonlStore:
                 rows.append(loader(payload) if loader else payload)
         return current, rows
 
+    def read_tail(
+        self,
+        path: Path,
+        limit: int,
+        loader: Callable[[dict[str, Any]], T] | None = None,
+    ) -> list[T] | list[dict[str, Any]]:
+        if limit < 0:
+            raise ValueError('limit cannot be negative')
+        if limit == 0:
+            return []
+        target = Path(path)
+        if not target.exists():
+            return []
+        rows: list[T] | list[dict[str, Any]] = []
+        with target.open('rb') as handle:
+            handle.seek(0, 2)
+            position = handle.tell()
+            buffer = b''
+            while position > 0 and len(rows) < limit:
+                read_size = min(8192, position)
+                position -= read_size
+                handle.seek(position)
+                chunk = handle.read(read_size)
+                buffer = chunk + buffer
+                lines = buffer.splitlines()
+                if position > 0 and buffer and not buffer.startswith((b'\n', b'\r')):
+                    buffer = lines[0] if lines else buffer
+                    lines = lines[1:]
+                else:
+                    buffer = b''
+                for raw in reversed(lines):
+                    if len(rows) >= limit:
+                        break
+                    text = raw.decode('utf-8').strip()
+                    if not text:
+                        continue
+                    payload = json.loads(text)
+                    if not isinstance(payload, dict):
+                        raise ValueError(f'{path}: expected JSON object rows')
+                    rows.append(loader(payload) if loader else payload)
+        rows.reverse()
+        return rows
+
     def find_last(
         self,
         path: Path,

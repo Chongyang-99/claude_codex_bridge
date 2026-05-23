@@ -116,6 +116,9 @@ def test_attempt_and_reply_stores_support_message_and_agent_queries(tmp_path: Pa
     latest_attempt = attempt_store.get_latest('att-2')
     assert latest_attempt is not None
     assert latest_attempt.attempt_state is AttemptState.COMPLETED
+    assert attempt_store.get_latest_by_message_id('msg-1').attempt_id == 'att-2'
+    assert attempt_store.get_latest_by_message_id('msg-1', exclude_job_id='job-2').attempt_id == 'att-1'
+    assert attempt_store.get_latest_by_message_agent('msg-1', 'Agent1').attempt_id == 'att-2'
     assert [attempt.attempt_id for attempt in attempt_store.list_message('msg-1')] == ['att-1', 'att-2']
     assert [attempt.attempt_id for attempt in attempt_store.list_agent('Agent1')] == ['att-1', 'att-2']
 

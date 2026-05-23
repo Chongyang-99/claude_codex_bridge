@@ -7,6 +7,7 @@ import time
 
 _ACCEPT_POLL_TIMEOUT_S = 0.2
 _WORKER_JOIN_TIMEOUT_S = 2.0
+_MAX_QUEUED_CONNECTION_AGE_S = 1.0
 
 
 def serve_forever(server, *, poll_interval: float = 0.2, on_tick=None) -> None:
@@ -77,6 +78,12 @@ def stop_worker(server) -> None:
     close_pending_connections(server)
     try:
         server._connection_queue.put_nowait(server._worker_sentinel)
+    except queue.Full:
+        close_oldest_queued_connection(server)
+        try:
+            server._connection_queue.put_nowait(server._worker_sentinel)
+        except Exception:
+            pass
     except Exception:
         pass
     if worker is not threading.current_thread():
@@ -98,12 +105,17 @@ def stop_maintenance_worker(server) -> None:
 
 def enqueue_connection(server, conn) -> None:
     if server._stop_event.is_set():
-        try:
-            conn.close()
-        except OSError:
-            pass
+        close_connection(conn)
         return
-    server._connection_queue.put((conn, time.monotonic()))
+    item = (conn, time.monotonic())
+    try:
+        server._connection_queue.put_nowait(item)
+    except queue.Full:
+        close_oldest_queued_connection(server)
+        try:
+            server._connection_queue.put_nowait(item)
+        except queue.Full:
+            close_connection(conn)
 
 
 def close_pending_connections(server) -> None:
@@ -115,10 +127,29 @@ def close_pending_connections(server) -> None:
         if item is server._worker_sentinel:
             continue
         conn = item[0] if isinstance(item, tuple) else item
+        close_connection(conn)
+
+
+def close_oldest_queued_connection(server) -> None:
+    try:
+        item = server._connection_queue.get_nowait()
+    except queue.Empty:
+        return
+    if item is server._worker_sentinel:
         try:
-            conn.close()
-        except OSError:
+            server._connection_queue.put_nowait(item)
+        except queue.Full:
             pass
+        return
+    conn = item[0] if isinstance(item, tuple) else item
+    close_connection(conn)
+
+
+def close_connection(conn) -> None:
+    try:
+        conn.close()
+    except OSError:
+        pass
 
 
 def worker_loop(server, *, interval: float, on_tick) -> None:
@@ -136,6 +167,9 @@ def worker_loop(server, *, interval: float, on_tick) -> None:
                 conn, enqueued_at = item
             else:
                 conn, enqueued_at = item, None
+            if queued_connection_expired(enqueued_at):
+                close_connection(conn)
+                continue
             handled_op = handle_worker_connection(server, conn, enqueued_at=enqueued_at)
             if server._stop_event.is_set():
                 continue
@@ -190,6 +224,15 @@ def handle_worker_connection(server, conn, *, enqueued_at=None) -> str | None:
         return None
 
 
+def queued_connection_expired(enqueued_at) -> bool:
+    if enqueued_at is None:
+        return False
+    try:
+        return time.monotonic() - float(enqueued_at) > _MAX_QUEUED_CONNECTION_AGE_S
+    except Exception:
+        return False
+
+
 def next_timeout(*, next_tick_at: float, on_tick) -> float | None:
     if on_tick is None:
         return _ACCEPT_POLL_TIMEOUT_S
@@ -205,6 +248,8 @@ def next_worker_timeout(*, server, next_tick_at: float, on_tick) -> float | None
 def run_tick_if_needed(*, server, on_tick, next_tick_at: float, interval: float) -> float:
     if on_tick is None:
         return next_tick_at
+    if request_backlog_pending(server):
+        return time.monotonic() + interval
     server.queue_periodic_maintenance_tick()
     return post_request_tick(
         server=server,
@@ -250,14 +295,25 @@ def run_after_response_actions(server) -> None:
             break
 
 
+def request_backlog_pending(server) -> bool:
+    try:
+        return not server._connection_queue.empty()
+    except Exception:
+        return False
+
+
 __all__ = [
     'close_pending_connections',
+    'close_connection',
+    'close_oldest_queued_connection',
     'enqueue_connection',
     'handle_worker_connection',
     'maintenance_worker_loop',
     'next_timeout',
     'next_worker_timeout',
     'post_request_tick',
+    'queued_connection_expired',
+    'request_backlog_pending',
     'run_after_response_actions',
     'run_queued_maintenance_ticks',
     'run_tick_if_needed',

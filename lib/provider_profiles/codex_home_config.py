@@ -34,6 +34,8 @@ _CODEX_PLUGIN_SHA_RELATIVE = Path('.tmp') / 'plugins.sha'
 _CODEX_SKILLS_PROJECTION_LABEL = 'codex-inherited-skills'
 _CODEX_COMMANDS_PROJECTION_LABEL = 'codex-inherited-commands'
 _CODEX_PLUGIN_PROJECTION_LABEL = 'codex-plugin-bundle'
+_CODEX_OWNED_SKILL_NAMES = ('ask', 'ccb-config')
+_CODEX_LEGACY_OWNED_SKILL_NAMES = ('ccb_config',)
 _CODEX_PLUGIN_REQUIRED_RELATIVE_PATHS = (
     Path('.agents') / 'plugins' / 'marketplace.json',
     Path('.agents') / 'skills',
@@ -105,7 +107,7 @@ def materialize_codex_home_config(
         profile=profile,
         authority=authority,
     )
-    _route_inherited_tree(
+    _copy_inherited_tree(
         source_home / 'skills',
         target_home / 'skills',
         enabled=_inherits_skills(profile),
@@ -544,6 +546,47 @@ def _route_inherited_tree(source: Path, target: Path, *, enabled: bool, label: s
         remove_projected_path(target, label=label)
         return
     route_projected_tree(source, target, label=label)
+
+
+def _copy_inherited_tree(source: Path, target: Path, *, enabled: bool, label: str) -> None:
+    source = Path(source).expanduser()
+    target = Path(target).expanduser()
+    if not enabled:
+        remove_projected_path(target, label=label)
+        return
+    if not source.is_dir():
+        remove_projected_path(target, label=label)
+        return
+    if _same_path(source, target):
+        return
+    marker = Path(f'{target}.ccb-projection.json')
+    if (target.exists() or target.is_symlink()) and not marker.is_file():
+        if target.is_symlink():
+            _repair_owned_codex_skill_entries(source, target)
+            return
+        if not target.is_dir() or tree_content_fingerprint(target) != tree_content_fingerprint(source):
+            _repair_owned_codex_skill_entries(source, target)
+            return
+    if copy_projected_tree_to_cache(source, target, label=label):
+        return
+    remove_projected_path(target, label=label)
+
+
+def _repair_owned_codex_skill_entries(source: Path, target: Path) -> None:
+    if not target.is_dir() or target.is_symlink():
+        return
+    for legacy_name in _CODEX_LEGACY_OWNED_SKILL_NAMES:
+        _remove_path(target / legacy_name)
+    for skill_name in _CODEX_OWNED_SKILL_NAMES:
+        source_skill = source / skill_name
+        if not source_skill.is_dir():
+            continue
+        target_skill = target / skill_name
+        _remove_path(target_skill)
+        try:
+            shutil.copytree(source_skill, target_skill)
+        except Exception:
+            _remove_path(target_skill)
 
 
 def _sync_codex_plugin_projection(

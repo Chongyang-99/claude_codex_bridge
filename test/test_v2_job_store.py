@@ -187,6 +187,30 @@ def test_job_store_supports_explicit_target_lookup(tmp_path: Path) -> None:
     assert latest.provider_options == {'no_wrap': True}
 
 
+def test_job_store_lists_agent_tail(tmp_path: Path) -> None:
+    layout = PathLayout(tmp_path / 'repo')
+    store = JobStore(layout)
+    for index in range(6):
+        store.append(
+            JobRecord(
+                job_id=f'job-{index}',
+                submission_id=None,
+                agent_name='agent1',
+                provider='codex',
+                request=_envelope(),
+                status=JobStatus.COMPLETED,
+                terminal_decision={'reason': 'task_complete'},
+                cancel_requested_at=None,
+                created_at='2026-03-18T00:00:00Z',
+                updated_at=f'2026-03-18T00:00:0{index}Z',
+            )
+        )
+
+    records = store.list_agent_tail('agent1', limit=3)
+
+    assert [record.job_id for record in records] == ['job-3', 'job-4', 'job-5']
+
+
 def test_job_store_roundtrips_silence_on_success_request_flag(tmp_path: Path) -> None:
     layout = PathLayout(tmp_path / 'repo')
     store = JobStore(layout)

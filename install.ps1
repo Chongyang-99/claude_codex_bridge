@@ -88,6 +88,13 @@ function Show-Usage {
   Write-Host "  - Python 3.10+"
 }
 
+function Resolve-CodexSourceHome {
+  if ($env:CODEX_HOME -and ($env:CODEX_HOME -notmatch "[/\\]\.ccb[/\\]agents[/\\][^/\\]+[/\\]provider-state[/\\]codex[/\\]home$")) {
+    return $env:CODEX_HOME
+  }
+  return (Join-Path $env:USERPROFILE ".codex")
+}
+
 function Test-IsWindowsStoreAliasPath {
   param([string]$PathText)
   if ([string]::IsNullOrWhiteSpace($PathText)) {
@@ -608,7 +615,7 @@ function Cleanup-LegacyFiles {
 
 function Install-CodexSkills {
   $skillsSrc = Join-Path (Join-Path $repoRoot "inherit_skills") "codex_skills"
-  $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
+  $codexHome = Resolve-CodexSourceHome
   $skillsDst = Join-Path $codexHome "skills"
 
   if (-not (Test-Path $skillsSrc)) {
@@ -619,13 +626,11 @@ function Install-CodexSkills {
     New-Item -ItemType Directory -Path $skillsDst -Force | Out-Null
   }
 
-  $deprecatedSkills = @("ping", "pend", "autonew", "all-plan", "file-op")
-  foreach ($skill in $deprecatedSkills) {
-    $skillPath = Join-Path $skillsDst $skill
-    if (Test-Path $skillPath) {
-      Remove-Item -Recurse -Force $skillPath
-      Write-Host "  Removed obsolete skill: $skill"
-    }
+  Remove-Item -Recurse -Force (Join-Path $skillsDst "ccb_config") -ErrorAction SilentlyContinue
+
+  $legacySkills = @("ping", "pend", "autonew", "all-plan", "file-op")
+  foreach ($skill in $legacySkills) {
+    Remove-Item -Recurse -Force (Join-Path $skillsDst $skill) -ErrorAction SilentlyContinue
   }
 
   Write-Host "Installing inherited Codex skills (PowerShell SKILL.md template)..."
@@ -635,9 +640,10 @@ function Install-CodexSkills {
     $dstDir = Join-Path $skillsDst $skillName
     $dstSkillMd = Join-Path $dstDir "SKILL.md"
 
-    if (-not (Test-Path $dstDir)) {
-      New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+    if (Test-Path $dstDir) {
+      Remove-Item -Recurse -Force $dstDir
     }
+    New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
 
     $srcSkillMd = Join-Path $srcDir "SKILL.md.powershell"
     if (-not (Test-Path $srcSkillMd)) {
@@ -654,6 +660,9 @@ function Install-CodexSkills {
       $subDirName = $_.Name
       $srcSubDir = $_.FullName
       $dstSubDir = Join-Path $dstDir $subDirName
+      if (Test-Path $dstSubDir) {
+        Remove-Item -Recurse -Force $dstSubDir
+      }
       Copy-Item -Recurse -Force $srcSubDir $dstSubDir
     }
 
@@ -679,13 +688,9 @@ function Install-DroidSkills {
     New-Item -ItemType Directory -Path $skillsDst -Force | Out-Null
   }
 
-  $deprecatedSkills = @("ping", "pend", "autonew", "all-plan")
-  foreach ($skill in $deprecatedSkills) {
-    $skillPath = Join-Path $skillsDst $skill
-    if (Test-Path $skillPath) {
-      Remove-Item -Recurse -Force $skillPath
-      Write-Host "  Removed obsolete skill: $skill"
-    }
+  $legacySkills = @("ping", "pend", "autonew", "all-plan")
+  foreach ($skill in $legacySkills) {
+    Remove-Item -Recurse -Force (Join-Path $skillsDst $skill) -ErrorAction SilentlyContinue
   }
 
   Write-Host "Installing Droid/Factory ask skill..."
@@ -771,13 +776,11 @@ function Install-ClaudeConfig {
       New-Item -ItemType Directory -Path $skillsDir -Force | Out-Null
     }
 
-    $deprecatedSkills = @("ping", "pend", "autonew", "all-plan", "docs", "tp", "tr", "file-op", "review", "continue")
-    foreach ($skill in $deprecatedSkills) {
-      $skillPath = Join-Path $skillsDir $skill
-      if (Test-Path $skillPath) {
-        Remove-Item -Recurse -Force $skillPath
-        Write-Host "  Removed obsolete skill: $skill"
-      }
+    Remove-Item -Recurse -Force (Join-Path $skillsDir "ccb_config") -ErrorAction SilentlyContinue
+
+    $legacySkills = @("ping", "pend", "autonew", "all-plan", "docs", "tp", "tr", "file-op", "review", "continue")
+    foreach ($skill in $legacySkills) {
+      Remove-Item -Recurse -Force (Join-Path $skillsDir $skill) -ErrorAction SilentlyContinue
     }
 
     Write-Host "Installing inherited Claude skills (PowerShell SKILL.md template)..."
@@ -787,9 +790,10 @@ function Install-ClaudeConfig {
       $dstDir = Join-Path $skillsDir $skillName
       $dstSkillMd = Join-Path $dstDir "SKILL.md"
 
-      if (-not (Test-Path $dstDir)) {
-        New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
+      if (Test-Path $dstDir) {
+        Remove-Item -Recurse -Force $dstDir
       }
+      New-Item -ItemType Directory -Path $dstDir -Force | Out-Null
 
       $srcSkillMd = Join-Path $srcDir "SKILL.md.powershell"
       if (-not (Test-Path $srcSkillMd)) {
@@ -806,6 +810,9 @@ function Install-ClaudeConfig {
         $subDirName = $_.Name
         $srcSubDir = $_.FullName
         $dstSubDir = Join-Path $dstDir $subDirName
+        if (Test-Path $dstSubDir) {
+          Remove-Item -Recurse -Force $dstSubDir
+        }
         Copy-Item -Recurse -Force $srcSubDir $dstSubDir
       }
 
@@ -905,9 +912,13 @@ function Uninstall-Native {
 
   # 3. Remove Claude skills
   $claudeSkillsDir = Join-Path $env:USERPROFILE ".claude\skills"
-  $ccbSkills = @("ask", "ccb_config", "ping", "pend", "autonew", "all-plan", "docs", "tp", "tr", "file-op", "review", "continue")
+  $ccbSkills = @("ask", "ccb-config")
+  $legacySkills = @("ccb_config", "ping", "pend", "autonew", "all-plan", "docs", "tp", "tr", "file-op", "review", "continue")
   if (Test-Path $claudeSkillsDir) {
     Write-Host "Removing CCB Claude skills..."
+    foreach ($skill in $legacySkills) {
+      Remove-Item -Recurse -Force (Join-Path $claudeSkillsDir $skill) -ErrorAction SilentlyContinue
+    }
     foreach ($skill in $ccbSkills) {
       $skillPath = Join-Path $claudeSkillsDir $skill
       if (Test-Path $skillPath) {
@@ -954,10 +965,13 @@ function Uninstall-Native {
   }
 
   # 6. Remove Codex skills
-  $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
+  $codexHome = Resolve-CodexSourceHome
   $codexSkillsDir = Join-Path $codexHome "skills"
   if (Test-Path $codexSkillsDir) {
     Write-Host "Removing CCB Codex skills..."
+    foreach ($skill in $legacySkills) {
+      Remove-Item -Recurse -Force (Join-Path $codexSkillsDir $skill) -ErrorAction SilentlyContinue
+    }
     foreach ($skill in $ccbSkills) {
       $skillPath = Join-Path $codexSkillsDir $skill
       if (Test-Path $skillPath) {
@@ -970,9 +984,14 @@ function Uninstall-Native {
   # 7. Remove Droid skills
   $factoryHome = if ($env:FACTORY_HOME) { $env:FACTORY_HOME } else { Join-Path $env:USERPROFILE ".factory" }
   $droidSkillsDir = Join-Path $factoryHome "skills"
+  $droidSkills = @("ask")
+  $legacyDroidSkills = @("ping", "pend", "autonew", "all-plan")
   if (Test-Path $droidSkillsDir) {
     Write-Host "Removing CCB Droid skills..."
-    foreach ($skill in $ccbSkills) {
+    foreach ($skill in $legacyDroidSkills) {
+      Remove-Item -Recurse -Force (Join-Path $droidSkillsDir $skill) -ErrorAction SilentlyContinue
+    }
+    foreach ($skill in $droidSkills) {
       $skillPath = Join-Path $droidSkillsDir $skill
       if (Test-Path $skillPath) {
         Remove-Item -Recurse -Force $skillPath

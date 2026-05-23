@@ -9,6 +9,9 @@ from .loop import serve_forever as serve_forever_impl, stop_maintenance_worker, 
 from .protocol import handle_connection
 
 
+_CONNECTION_QUEUE_MAXSIZE = 128
+
+
 class CcbdSocketServer:
     _MUTATING_OPS = frozenset({
         'submit',
@@ -28,7 +31,7 @@ class CcbdSocketServer:
         self._handlers: dict[str, callable] = {}
         self._request_guard = None
         self._server = None
-        self._connection_queue = queue.Queue()
+        self._connection_queue = queue.Queue(maxsize=_CONNECTION_QUEUE_MAXSIZE)
         self._worker_sentinel = object()
         self._worker_thread: threading.Thread | None = None
         self._maintenance_thread: threading.Thread | None = None

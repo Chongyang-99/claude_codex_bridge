@@ -26,6 +26,17 @@ def daemon_matches_project_config(context, client) -> bool:
     return actual_agents == tuple(expected['known_agents'])
 
 
+def inspection_matches_project_config(context, inspection) -> bool:
+    try:
+        expected = project_config_identity_payload(
+            load_project_config(context.project.project_root).config
+        )
+    except Exception:
+        return False
+    actual_signature = _inspection_config_signature(inspection)
+    return bool(actual_signature) and actual_signature == expected['config_signature']
+
+
 def connect_compatible_daemon(
     context,
     inspection,
@@ -39,6 +50,12 @@ def connect_compatible_daemon(
     if not inspection.socket_connectable:
         return None
     runtime_client_factory = runtime_client_factory or probe_client_factory
+    if inspection_matches_project_config(context, inspection):
+        return DaemonHandle(
+            client=runtime_client_factory(context.paths.ccbd_socket_path),
+            inspection=inspection,
+            started=False,
+        )
     probe_client = probe_client_factory(context.paths.ccbd_socket_path)
     try:
         matches_config = daemon_matches_project_config_fn(context, probe_client)
@@ -64,6 +81,15 @@ def connect_compatible_daemon(
         runtime_client_factory(context.paths.ccbd_socket_path),
     )
     return None
+
+
+def _inspection_config_signature(inspection) -> str:
+    lifecycle_signature = str(
+        getattr(getattr(inspection, 'lifecycle', None), 'config_signature', '') or ''
+    ).strip()
+    if lifecycle_signature:
+        return lifecycle_signature
+    return str(getattr(getattr(inspection, 'lease', None), 'config_signature', '') or '').strip()
 
 
 def shutdown_incompatible_daemon(
@@ -96,5 +122,6 @@ def shutdown_incompatible_daemon(
 __all__ = [
     'connect_compatible_daemon',
     'daemon_matches_project_config',
+    'inspection_matches_project_config',
     'shutdown_incompatible_daemon',
 ]

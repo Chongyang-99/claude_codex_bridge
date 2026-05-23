@@ -127,7 +127,7 @@ def test_materialize_codex_profile_copies_inherited_assets(tmp_path: Path, monke
     assert (runtime_home / 'config.toml').is_file()
     assert (runtime_home / 'auth.json').is_file()
     assert (runtime_home / 'skills' / 'demo.md').is_file()
-    assert (runtime_home / 'skills').is_symlink()
+    assert not (runtime_home / 'skills').is_symlink()
     assert (runtime_home / 'commands' / 'demo.md').is_file()
     assert (runtime_home / 'commands').is_symlink()
     assert (runtime_home / '.tmp' / 'plugins.sha').read_text(encoding='utf-8') == 'plugins-sha-v1\n'
@@ -420,6 +420,39 @@ def test_materialize_codex_home_config_does_not_replace_user_asset_dir(tmp_path:
     assert not (target_home / 'skills.ccb-projection.json').exists()
 
 
+def test_materialize_codex_home_config_repairs_owned_skills_in_user_asset_dir(tmp_path: Path) -> None:
+    source_home = tmp_path / 'system-codex-home'
+    target_home = tmp_path / 'managed-codex-home'
+    (source_home / 'skills' / 'ask').mkdir(parents=True, exist_ok=True)
+    (source_home / 'skills' / 'ask' / 'SKILL.md').write_text('name: ask\n', encoding='utf-8')
+    (source_home / 'skills' / 'ccb-config').mkdir(parents=True, exist_ok=True)
+    (source_home / 'skills' / 'ccb-config' / 'SKILL.md').write_text('name: ccb-config\n', encoding='utf-8')
+    (target_home / 'skills').mkdir(parents=True, exist_ok=True)
+    (target_home / 'skills' / 'custom.md').write_text('user skill\n', encoding='utf-8')
+    (target_home / 'skills' / 'ccb_config').mkdir(parents=True, exist_ok=True)
+    (target_home / 'skills' / 'ccb_config' / 'SKILL.md').write_text('name: ccb_config\n', encoding='utf-8')
+    stale_target = target_home / 'skills' / 'ccb-config'
+    stale_target.mkdir(parents=True, exist_ok=True)
+    stale_source = tmp_path / 'stale-skill.md'
+    stale_source.write_text('name: ccb-config-stale\n', encoding='utf-8')
+    try:
+        (stale_target / 'SKILL.md').symlink_to(stale_source)
+    except OSError:
+        pytest.skip('symlink creation is not available in this test environment')
+
+    codex_home_config.materialize_codex_home_config(
+        target_home,
+        profile=ProviderProfileSpec(inherit_commands=False, inherit_memory=False),
+        source_home=source_home,
+    )
+
+    assert (target_home / 'skills' / 'custom.md').read_text(encoding='utf-8') == 'user skill\n'
+    assert not (target_home / 'skills' / 'ccb_config').exists()
+    assert not (target_home / 'skills' / 'ccb-config' / 'SKILL.md').is_symlink()
+    assert (target_home / 'skills' / 'ccb-config' / 'SKILL.md').read_text(encoding='utf-8') == 'name: ccb-config\n'
+    assert not (target_home / 'skills.ccb-projection.json').exists()
+
+
 def test_materialize_codex_home_config_does_not_replace_user_asset_symlink(tmp_path: Path) -> None:
     source_home = tmp_path / 'system-codex-home'
     target_home = tmp_path / 'managed-codex-home'
@@ -460,8 +493,8 @@ def test_materialize_codex_home_config_migrates_matching_legacy_asset_copy(tmp_p
         source_home=source_home,
     )
 
-    assert (target_home / 'skills').is_symlink()
-    assert (target_home / 'skills').resolve() == (source_home / 'skills').resolve()
+    assert not (target_home / 'skills').is_symlink()
+    assert (target_home / 'skills' / 'demo.md').read_text(encoding='utf-8') == 'source skill\n'
     assert (target_home / 'skills.ccb-projection.json').is_file()
 
 

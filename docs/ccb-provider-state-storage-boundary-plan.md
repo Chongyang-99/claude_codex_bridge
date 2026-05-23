@@ -29,6 +29,11 @@ auth, config, and restore semantics. This document narrows the storage boundary
 problem: what belongs in project/agent authority, what is session evidence, and
 what is merely rebuildable cache.
 
+Online `ccbd` views are not allowed to depend on future storage cleanup to be
+usable. ProjectView and sidebar-facing reads must use bounded tail reads,
+targeted lookups, or a future materialized read model; full JSONL compaction is
+a storage optimization, not a prerequisite for keeping the live UI responsive.
+
 ## 2. Current Findings
 
 Observed local `.ccb` shape:

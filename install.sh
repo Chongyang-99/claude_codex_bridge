@@ -889,6 +889,22 @@ resolve_inherit_skills_root() {
   echo "$asset_root/inherit_skills"
 }
 
+looks_like_ccb_codex_home() {
+  local path="$1"
+  [[ "$path" == */.ccb/agents/*/provider-state/codex/home ]]
+}
+
+resolve_codex_source_home() {
+  local raw="${CODEX_HOME:-}"
+  if [[ -n "$raw" ]]; then
+    if ! looks_like_ccb_codex_home "$raw"; then
+      echo "$raw"
+      return
+    fi
+  fi
+  echo "$HOME/.codex"
+}
+
 read_simple_json_string_field() {
   local file="$1"
   local key="$2"
@@ -1699,7 +1715,8 @@ install_skill_entry() {
 
   clear_installed_path "$destination_dir"
   mkdir -p "$destination_dir"
-  install_owned_file "$src_skill_md" "$destination_dir/SKILL.md" 0644
+  cp -f "$src_skill_md" "$destination_dir/SKILL.md"
+  chmod 0644 "$destination_dir/SKILL.md" 2>/dev/null || true
 
   local child
   for child in "$skill_dir"/*; do
@@ -1710,9 +1727,11 @@ install_skill_entry() {
       continue
     fi
     if [[ -d "$child" ]]; then
-      install_owned_directory "$child" "$destination_dir/$child_name"
+      clear_installed_path "$destination_dir/$child_name"
+      cp -rf "$child" "$destination_dir/$child_name"
     elif [[ -f "$child" ]]; then
-      install_owned_file "$child" "$destination_dir/$child_name" 0644
+      cp -f "$child" "$destination_dir/$child_name"
+      chmod 0644 "$destination_dir/$child_name" 2>/dev/null || true
     fi
   done
 }
@@ -1729,13 +1748,13 @@ install_claude_skills() {
 
   mkdir -p "$skills_dst"
 
-  # Clean up obsolete wrapper/provider skills and CCB skills no longer installed by default.
-  local obsolete_skills="bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping auto ping pend autonew all-plan docs tp tr file-op review continue"
-  for obs_skill in $obsolete_skills; do
-    if [[ -d "$skills_dst/$obs_skill" ]]; then
-      rm -rf "$skills_dst/$obs_skill"
-      echo "  Removed obsolete skill: $obs_skill"
-    fi
+  rm -rf "$skills_dst/ccb_config"
+
+  # Clean up legacy wrapper/provider skills silently; only current inherited
+  # skills should appear in install output.
+  local legacy_skills="bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping auto ping pend autonew all-plan docs tp tr file-op review continue"
+  for legacy_skill in $legacy_skills; do
+    rm -rf "$skills_dst/$legacy_skill"
   done
 
   echo "Installing inherited Claude skills (bash SKILL.md template)..."
@@ -1761,7 +1780,8 @@ install_codex_skills() {
   local skills_root
   skills_root="$(resolve_inherit_skills_root)"
   local skills_src="$skills_root/codex_skills"
-  local skills_dst="${CODEX_HOME:-$HOME/.codex}/skills"
+  local skills_dst
+  skills_dst="$(resolve_codex_source_home)/skills"
 
   if [[ ! -d "$skills_src" ]]; then
     return
@@ -1769,13 +1789,13 @@ install_codex_skills() {
 
   mkdir -p "$skills_dst"
 
-  # Clean up obsolete wrapper/provider skills and CCB skills no longer installed by default.
-  local obsolete_skills="bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping ping pend autonew all-plan file-op"
-  for obs_skill in $obsolete_skills; do
-    if [[ -d "$skills_dst/$obs_skill" ]]; then
-      rm -rf "$skills_dst/$obs_skill"
-      echo "  Removed obsolete skill: $obs_skill"
-    fi
+  rm -rf "$skills_dst/ccb_config"
+
+  # Clean up legacy wrapper/provider skills silently; only current inherited
+  # skills should appear in install output.
+  local legacy_skills="bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping ping pend autonew all-plan file-op"
+  for legacy_skill in $legacy_skills; do
+    rm -rf "$skills_dst/$legacy_skill"
   done
 
   echo "Installing inherited Codex skills (bash SKILL.md template)..."
@@ -1812,13 +1832,11 @@ install_droid_skills() {
 
   mkdir -p "$skills_dst"
 
-  # Clean up obsolete wrapper/provider skills and CCB skills no longer installed by default.
-  local obsolete_skills="bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping ping pend autonew all-plan"
-  for obs_skill in $obsolete_skills; do
-    if [[ -d "$skills_dst/$obs_skill" ]]; then
-      rm -rf "$skills_dst/$obs_skill"
-      echo "  Removed obsolete skill: $obs_skill"
-    fi
+  # Clean up legacy wrapper/provider skills silently; only current inherited
+  # skills should appear in install output.
+  local legacy_skills="bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping ping pend autonew all-plan"
+  for legacy_skill in $legacy_skills; do
+    rm -rf "$skills_dst/$legacy_skill"
   done
 
   echo "Installing Droid/Factory ask skill..."
@@ -2785,13 +2803,17 @@ except Exception:
 
 uninstall_claude_skills() {
   local skills_dst="$HOME/.claude/skills"
-  local ccb_skills="ask ccb_config ping pend autonew all-plan docs tp tr file-op review continue"
+  local ccb_skills="ask ccb-config"
+  local legacy_skills="ccb_config ping pend autonew all-plan docs tp tr file-op review continue"
 
   if [[ ! -d "$skills_dst" ]]; then
     return
   fi
 
   echo "Removing CCB Claude skills..."
+  for skill in $legacy_skills; do
+    rm -rf "$skills_dst/$skill"
+  done
   for skill in $ccb_skills; do
     if [[ -d "$skills_dst/$skill" ]]; then
       rm -rf "$skills_dst/$skill"
@@ -2801,14 +2823,19 @@ uninstall_claude_skills() {
 }
 
 uninstall_codex_skills() {
-  local skills_dst="${CODEX_HOME:-$HOME/.codex}/skills"
-  local ccb_skills="ask ccb_config ping pend autonew all-plan file-op"
+  local skills_dst
+  skills_dst="$(resolve_codex_source_home)/skills"
+  local ccb_skills="ask ccb-config"
+  local legacy_skills="ccb_config ping pend autonew all-plan file-op"
 
   if [[ ! -d "$skills_dst" ]]; then
     return
   fi
 
   echo "Removing CCB Codex skills..."
+  for skill in $legacy_skills; do
+    rm -rf "$skills_dst/$skill"
+  done
   for skill in $ccb_skills; do
     if [[ -d "$skills_dst/$skill" ]]; then
       rm -rf "$skills_dst/$skill"
@@ -2819,13 +2846,17 @@ uninstall_codex_skills() {
 
 uninstall_droid_skills() {
   local skills_dst="${FACTORY_HOME:-$HOME/.factory}/skills"
-  local ccb_skills="ask ping pend autonew all-plan"
+  local ccb_skills="ask"
+  local legacy_skills="ping pend autonew all-plan"
 
   if [[ ! -d "$skills_dst" ]]; then
     return
   fi
 
   echo "Removing CCB Droid skills..."
+  for skill in $legacy_skills; do
+    rm -rf "$skills_dst/$skill"
+  done
   for skill in $ccb_skills; do
     if [[ -d "$skills_dst/$skill" ]]; then
       rm -rf "$skills_dst/$skill"

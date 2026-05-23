@@ -162,6 +162,27 @@ Deferred sidebar modes:
 - per-window width overrides
 - temporary overlay/toggle mode
 
+### 4.2.1 ProjectView Performance Boundary
+
+The sidebar polls `ccbd` `project_view`, so `project_view` is an online UI read
+path and must stay bounded even when job/message JSONL histories are large.
+
+Current implementation constraints:
+
+- server responses carry a 1000ms TTL and the sidebar refresh loop must respect
+  that TTL instead of clamping normal refreshes to a sub-second interval
+- a single ProjectView build owns one tmux namespace backend and one pane-text
+  cache, so focus/window/sidebar snapshots and provider prompt checks do not
+  instantiate the backend or `capture-pane` per agent path
+- comms rows are computed from active/queued jobs plus a bounded recent job tail,
+  then message-bureau metadata is resolved lazily for those candidate jobs
+- the ProjectView path must not rebuild reply/attempt/message indexes by full
+  `list_all()` scans during normal sidebar refreshes
+
+Longer-term storage compaction or read-model snapshots can improve cold-start
+latency and disk usage, but the online sidebar read path must remain bounded
+without waiting for compaction to exist.
+
 ### 4.3 Existing Config Compatibility
 
 Existing compact single-layout configs remain accepted during migration.

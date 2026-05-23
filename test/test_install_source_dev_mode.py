@@ -103,18 +103,69 @@ def test_source_dev_install_links_live_bin_and_ask_skill_asset(tmp_path: Path) -
     assert str(REPO_ROOT / "bin" / "ask") in ask_wrapper
 
     ask_skill_md = tmp_path / "codex-home" / "skills" / "ask" / "SKILL.md"
-    assert ask_skill_md.is_symlink()
-    assert ask_skill_md.resolve() == REPO_ROOT / "inherit_skills" / "codex_skills" / "ask" / "SKILL.md"
+    assert ask_skill_md.is_file()
+    assert not ask_skill_md.is_symlink()
+    assert "name: ask" in ask_skill_md.read_text(encoding="utf-8")
 
-    ccb_config_skill_md = tmp_path / "codex-home" / "skills" / "ccb_config" / "SKILL.md"
-    assert ccb_config_skill_md.is_symlink()
-    assert ccb_config_skill_md.resolve() == REPO_ROOT / "inherit_skills" / "codex_skills" / "ccb_config" / "SKILL.md"
+    ccb_config_skill_md = tmp_path / "codex-home" / "skills" / "ccb-config" / "SKILL.md"
+    assert ccb_config_skill_md.is_file()
+    assert not ccb_config_skill_md.is_symlink()
+    assert "name: ccb-config" in ccb_config_skill_md.read_text(encoding="utf-8")
 
     skills_dir = tmp_path / "codex-home" / "skills"
     assert not (skills_dir / "all-plan").exists()
     assert not (skills_dir / "ping").exists()
     assert not (skills_dir / "pend").exists()
     assert not (skills_dir / "file-op").exists()
+
+
+def test_source_dev_install_ignores_managed_codex_home_for_skill_assets(tmp_path: Path) -> None:
+    home_dir = tmp_path / "home"
+    home_dir.mkdir()
+    managed_home = (
+        tmp_path
+        / "project"
+        / ".ccb"
+        / "agents"
+        / "agent2"
+        / "provider-state"
+        / "codex"
+        / "home"
+    )
+    python310 = _python310_executable()
+    env = os.environ.copy()
+    env.update(
+        {
+            "HOME": str(home_dir),
+            "CODEX_INSTALL_PREFIX": str(tmp_path / "managed"),
+            "CODEX_BIN_DIR": str(tmp_path / "bin"),
+            "CODEX_HOME": str(managed_home),
+            "CCB_LANG": "en",
+            "CCB_SOURCE_KIND": "source",
+            "CCB_SOURCE_ROOT": str(REPO_ROOT),
+            "CCB_PYTHON_BIN": python310,
+        }
+    )
+    command = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        source {shlex.quote(str(INSTALL_SH))}
+        install_codex_skills
+        """
+    )
+    completed = subprocess.run(
+        ["bash", "-lc", command],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    ccb_config_skill_md = home_dir / ".codex" / "skills" / "ccb-config" / "SKILL.md"
+    assert ccb_config_skill_md.is_file()
+    assert not ccb_config_skill_md.is_symlink()
+    assert not (managed_home / "skills" / "ccb-config").exists()
 
 
 def test_python_selection_falls_back_to_versioned_python_command(tmp_path: Path) -> None:

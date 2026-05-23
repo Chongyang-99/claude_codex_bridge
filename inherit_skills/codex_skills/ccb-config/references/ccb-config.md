@@ -18,6 +18,8 @@ Do not write `.ccb_config/ccb.config`. That path is legacy residue in older or m
 
 `.ccb/ccb_memory.md` and `.ccb/agents/<agent>/memory.md` are user-editable memory files. They are context, not layout authority.
 
+Do not edit memory files for ordinary config design, migration, provider changes, worktree changes, or window layout changes. Update memory only when the user explicitly asks for workflow memory design or role guidance changes.
+
 Do not edit generated runtime state, provider-state homes, `.ccb/provider-profiles/`, `.ccb/ccbd/`, legacy `.ccb_config/`, or generated runtime memory.
 
 ## Compact Format
@@ -139,8 +141,10 @@ Old compact and hybrid configs are still valid single-window configs. Migrate th
 
 Migration rules:
 
+- ask one concise target-shape question when needed: number of windows and rough grouping;
 - preserve agent names, providers, worktree markers, and ordering unless the user asks to redesign roles;
 - preserve TOML overlay fields by moving them under the same `[agents.<name>]` table after `[windows]`;
+- preserve memory files without editing them unless the user explicitly asks for workflow memory changes;
 - remove `cmd` from the migrated layout because `[windows]` does not support the persistent command pane;
 - choose concise workflow window names such as `main`, `work`, `review`, `research`, or `ops`;
 - keep each agent in exactly one window;
@@ -214,6 +218,19 @@ Use `model` only when the user wants a provider model override. Model shortcuts 
 Do not mix `key` or `url` with provider API env fields under `agents.<name>.env` or `agents.<name>.provider_profile.env`.
 
 Use `provider_profile` only for advanced inheritance or environment behavior. Do not create `.ccb/provider-profiles/` directories manually.
+
+## Skill Inheritance
+
+CCB config supports `agents.<name>.provider_profile.inherit_skills`, which enables or disables inheritance of the provider source-home skills as a whole. It does not support a per-skill allowlist in `.ccb/ccb.config`.
+
+Durable skill installs belong in the provider source home:
+
+- Codex: `${CODEX_HOME:-$HOME/.codex}/skills/<skill>`
+- Claude: `$HOME/.claude/skills/<skill>`
+
+After restart or relaunch, managed agents for that provider inherit those skills when `inherit_skills` is true. This may affect all same-provider agents, not only one agent.
+
+If the user asks for one-agent-only skill injection, explain that it is not a durable config-level feature yet. A temporary copy into `.ccb/agents/<agent>/provider-state/.../skills` may work for an already-mounted agent, but it is runtime/provider-state and can be replaced by projection refresh or restart. Use it only after explicit confirmation, and never write through a symlink.
 
 ## Agent Names
 

@@ -41,6 +41,7 @@ def _inspection(
     heartbeat_fresh: bool,
     mount_state: MountState = MountState.MOUNTED,
     reason: str,
+    config_signature: str | None = None,
 ) -> LeaseInspection:
     lease = CcbdLease(
         project_id=context.project.project_id,
@@ -52,6 +53,7 @@ def _inspection(
         last_heartbeat_at='2026-03-29T00:00:00Z',
         mount_state=mount_state,
         generation=1,
+        config_signature=config_signature,
     )
     return LeaseInspection(
         lease=lease,
@@ -98,6 +100,44 @@ def test_daemon_matches_project_config_uses_signature_not_only_agent_names(tmp_p
             }
 
     assert daemon_service._daemon_matches_project_config(ctx, FakeClient()) is False
+
+
+def test_connect_compatible_daemon_skips_probe_when_lease_signature_matches(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo-lease-signature'
+    ctx = _context(project_root, 'agent1:codex\n')
+    expected = project_config_identity_payload(load_project_config(project_root).config)
+    inspection = _inspection(
+        ctx,
+        health=LeaseHealth.HEALTHY,
+        socket_connectable=True,
+        pid_alive=True,
+        heartbeat_fresh=True,
+        reason='healthy',
+        config_signature=str(expected['config_signature']),
+    )
+    captured: list[float | None] = []
+
+    class FakeClient:
+        def __init__(self, socket_path, *, timeout_s=None) -> None:
+            del socket_path
+            captured.append(timeout_s)
+
+        def ping(self, target: str = 'ccbd') -> dict:
+            raise AssertionError('matching lease signature should avoid remote probe')
+
+    monkeypatch.setattr(daemon_service, 'CcbdClient', FakeClient)
+
+    handle = daemon_service._connect_compatible_daemon(
+        ctx,
+        inspection,
+        restart_on_mismatch=False,
+    )
+
+    assert handle is not None
+    assert captured == [None]
 
 
 def test_ensure_daemon_started_restarts_healthy_daemon_on_config_drift(monkeypatch, tmp_path: Path) -> None:

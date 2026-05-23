@@ -467,6 +467,50 @@ def test_socket_server_uses_larger_listen_backlog(tmp_path: Path, monkeypatch) -
     assert listen_backlogs == [128]
 
 
+def test_socket_server_bounds_accepted_connection_queue(tmp_path: Path) -> None:
+    socket_path = tmp_path / 'ccbd.sock'
+    server = CcbdSocketServer(socket_path)
+    closed: list[int] = []
+
+    class _Conn:
+        def __init__(self, index: int) -> None:
+            self.index = index
+
+        def close(self) -> None:
+            closed.append(self.index)
+
+    import ccbd.socket_server_runtime.loop as socket_loop
+
+    for index in range(140):
+        socket_loop.enqueue_connection(server, _Conn(index))
+
+    assert server._connection_queue.qsize() == 128
+    assert closed == list(range(12))
+
+
+def test_socket_worker_drops_stale_queued_connection(tmp_path: Path, monkeypatch) -> None:
+    socket_path = tmp_path / 'ccbd.sock'
+    server = CcbdSocketServer(socket_path)
+    closed: list[str] = []
+    handled: list[str] = []
+
+    class _Conn:
+        def close(self) -> None:
+            closed.append('closed')
+
+    import ccbd.socket_server_runtime.loop as socket_loop
+
+    monkeypatch.setattr(socket_loop.time, 'monotonic', lambda: 10.5)
+    server._connection_queue.put_nowait((_Conn(), 8.0))
+    server._connection_queue.put_nowait(server._worker_sentinel)
+    server._handle_connection = lambda conn: handled.append('handled') or 'ping'  # type: ignore[method-assign]
+
+    socket_loop.worker_loop(server, interval=0.05, on_tick=None)
+
+    assert closed == ['closed']
+    assert handled == []
+
+
 def test_socket_server_timeout_after_shutdown_does_not_run_tick(tmp_path: Path) -> None:
     socket_path = tmp_path / 'ccbd.sock'
     server = CcbdSocketServer(socket_path)

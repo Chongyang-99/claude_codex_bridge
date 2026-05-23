@@ -1,26 +1,24 @@
 ---
-name: ccb_config
-description: Design and edit CCB project teams by updating .ccb/ccb.config plus shared and per-agent memory. Use when the user wants to add, rename, remove, or reorganize CCB agents; choose providers, worktree isolation, models, API shortcuts, or workflow roles; or turn a natural-language team/workflow description into a valid CCB config.
+name: ccb-config
+description: Design, edit, or migrate CCB project teams by updating .ccb/ccb.config. Use when the user wants to add, rename, remove, or reorganize CCB agents; choose providers, worktree isolation, models, API shortcuts, single-window or multi-window layout; migrate an old ccb.config to the current windows topology; handle optional skill inheritance or injection requests for agents; or turn a natural-language team/workflow description into a valid CCB config. Only update shared or per-agent memory when the user explicitly asks for workflow memory design.
 ---
 
 # CCB Config
 
-Use this skill to design and edit a CCB-managed project team. The usual output is a valid `.ccb/ccb.config` plus preserved project memory updates in `.ccb/ccb_memory.md` and `.ccb/agents/<agent>/memory.md`. If the user explicitly asks for a user-level default team, edit `~/.ccb/ccb.config` instead.
+Use this skill to design, edit, or migrate a CCB-managed project team. The usual output is a valid `.ccb/ccb.config`. Do not edit `.ccb/ccb_memory.md` or `.ccb/agents/<agent>/memory.md` by default. Only update memory files when the user explicitly asks to design or revise workflow/role memory. If the user explicitly asks for a user-level default team, edit `~/.ccb/ccb.config` instead.
 
 ## Core Workflow
 
 1. Resolve the config authority first. CCB config precedence is built-in default < user config `~/.ccb/ccb.config` < project config `.ccb/ccb.config`. `.ccb_config/ccb.config` is legacy residue and must be treated as read-only migration evidence, not as the file to edit.
-2. Read the current `.ccb/ccb.config`, `.ccb/ccb_memory.md`, and relevant `.ccb/agents/<agent>/memory.md` files before proposing changes.
+2. Read the current `.ccb/ccb.config` before proposing changes. Read memory files only when the user explicitly asks for memory/workflow guidance changes or when memory content is needed to understand an existing workflow.
 3. If the user's project goal and workflow are not already clear, ask a short clarification question before designing the team.
 4. After the basic workflow is clear, propose one complete config with sensible defaults and ask for confirmation or adjustments.
 5. Prefer compact or hybrid config for ordinary single-window teams. Existing compact/hybrid configs stay single-window and should not be migrated to `[windows]` unless the user wants named tmux windows, multi-window sidebar layout, or per-window agent grouping.
 6. When the user asks to modernize, split, or reorganize an old config, treat it as a migration task: preserve the old roster and overrides by default, propose the new target shape, then write only after confirmation.
-7. Edit only user-authored authority files:
-   - `.ccb/ccb.config`
-   - `.ccb/ccb_memory.md`
-   - `.ccb/agents/<agent>/memory.md`
-8. Validate the written config with the CCB config loader and verify that the loader read the intended source kind.
-9. Tell the user that CCB must be restarted for config changes to take effect.
+7. For ordinary config design, migration, or layout changes, edit only `.ccb/ccb.config`.
+8. If and only if the user explicitly requested workflow memory design, also update `.ccb/ccb_memory.md` and/or `.ccb/agents/<agent>/memory.md` using the memory rules below.
+9. Validate the written config with the CCB config loader and verify that the loader read the intended source kind.
+10. Tell the user that CCB must be restarted for config changes to take effect.
 
 Do not write runtime state, generated memory, provider-state homes, `.ccb/provider-profiles/`, `.ccb/ccbd/`, legacy `.ccb_config/`, or provider-native project dotfiles such as `.codex`, `.claude`, or `.gemini`.
 
@@ -42,6 +40,7 @@ Ask about these basics, but only when they are not already clear from the user's
 
 - project purpose or workflow: coding product, library maintenance, research, docs, QA, release, operations, discussion-heavy planning, etc.;
 - whether the team should support parallel execution or mostly serial coordination; if parallel execution is requested and no worker count is given, default to 3 implementation workers;
+- whether the user wants one window or multiple named windows, and if multiple windows are desired, the rough grouping such as main/work/review/research;
 - whether workers should edit code in isolated git worktrees or stay `inplace`;
 - whether providers should inherit the system provider setup or use explicit per-agent API/model overrides.
 
@@ -62,6 +61,8 @@ Defaults:
 - providers inherit the system setup
 - restore stays auto
 - permission stays manual
+- single-window compact layout unless you ask for named windows
+- no memory files changed unless you ask for workflow memory design
 - no separate API keys or models
 
 Confirm this, or tell me what to change.
@@ -94,12 +95,14 @@ Use this flow when the user asks to convert an existing compact/hybrid config to
 
 1. Read the current config and identify whether it is compact, hybrid, explicit windows, or legacy rich TOML.
 2. Preserve existing agent names, providers, `(worktree)` markers, models, keys, urls, descriptions, labels, permissions, restore settings, provider profiles, and memory files unless the user asks to change them.
-3. If the user wants to stay single-window, keep compact/hybrid format and only adjust the compact layout or overlay fields.
-4. If the user wants multi-window, named windows, or per-window sidebar layout, migrate to `version = 2` with `[windows]`.
-5. In `[windows]`, remove `cmd`; a persistent `cmd` pane is a compact/hybrid feature.
-6. Keep each agent in exactly one window. Use window names that match the workflow, such as `main`, `work`, `review`, `research`, or `ops`.
-7. Move agent-specific extras into `[agents.<name>]` tables after the `[windows]` block.
-8. Present a before/after proposal and ask for confirmation before writing.
+3. Ask one concise migration question if the target shape is not already clear: how many windows and how should agents be grouped? Offer a default grouping such as `main`, `work`, and `review`.
+4. If the user wants to stay single-window, keep compact/hybrid format and only adjust the compact layout or overlay fields.
+5. If the user wants multi-window, named windows, or per-window sidebar layout, migrate to `version = 2` with `[windows]`.
+6. In `[windows]`, remove `cmd`; a persistent `cmd` pane is a compact/hybrid feature.
+7. Keep each agent in exactly one window. Use window names that match the workflow, such as `main`, `work`, `review`, `research`, or `ops`.
+8. Move agent-specific extras into `[agents.<name>]` tables after the `[windows]` block.
+9. Present a before/after proposal and ask for confirmation before writing.
+10. Do not edit memory files during config migration unless the user explicitly asks for role or workflow memory changes.
 
 Example migration:
 
@@ -148,9 +151,34 @@ Key points:
 - `agent:provider(worktree)` maps to `workspace_mode = "git-worktree"`.
 - `git-worktree` requires the project root to be a git repository; CCB must not silently fall back to copying.
 
+## Skill Injection Requests
+
+Use this flow when the user asks to add, inject, install, or inherit a skill for an agent, for example "inject plan-tree into agent2".
+
+1. Read `.ccb/ccb.config` and identify the target agent provider.
+2. Locate a provider-matching skill source:
+   - Codex useful tool: `useful_tools/codex_skills/<skill>/`
+   - Claude useful tool: `useful_tools/claude_skills/<skill>/`
+   - inherited CCB skill: `inherit_skills/<provider>_skills/<skill>/`
+   - user-installed source home: `${CODEX_HOME:-$HOME/.codex}/skills/<skill>` or `$HOME/.claude/skills/<skill>`
+3. Explain the scope before writing. CCB config currently has `provider_profile.inherit_skills`, but no per-skill allowlist. A durable provider-home install is inherited by every same-provider agent whose `provider_profile.inherit_skills` is true.
+4. Prefer durable source-home installation:
+   - Codex: copy the skill into `${CODEX_HOME:-$HOME/.codex}/skills/<skill>`.
+   - Claude: copy the skill into `$HOME/.claude/skills/<skill>`.
+   - If the target agent has `provider_profile.inherit_skills = false`, propose enabling it in `.ccb/ccb.config`; otherwise no config change is needed for the target.
+5. If the user wants only one specific agent to receive the skill, explain the current choices:
+   - install globally and accept that same-provider inheriting agents also receive it;
+   - disable `provider_profile.inherit_skills` on other same-provider agents, which removes all inherited skills from them and is usually not recommended;
+   - make a temporary runtime copy into the already-mounted target agent home, only with explicit confirmation and with a warning that restart or projection refresh may replace it.
+6. For temporary single-agent runtime injection, never follow symlinks blindly. If the target `skills` directory is a symlink, stop and explain that writing there would affect the source home. Otherwise copy only the requested skill directory and verify `SKILL.md` exists at the destination.
+7. Do not edit memory files for skill injection unless the user separately asks for workflow memory design.
+8. Tell the user to restart or relaunch affected CCB agents after durable installs or config changes.
+
 ## Memory Updates
 
-Read `references/memory-patterns.md` before writing role memory.
+Memory updates are opt-in. Do not write `.ccb/ccb_memory.md` or `.ccb/agents/<agent>/memory.md` during ordinary config design, config migration, provider changes, window layout changes, or worktree changes.
+
+Read `references/memory-patterns.md` before writing role memory, and only do so when the user explicitly asks for workflow memory design or role memory changes.
 
 Rules:
 
@@ -204,6 +232,7 @@ Also check:
 - windows topology config: every configured agent appears in exactly one `[windows]` layout and no `cmd` leaf is present;
 - compact/hybrid worktree markers are present on the compact line, not in overlay;
 - validation reports the intended `source_kind` and a non-empty `source_path`;
+- skill injection: the source and destination are provider-matching skill directories and destination `SKILL.md` exists;
 - no secrets were added unless the user explicitly provided them;
 - memory updates preserved existing unmarked content.
 
@@ -213,5 +242,6 @@ Also check:
 - Never write `.ccb_config/ccb.config`; if it exists, treat it as legacy residue only.
 - Do not delete memory files for removed agents unless the user explicitly asks.
 - Do not create or edit provider profile directories directly.
+- Do not edit provider-state homes except for explicitly requested temporary single-agent skill injection after warning that it is not the durable config path.
 - Do not change runtime state to "apply" a config; do not run `ccb`, `ccb -s`, `ccb kill`, or restart from inside the skill; tell the user to restart CCB after the skill has finished.
 - Do not use `workspace_mode = "copy"` unless the user explicitly chooses copy workspace behavior.

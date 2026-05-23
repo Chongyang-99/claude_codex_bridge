@@ -48,6 +48,9 @@ class HealthMonitor(HealthMonitorRuntimeStateMixin):
     def daemon_health(self):
         return daemon_health_impl(self)
 
+    def local_daemon_health(self):
+        return daemon_health_impl(self, assume_socket_connectable=True)
+
     def check_all(self) -> dict[str, str]:
         return check_all_impl(self)
 

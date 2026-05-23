@@ -29,25 +29,39 @@ def ensure_keeper_started(
     mount_manager_factory,
     ownership_guard_factory,
     process_exists_fn=is_pid_alive,
+    process_cmdline_fn=None,
     spawn_keeper_process_fn=None,
     ready_timeout_s: float = 2.0,
 ) -> bool:
     store = KeeperStateStore(context.paths)
     state = store.load()
-    if keeper_state_is_running(state, process_exists_fn=process_exists_fn):
+    if _keeper_state_is_running_for_context(
+        context,
+        state,
+        process_exists_fn=process_exists_fn,
+        process_cmdline_fn=process_cmdline_fn,
+        require_cmdline_match=True,
+    ):
         return True
 
     manager = mount_manager_factory(context.paths)
     guard = ownership_guard_factory(context.paths, manager)
     with guard.startup_lock():
         state = store.load()
-        if keeper_state_is_running(state, process_exists_fn=process_exists_fn):
+        if _keeper_state_is_running_for_context(
+            context,
+            state,
+            process_exists_fn=process_exists_fn,
+            process_cmdline_fn=process_cmdline_fn,
+            require_cmdline_match=True,
+        ):
             return True
         (spawn_keeper_process_fn or spawn_keeper_process)(context)
     return wait_for_keeper_ready(
         context,
         timeout_s=ready_timeout_s,
         process_exists_fn=process_exists_fn,
+        process_cmdline_fn=process_cmdline_fn,
     )
 
 
@@ -142,14 +156,27 @@ def wait_for_keeper_ready(
     *,
     timeout_s: float,
     process_exists_fn=is_pid_alive,
+    process_cmdline_fn=None,
 ) -> bool:
     deadline = time.time() + max(0.0, float(timeout_s))
     store = KeeperStateStore(context.paths)
     while time.time() < deadline:
-        if keeper_state_is_running(store.load(), process_exists_fn=process_exists_fn):
+        if _keeper_state_is_running_for_context(
+            context,
+            store.load(),
+            process_exists_fn=process_exists_fn,
+            process_cmdline_fn=process_cmdline_fn,
+            require_cmdline_match=True,
+        ):
             return True
         time.sleep(0.05)
-    return keeper_state_is_running(store.load(), process_exists_fn=process_exists_fn)
+    return _keeper_state_is_running_for_context(
+        context,
+        store.load(),
+        process_exists_fn=process_exists_fn,
+        process_cmdline_fn=process_cmdline_fn,
+        require_cmdline_match=True,
+    )
 
 
 def wait_for_keeper_exit(
@@ -157,24 +184,58 @@ def wait_for_keeper_exit(
     *,
     timeout_s: float,
     process_exists_fn=is_pid_alive,
+    process_cmdline_fn=None,
 ) -> bool:
     deadline = time.time() + max(0.0, float(timeout_s))
     store = KeeperStateStore(context.paths)
     while time.time() < deadline:
         state = store.load()
-        if not keeper_state_is_running(state, process_exists_fn=process_exists_fn):
+        if not _keeper_state_is_running_for_context(
+            context,
+            state,
+            process_exists_fn=process_exists_fn,
+            process_cmdline_fn=process_cmdline_fn,
+        ):
             return True
         time.sleep(0.05)
     state = store.load()
-    return not keeper_state_is_running(state, process_exists_fn=process_exists_fn)
+    return not _keeper_state_is_running_for_context(
+        context,
+        state,
+        process_exists_fn=process_exists_fn,
+        process_cmdline_fn=process_cmdline_fn,
+    )
 
 
-def keeper_pid(context, lease, *, process_exists_fn=is_pid_alive) -> int:
+def keeper_pid(context, lease, *, process_exists_fn=is_pid_alive, process_cmdline_fn=None) -> int:
     state = KeeperStateStore(context.paths).load()
-    if keeper_state_is_running(state, process_exists_fn=process_exists_fn):
+    if _keeper_state_is_running_for_context(
+        context,
+        state,
+        process_exists_fn=process_exists_fn,
+        process_cmdline_fn=process_cmdline_fn,
+    ):
         return int(state.keeper_pid)
     lease_keeper_pid = int(getattr(lease, 'keeper_pid', 0) or 0)
     return lease_keeper_pid if lease_keeper_pid > 0 else 0
+
+
+def _keeper_state_is_running_for_context(
+    context,
+    state,
+    *,
+    process_exists_fn,
+    process_cmdline_fn=None,
+    require_cmdline_match: bool = False,
+) -> bool:
+    return keeper_state_is_running(
+        state,
+        process_exists_fn=process_exists_fn,
+        expected_project_id=context.project.project_id,
+        project_root=context.project.project_root if require_cmdline_match or process_cmdline_fn is not None else None,
+        process_cmdline_fn=process_cmdline_fn,
+        require_cmdline_match=require_cmdline_match,
+    )
 
 
 def spawn_keeper_process(context) -> None:

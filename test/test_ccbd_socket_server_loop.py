@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from ccbd.socket_server_runtime.loop import maintenance_worker_loop, next_timeout, next_worker_timeout, post_request_tick, run_after_response_actions, run_queued_maintenance_ticks, run_tick_if_needed, start_maintenance_worker, stop_maintenance_worker, worker_loop
+from ccbd.socket_server_runtime.loop import maintenance_worker_loop, next_timeout, next_worker_timeout, post_request_tick, run_after_response_actions, run_queued_maintenance_ticks, run_tick_if_needed, start_maintenance_worker, start_worker, stop_maintenance_worker, stop_worker, worker_loop
 from ccbd.socket_server_runtime.server import CcbdSocketServer
 
 
@@ -88,6 +88,19 @@ def test_request_worker_queue_empty_no_longer_runs_periodic_tick() -> None:
     worker_loop(server, interval=0.2, on_tick=lambda: calls.append('tick'))
 
     assert calls == []
+
+
+def test_start_worker_starts_single_worker_lane() -> None:
+    server = CcbdSocketServer('/tmp/test.sock')
+
+    start_worker(server, interval=0.2, on_tick=None)
+    try:
+        assert server._worker_thread is not None
+        assert server._worker_thread.is_alive()
+    finally:
+        stop_worker(server)
+
+    assert server._worker_thread is None
 
 
 def test_maintenance_worker_runs_periodic_tick_until_stop() -> None:
@@ -177,6 +190,23 @@ def test_run_tick_if_needed_queues_and_drains_periodic_maintenance() -> None:
     assert next_tick_at > 0.0
     assert server.take_queued_maintenance_ticks() == 0
     assert server.maintenance_pending() is False
+
+
+def test_run_tick_if_needed_defers_periodic_tick_when_request_backlog_exists() -> None:
+    calls: list[str] = []
+    server = CcbdSocketServer('/tmp/test.sock')
+    server._connection_queue.put_nowait((object(), 0.0))
+
+    next_tick_at = run_tick_if_needed(
+        server=server,
+        on_tick=lambda: calls.append('tick'),
+        next_tick_at=0.0,
+        interval=0.2,
+    )
+
+    assert calls == []
+    assert next_tick_at > 0.0
+    assert server.take_queued_maintenance_ticks() == 0
 
 
 def test_run_queued_maintenance_ticks_runs_requested_count() -> None:

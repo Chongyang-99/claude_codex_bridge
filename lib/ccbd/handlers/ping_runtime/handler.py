@@ -30,7 +30,8 @@ def build_ping_handler(
         started = monotonic()
         target = str(payload.get('target') or '').strip().lower()
         try:
-            inspection = health_monitor.daemon_health()
+            daemon_health = getattr(health_monitor, 'local_daemon_health', health_monitor.daemon_health)
+            inspection = daemon_health()
             if target in {'', 'ccbd'}:
                 execution_summary = execution_state_store.summary() if execution_state_store is not None else {}
                 restore_summary = load_restore_summary(restore_report_store)

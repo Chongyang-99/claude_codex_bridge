@@ -106,19 +106,19 @@ Tmux copy/paste: drag with the left mouse button to copy, and use `Ctrl+Shift+V`
 <details>
 <summary><b>Config Design Skill</b></summary>
 
-Use `ccb_config` when you want an agent to design or update the CCB team instead of editing config by hand. It is inherited by Claude and Codex installs and focuses on three user-authored files:
+Use `ccb-config` when you want an agent to design, migrate, or update the CCB team instead of editing config by hand. It is inherited by Claude and Codex installs and defaults to changing only the active config authority:
 
 - `.ccb/ccb.config` for the team, provider choices, pane layout, and worktree policy
-- `.ccb/ccb_memory.md` for shared project workflow guidance
-- `.ccb/agents/<agent>/memory.md` for per-agent role guidance
+
+It can also update `.ccb/ccb_memory.md` and `.ccb/agents/<agent>/memory.md` for shared workflow or per-agent role guidance, but only when you explicitly ask for memory design.
 
 Invoke it from a supported provider skill surface, for example:
 
 ```text
-$ccb_config Design a team for a Python library with one coordinator, two worktree implementation agents, and one reviewer.
+$ccb-config Design a team for a Python library with one coordinator, two worktree implementation agents, and one reviewer.
 ```
 
-The skill helps choose agent names, providers, `inplace` versus `git-worktree`, compact layout syntax, optional `[windows]` migration for multi-window teams, and whether role instructions belong in shared or per-agent memory. It validates which config layer is active and tells you to restart CCB after file changes are complete.
+The skill helps choose agent names, providers, `inplace` versus `git-worktree`, compact layout syntax, optional `[windows]` migration for multi-window teams, and whether a config-only change is enough. For old compact or hybrid configs, it can ask how many windows you want, propose the grouping, and migrate to the current `version = 2` windows topology. It validates which config layer is active and tells you to restart CCB after file changes are complete.
 
 </details>
 
@@ -385,7 +385,7 @@ Historical note: older release notes below may mention `askd`, legacy flags, or 
 - Adds the native Rust `ccb-agent-sidebar` helper with per-window project view, fixed gray sidebar identity, colored provider/runtime activity status, and mouse/keyboard focus switching.
 - Splits top agent activity from bottom Comms: top rows reflect provider pane/runtime activity, while Comms stays tied to CCB ask/job tracking and recovery.
 - Adds `version = 2` `[windows]` topology support for multiple named tmux windows with sidebars, while legacy compact/hybrid configs remain one business window and keep `cmd` semantics.
-- Updates `ccb_config` docs/skills for windows topology migration and preserves explicit multi-window mounting behavior.
+- Updates `ccb-config` docs/skills for windows topology migration and preserves explicit multi-window mounting behavior.
 - Hardens Ghostty/tmux `TERM` compatibility, tmux environment/mouse behavior, source-wrapper handling, release sidebar binary packaging, and Codex legacy root-only session migration.
 
 </details>
@@ -413,7 +413,7 @@ Historical note: older release notes below may mention `askd`, legacy flags, or 
 <summary><b>v6.2.7</b> - Config Source And Stop Cleanup Release</summary>
 
 - Reports explicit config source kinds for built-in defaults, user `~/.ccb/ccb.config`, and project `.ccb/ccb.config`, with project config taking highest priority.
-- Updates `ccb config validate`, README/docs, and inherited `ccb_config` skill guidance to describe the active config layer.
+- Updates `ccb config validate`, README/docs, and inherited `ccb-config` skill guidance to describe the active config layer.
 - Defers project tmux namespace destruction until after the stop-all response finalizer so `ccb kill` / `ccb kill -f` can complete cleanup from inside a CCB pane.
 
 </details>
@@ -469,10 +469,10 @@ Historical note: older release notes below may mention `askd`, legacy flags, or 
 <details>
 <summary><b>v6.2.1</b> - Inherited CCB Config Skill Release</summary>
 
-- Adds inherited Claude and Codex `ccb_config` skills for designing `.ccb/ccb.config`, choosing agent roles/providers/worktree layout, and updating shared plus per-agent memory.
+- Adds inherited Claude and Codex `ccb-config` skills for designing `.ccb/ccb.config`, choosing agent roles/providers/worktree layout, and updating shared plus per-agent memory.
 - Moves CCB-owned inherited skills under `inherit_skills/` while keeping optional `useful_tools/` user-installable rather than inherited.
 - Shortens injected ask reply guidance, removes nested-routing text from every ask body, keeps injected source text English-only, and expands explicit-output detection.
-- Simplifies project/runtime memory wording and updates `ccb_config` memory-routing examples for direct callback handoffs and separate root work packages.
+- Simplifies project/runtime memory wording and updates `ccb-config` memory-routing examples for direct callback handoffs and separate root work packages.
 
 </details>
 

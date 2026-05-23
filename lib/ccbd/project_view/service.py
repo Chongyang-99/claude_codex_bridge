@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from agents.models import AgentState
@@ -25,6 +26,8 @@ from .sequence import ProjectViewSequenceCache
 PROJECT_VIEW_SCHEMA_VERSION = 1
 PROJECT_VIEW_TTL_MS = 1000
 PROJECT_VIEW_COMMS_LIMIT = 8
+_RECENT_JOB_SCAN_LIMIT_PER_AGENT = 128
+_RECENT_JOB_RESULT_LIMIT = PROJECT_VIEW_COMMS_LIMIT * 8
 _COMMS_RECENT_STATUSES = frozenset(
     {
         JobStatus.COMPLETED,
@@ -53,33 +56,179 @@ class ProjectViewDependencies:
     state_store: object | None = None
     clock: object = utc_now
     sequence_cache: ProjectViewSequenceCache | None = None
+    cache_ttl_ms: int | None = None
+
+
+@dataclass
+class _ProjectViewBuildContext:
+    deps: ProjectViewDependencies
+    namespace: object | None
+    backend_loaded: bool = False
+    backend: object | None = None
+    pane_text_by_id: dict[str, str | None] = field(default_factory=dict)
+
+    def namespace_backend(self):
+        if self.namespace is None or self.deps.namespace_controller is None:
+            return None
+        if self.backend_loaded:
+            return self.backend
+        self.backend_loaded = True
+        try:
+            self.backend = backend_for_namespace(self.deps.namespace_controller._backend_factory, self.namespace)
+        except Exception:
+            self.backend = None
+        return self.backend
+
+    def pane_text_hint(self, pane_id: object) -> str | None:
+        pane = str(pane_id or '').strip()
+        if not pane.startswith('%'):
+            return None
+        if pane in self.pane_text_by_id:
+            return self.pane_text_by_id[pane]
+        backend = self.namespace_backend()
+        if backend is None:
+            self.pane_text_by_id[pane] = None
+            return None
+        cp = _tmux_run_best_effort(
+            backend,
+            [
+                'capture-pane',
+                '-p',
+                '-t',
+                pane,
+                '-S',
+                '-30',
+            ],
+        )
+        if cp is None:
+            self.pane_text_by_id[pane] = None
+            return None
+        text = str(getattr(cp, 'stdout', '') or '')
+        self.pane_text_by_id[pane] = text or None
+        return self.pane_text_by_id[pane]
+
+
+@dataclass
+class _CommsLookup:
+    attempt_store: object | None
+    reply_store: object | None
+    message_store: object | None
+    attempts_by_job_id: dict[str, object | None] = field(default_factory=dict)
+    attempts_by_attempt_id: dict[str, object | None] = field(default_factory=dict)
+    attempts_by_message_id: dict[tuple[str, str], object | None] = field(default_factory=dict)
+    latest_attempt_by_message_agent: dict[tuple[str, str], object | None] = field(default_factory=dict)
+    replies_by_reply_id: dict[str, object | None] = field(default_factory=dict)
+    messages_by_message_id: dict[str, object | None] = field(default_factory=dict)
+
+    def attempt_by_job_id(self, job_id: object) -> object | None:
+        key = str(job_id or '').strip()
+        if not key:
+            return None
+        if key not in self.attempts_by_job_id:
+            self.attempts_by_job_id[key] = _call_store(self.attempt_store, 'get_latest_by_job_id', key)
+        return self.attempts_by_job_id[key]
+
+    def attempt_by_attempt_id(self, attempt_id: object) -> object | None:
+        key = str(attempt_id or '').strip()
+        if not key:
+            return None
+        if key not in self.attempts_by_attempt_id:
+            self.attempts_by_attempt_id[key] = _call_store(self.attempt_store, 'get_latest', key)
+        return self.attempts_by_attempt_id[key]
+
+    def latest_attempt_by_message_id(self, message_id: object, *, exclude_job_id: object = None) -> object | None:
+        message_key = str(message_id or '').strip()
+        if not message_key:
+            return None
+        excluded = str(exclude_job_id or '').strip()
+        cache_key = (message_key, excluded)
+        if cache_key not in self.attempts_by_message_id:
+            self.attempts_by_message_id[cache_key] = _call_store(
+                self.attempt_store,
+                'get_latest_by_message_id',
+                message_key,
+                exclude_job_id=excluded or None,
+            )
+        return self.attempts_by_message_id[cache_key]
+
+    def latest_attempt_for_message_agent(self, message_id: object, agent_name: object) -> object | None:
+        message_key = str(message_id or '').strip()
+        agent_key = str(agent_name or '').strip()
+        if not message_key or not agent_key:
+            return None
+        cache_key = (message_key, agent_key)
+        if cache_key not in self.latest_attempt_by_message_agent:
+            self.latest_attempt_by_message_agent[cache_key] = _call_store(
+                self.attempt_store,
+                'get_latest_by_message_agent',
+                message_key,
+                agent_key,
+            )
+        return self.latest_attempt_by_message_agent[cache_key]
+
+    def reply_by_reply_id(self, reply_id: object) -> object | None:
+        key = str(reply_id or '').strip()
+        if not key:
+            return None
+        if key not in self.replies_by_reply_id:
+            self.replies_by_reply_id[key] = _call_store(self.reply_store, 'get_latest', key)
+        return self.replies_by_reply_id[key]
+
+    def message_by_message_id(self, message_id: object) -> object | None:
+        key = str(message_id or '').strip()
+        if not key:
+            return None
+        if key not in self.messages_by_message_id:
+            self.messages_by_message_id[key] = _call_store(self.message_store, 'get_latest', key)
+        return self.messages_by_message_id[key]
+
+
+@dataclass(frozen=True)
+class _CachedProjectViewResponse:
+    response: dict[str, object]
+    expires_at: float
 
 
 class ProjectViewService:
     def __init__(self, deps: ProjectViewDependencies) -> None:
         self._deps = deps
         self._sequence_cache = deps.sequence_cache or ProjectViewSequenceCache()
+        self._cached_response: _CachedProjectViewResponse | None = None
 
     def build_response(self, *, schema_version: int = PROJECT_VIEW_SCHEMA_VERSION) -> dict[str, object]:
         if int(schema_version) != PROJECT_VIEW_SCHEMA_VERSION:
             raise ValueError(f'project_view schema_version must be {PROJECT_VIEW_SCHEMA_VERSION}')
+        ttl_ms = _project_view_ttl_ms(self._deps)
+        ttl_s = max(0.0, ttl_ms / 1000.0)
+        now = monotonic()
+        if ttl_s > 0:
+            cached = self._cached_response
+            if cached is not None and now < cached.expires_at:
+                return cached.response
         generated_at = self._deps.clock()
         view = build_project_view(self._deps, generated_at=generated_at)
-        return {
+        response = {
             'view': view,
             'cache': {
                 'generated_at': generated_at,
-                'ttl_ms': PROJECT_VIEW_TTL_MS,
+                'ttl_ms': ttl_ms,
                 'sequence': self._sequence_cache.sequence_for(view),
             },
         }
+        if ttl_s > 0:
+            self._cached_response = _CachedProjectViewResponse(
+                response=response,
+                expires_at=monotonic() + ttl_s,
+            )
+        return response
 
 
 def build_project_view(deps: ProjectViewDependencies, *, generated_at: str) -> dict[str, object]:
     lease = deps.mount_manager.load_state()
     namespace = deps.namespace_state_store.load()
-    focus = _focus_snapshot(deps, namespace=namespace)
-    tmux_snapshot = _tmux_snapshot(deps, namespace=namespace)
+    context = _ProjectViewBuildContext(deps=deps, namespace=namespace)
+    focus = _focus_snapshot(context)
+    tmux_snapshot = _tmux_snapshot(context)
     namespace_mounted = lease is not None and lease.mount_state is MountState.MOUNTED
     window_by_agent = _window_by_agent(deps.config)
     active_jobs = _active_jobs_by_agent(deps.dispatcher)
@@ -95,7 +244,7 @@ def build_project_view(deps: ProjectViewDependencies, *, generated_at: str) -> d
             namespace_mounted=namespace_mounted,
             generated_at=generated_at,
             active=focus.get('active_agent') == agent_name,
-            namespace=namespace,
+            context=context,
             active_job=active_jobs.get(agent_name),
             queued_jobs=queued_jobs.get(agent_name, ()),
             callback_wait=callback_waits.get(agent_name),
@@ -117,12 +266,17 @@ def build_project_view(deps: ProjectViewDependencies, *, generated_at: str) -> d
         'agents': agents,
         'comms': _comms_view(
             deps,
-            namespace=namespace,
+            context=context,
             active_jobs=active_jobs,
             queued_jobs=queued_jobs,
             generated_at=generated_at,
         ),
     }
+
+
+def _project_view_ttl_ms(deps: ProjectViewDependencies) -> int:
+    ttl_ms = PROJECT_VIEW_TTL_MS if deps.cache_ttl_ms is None else int(deps.cache_ttl_ms)
+    return max(0, ttl_ms)
 
 
 def _agent_view(
@@ -133,7 +287,7 @@ def _agent_view(
     order: int,
     namespace_mounted: bool,
     generated_at: str,
-    namespace,
+    context: _ProjectViewBuildContext,
     active_job,
     queued_jobs: tuple,
     callback_wait,
@@ -153,11 +307,7 @@ def _agent_view(
             desired_state=getattr(runtime, 'desired_state', None) if runtime is not None else None,
             pane_id=getattr(runtime, 'pane_id', None) if runtime is not None else None,
             pane_state=getattr(runtime, 'pane_state', None) if runtime is not None else None,
-            pane_text=_pane_text_hint(
-                deps,
-                namespace=namespace,
-                pane_id=getattr(runtime, 'pane_id', None) if runtime is not None else None,
-            ),
+            pane_text=context.pane_text_hint(getattr(runtime, 'pane_id', None) if runtime is not None else None),
             current_job_status=job.status.value if job is not None else None,
             current_job_id=job.job_id if job is not None else None,
             current_job_updated_at=job.updated_at if job is not None else None,
@@ -262,18 +412,16 @@ def _window_views(*, config, focus: dict[str, object], tmux_snapshot: dict[str, 
     ]
 
 
-def _tmux_snapshot(deps: ProjectViewDependencies, *, namespace) -> dict[str, dict[str, object]]:
-    if namespace is None or deps.namespace_controller is None:
-        return {}
-    try:
-        backend = backend_for_namespace(deps.namespace_controller._backend_factory, namespace)
-    except Exception:
+def _tmux_snapshot(context: _ProjectViewBuildContext) -> dict[str, dict[str, object]]:
+    namespace = context.namespace
+    backend = context.namespace_backend()
+    if namespace is None or backend is None:
         return {}
     windows = _tmux_windows(backend, session_name=namespace.tmux_session_name)
     sidebars = _tmux_sidebar_panes(
         backend,
         session_name=namespace.tmux_session_name,
-        project_id=deps.project_id,
+        project_id=context.deps.project_id,
     )
     result: dict[str, dict[str, object]] = {}
     for window_name, window_facts in windows.items():
@@ -342,31 +490,6 @@ def _tmux_sidebar_panes(backend, *, session_name: str, project_id: str) -> dict[
     return result
 
 
-def _pane_text_hint(deps: ProjectViewDependencies, *, namespace, pane_id: object) -> str | None:
-    pane = str(pane_id or '').strip()
-    if namespace is None or deps.namespace_controller is None or not pane.startswith('%'):
-        return None
-    try:
-        backend = backend_for_namespace(deps.namespace_controller._backend_factory, namespace)
-    except Exception:
-        return None
-    cp = _tmux_run_best_effort(
-        backend,
-        [
-            'capture-pane',
-            '-p',
-            '-t',
-            pane,
-            '-S',
-            '-30',
-        ],
-    )
-    if cp is None:
-        return None
-    text = str(getattr(cp, 'stdout', '') or '')
-    return text or None
-
-
 def _tmux_run_best_effort(backend, args: list[str]):
     runner = getattr(backend, '_tmux_run', None)
     if not callable(runner):
@@ -395,7 +518,7 @@ def _coerce_int(value: str | None) -> int | None:
 def _comms_view(
     deps: ProjectViewDependencies,
     *,
-    namespace,
+    context: _ProjectViewBuildContext,
     active_jobs: dict[str, object],
     queued_jobs: dict[str, tuple],
     generated_at: str,
@@ -403,13 +526,22 @@ def _comms_view(
     dispatcher = deps.dispatcher
     dismissed_comms = _dismissed_comms(deps)
     jobs = _project_jobs(dispatcher, active_jobs=active_jobs, queued_jobs=queued_jobs)
-    reply_deliveries = _reply_deliveries_by_source_job_id(dispatcher, jobs)
-    jobs = _latest_business_jobs_by_lineage(dispatcher, jobs, reply_deliveries=reply_deliveries)
+    comms_lookup = _comms_lookup(dispatcher)
+    reply_deliveries = _reply_deliveries_by_source_job_id(dispatcher, jobs, comms_lookup=comms_lookup)
+    jobs = _with_reply_delivery_sources(dispatcher, jobs, reply_deliveries=reply_deliveries)
+    attempts_by_job_id = _attempt_lineage_by_job_id_from_lookup(comms_lookup, jobs)
+    jobs = _latest_business_jobs_by_lineage(
+        dispatcher,
+        jobs,
+        reply_deliveries=reply_deliveries,
+        attempts_by_job_id=attempts_by_job_id,
+    )
     configured_agents = _configured_agent_names(dispatcher)
+    lineage_for_recoverability = _recoverability_lineage_lookup(dispatcher, comms_lookup)
     rows = []
     for job in jobs:
         reply_delivery = reply_deliveries.get(job.job_id)
-        running_recover_hint = _running_recover_hint(deps, namespace=namespace, job=job, generated_at=generated_at)
+        running_recover_hint = _running_recover_hint(context, job=job, generated_at=generated_at)
         rows.append(
             (
                 _comm_sort_key(job, reply_delivery),
@@ -419,6 +551,7 @@ def _comms_view(
                     reply_delivery=reply_delivery,
                     configured_agents=configured_agents,
                     running_recover_hint=running_recover_hint,
+                    lineage_for_recoverability=lineage_for_recoverability,
                 ),
             )
         )
@@ -447,8 +580,10 @@ def _latest_business_jobs_by_lineage(
     jobs: tuple[object, ...],
     *,
     reply_deliveries: dict[str, object],
+    attempts_by_job_id: dict[str, tuple[str, int]] | None = None,
 ) -> tuple[object, ...]:
-    attempts_by_job_id = _attempt_lineage_by_job_id(dispatcher, jobs)
+    if attempts_by_job_id is None:
+        attempts_by_job_id = _attempt_lineage_by_job_id(dispatcher, jobs)
     latest_by_lineage: dict[tuple[str, ...], object] = {}
     for job in jobs:
         if not _is_business_comms_job(job):
@@ -465,18 +600,20 @@ def _latest_business_jobs_by_lineage(
 
 
 def _attempt_lineage_by_job_id(dispatcher, jobs: tuple[object, ...]) -> dict[str, tuple[str, int]]:
-    control = getattr(dispatcher, '_message_bureau_control', None)
-    attempt_store = getattr(control, '_attempt_store', None) if control is not None else None
-    if attempt_store is None or not hasattr(attempt_store, 'get_latest_by_job_id'):
-        return {}
+    return _attempt_lineage_by_job_id_from_lookup(_comms_lookup(dispatcher), jobs)
+
+
+def _attempt_lineage_by_job_id_from_lookup(
+    comms_lookup: _CommsLookup,
+    jobs: tuple[object, ...],
+) -> dict[str, tuple[str, int]]:
     result: dict[str, tuple[str, int]] = {}
     for job in jobs:
         job_id = str(getattr(job, 'job_id', '') or '').strip()
         if not job_id:
             continue
-        try:
-            attempt = attempt_store.get_latest_by_job_id(job_id)
-        except Exception:
+        attempt = comms_lookup.attempt_by_job_id(job_id)
+        if attempt is None:
             continue
         message_id = str(getattr(attempt, 'message_id', '') or '').strip()
         if not message_id:
@@ -487,6 +624,27 @@ def _attempt_lineage_by_job_id(dispatcher, jobs: tuple[object, ...]) -> dict[str
             retry_index = 0
         result[job_id] = (message_id, retry_index)
     return result
+
+
+def _comms_lookup(dispatcher) -> _CommsLookup:
+    control = getattr(dispatcher, '_message_bureau_control', None)
+    return _CommsLookup(
+        attempt_store=getattr(control, '_attempt_store', None) if control is not None else None,
+        reply_store=getattr(control, '_reply_store', None) if control is not None else None,
+        message_store=getattr(control, '_message_store', None) if control is not None else None,
+    )
+
+
+def _call_store(store, method_name: str, *args, **kwargs):
+    method = getattr(store, method_name, None)
+    if not callable(method):
+        return None
+    try:
+        return method(*args, **kwargs)
+    except AssertionError:
+        raise
+    except Exception:
+        return None
 
 
 def _comm_lineage_key(job, attempts_by_job_id: dict[str, tuple[str, int]]) -> tuple[str, ...]:
@@ -519,21 +677,39 @@ def _project_jobs(dispatcher, *, active_jobs: dict[str, object], queued_jobs: di
     return tuple(by_id.values())
 
 
-def _running_recover_hint(deps: ProjectViewDependencies, *, namespace, job, generated_at: str) -> str | None:
+def _with_reply_delivery_sources(
+    dispatcher,
+    jobs: tuple[object, ...],
+    *,
+    reply_deliveries: dict[str, object],
+) -> tuple[object, ...]:
+    if not reply_deliveries:
+        return jobs
+    by_id = {str(getattr(job, 'job_id', '') or ''): job for job in jobs}
+    for source_job_id in reply_deliveries:
+        if not source_job_id or source_job_id in by_id:
+            continue
+        try:
+            source = dispatcher.get(source_job_id)
+        except Exception:
+            source = None
+        if source is not None:
+            by_id[source_job_id] = source
+    return tuple(by_id.values())
+
+
+def _running_recover_hint(context: _ProjectViewBuildContext, *, job, generated_at: str) -> str | None:
     if getattr(job, 'status', None) is not JobStatus.RUNNING:
         return None
     agent_name = str(getattr(job, 'agent_name', '') or '').strip()
+    deps = context.deps
     runtime = deps.registry.get(agent_name) if agent_name else None
     if runtime is None:
         return None
     provider = str(getattr(deps.config.agents.get(agent_name), 'provider', '') or '').strip().lower()
     if provider not in {'claude', 'codex'}:
         return None
-    pane_text = _pane_text_hint(
-        deps,
-        namespace=namespace,
-        pane_id=getattr(runtime, 'pane_id', None),
-    )
+    pane_text = context.pane_text_hint(getattr(runtime, 'pane_id', None))
     age = _job_age_seconds(generated_at, getattr(job, 'updated_at', None))
     if (
         age is not None
@@ -565,12 +741,15 @@ def _recent_jobs(dispatcher) -> tuple[object, ...]:
     store = getattr(dispatcher, '_job_store', None)
     config = getattr(dispatcher, '_config', None)
     agents = getattr(config, 'agents', {}) if config is not None else {}
-    if store is None or not hasattr(store, 'list_agent'):
+    if store is None:
         return ()
     jobs: list[object] = []
     for agent_name in agents:
         try:
-            records = store.list_agent(agent_name)
+            if hasattr(store, 'list_agent_tail'):
+                records = store.list_agent_tail(agent_name, limit=_RECENT_JOB_SCAN_LIMIT_PER_AGENT)
+            else:
+                records = store.list_agent(agent_name)
         except Exception:
             continue
         latest_by_job: dict[str, object] = {}
@@ -581,7 +760,7 @@ def _recent_jobs(dispatcher) -> tuple[object, ...]:
             for record in latest_by_job.values()
             if getattr(record, 'status', None) in _COMMS_RECENT_STATUSES
         )
-    return tuple(sorted(jobs, key=lambda item: item.updated_at, reverse=True))
+    return tuple(sorted(jobs, key=lambda item: item.updated_at, reverse=True)[:_RECENT_JOB_RESULT_LIMIT])
 
 
 def _configured_agent_names(dispatcher) -> frozenset[str]:
@@ -590,12 +769,19 @@ def _configured_agent_names(dispatcher) -> frozenset[str]:
     return frozenset(str(name) for name in agents)
 
 
-def _reply_deliveries_by_source_job_id(dispatcher, jobs: tuple[object, ...]) -> dict[str, object]:
+def _reply_deliveries_by_source_job_id(
+    dispatcher,
+    jobs: tuple[object, ...],
+    *,
+    comms_lookup: _CommsLookup | None = None,
+) -> dict[str, object]:
+    if comms_lookup is None:
+        comms_lookup = _comms_lookup(dispatcher)
     result: dict[str, object] = {}
     for job in jobs:
         if not _is_reply_delivery_job(job):
             continue
-        source_job_id = _reply_delivery_source_job_id(dispatcher, job)
+        source_job_id = _reply_delivery_source_job_id(dispatcher, job, comms_lookup=comms_lookup)
         if not source_job_id:
             continue
         current = result.get(source_job_id)
@@ -618,29 +804,36 @@ def _is_reply_delivery_job(job) -> bool:
     return bool((getattr(job, 'provider_options', {}) or {}).get(_REPLY_DELIVERY_PROVIDER_OPTION))
 
 
-def _reply_delivery_source_job_id(dispatcher, job) -> str | None:
+def _reply_delivery_source_job_id(
+    dispatcher,
+    job,
+    *,
+    comms_lookup: _CommsLookup | None = None,
+) -> str | None:
+    if comms_lookup is None:
+        comms_lookup = _comms_lookup(dispatcher)
     return (
-        _reply_delivery_source_job_id_from_reply_record(dispatcher, job)
-        or _reply_delivery_source_job_id_from_message_origin(dispatcher, job)
+        _reply_delivery_source_job_id_from_reply_record(dispatcher, job, comms_lookup=comms_lookup)
+        or _reply_delivery_source_job_id_from_message_origin(dispatcher, job, comms_lookup=comms_lookup)
         or _reply_delivery_source_job_id_from_body(job)
     )
 
 
-def _reply_delivery_source_job_id_from_reply_record(dispatcher, job) -> str | None:
+def _reply_delivery_source_job_id_from_reply_record(
+    dispatcher,
+    job,
+    *,
+    comms_lookup: _CommsLookup,
+) -> str | None:
     reply_id = str((getattr(job, 'provider_options', {}) or {}).get(_REPLY_DELIVERY_REPLY_ID_OPTION) or '').strip()
     if not reply_id:
         return None
-    control = getattr(dispatcher, '_message_bureau_control', None)
-    reply_store = getattr(control, '_reply_store', None) if control is not None else None
-    attempt_store = getattr(control, '_attempt_store', None) if control is not None else None
-    if reply_store is None or attempt_store is None:
-        return None
     try:
-        reply = reply_store.get_latest(reply_id)
+        reply = comms_lookup.reply_by_reply_id(reply_id)
         if reply is None:
             return None
-        return _source_job_id_from_attempt_store(
-            attempt_store,
+        return _source_job_id_from_attempt_lookup(
+            comms_lookup,
             attempt_id=getattr(reply, 'attempt_id', None),
             message_id=getattr(reply, 'message_id', None),
             exclude_job_id=getattr(job, 'job_id', None),
@@ -649,22 +842,22 @@ def _reply_delivery_source_job_id_from_reply_record(dispatcher, job) -> str | No
         return None
 
 
-def _reply_delivery_source_job_id_from_message_origin(dispatcher, job) -> str | None:
-    control = getattr(dispatcher, '_message_bureau_control', None)
-    attempt_store = getattr(control, '_attempt_store', None) if control is not None else None
-    message_store = getattr(control, '_message_store', None) if control is not None else None
-    if attempt_store is None or message_store is None:
-        return None
+def _reply_delivery_source_job_id_from_message_origin(
+    dispatcher,
+    job,
+    *,
+    comms_lookup: _CommsLookup,
+) -> str | None:
     try:
-        delivery_attempt = attempt_store.get_latest_by_job_id(job.job_id)
+        delivery_attempt = comms_lookup.attempt_by_job_id(getattr(job, 'job_id', None))
         if delivery_attempt is None:
             return None
-        delivery_message = message_store.get_latest(delivery_attempt.message_id)
+        delivery_message = comms_lookup.message_by_message_id(getattr(delivery_attempt, 'message_id', None))
         origin_message_id = str(getattr(delivery_message, 'origin_message_id', '') or '').strip()
         if not origin_message_id:
             return None
-        return _source_job_id_from_attempt_store(
-            attempt_store,
+        return _source_job_id_from_attempt_lookup(
+            comms_lookup,
             message_id=origin_message_id,
             exclude_job_id=getattr(job, 'job_id', None),
         )
@@ -672,8 +865,8 @@ def _reply_delivery_source_job_id_from_message_origin(dispatcher, job) -> str | 
         return None
 
 
-def _source_job_id_from_attempt_store(
-    attempt_store,
+def _source_job_id_from_attempt_lookup(
+    comms_lookup: _CommsLookup,
     *,
     attempt_id: str | None = None,
     message_id: str | None = None,
@@ -682,17 +875,40 @@ def _source_job_id_from_attempt_store(
     excluded = str(exclude_job_id or '').strip()
     attempt_key = str(attempt_id or '').strip()
     if attempt_key:
-        attempt = attempt_store.get_latest(attempt_key)
+        attempt = comms_lookup.attempt_by_attempt_id(attempt_key)
         job_id = _attempt_job_id(attempt, exclude_job_id=excluded)
         if job_id:
             return job_id
     message_key = str(message_id or '').strip()
     if message_key:
-        for attempt in reversed(attempt_store.list_message(message_key)):
-            job_id = _attempt_job_id(attempt, exclude_job_id=excluded)
-            if job_id:
-                return job_id
+        attempt = comms_lookup.latest_attempt_by_message_id(message_key, exclude_job_id=excluded)
+        job_id = _attempt_job_id(attempt, exclude_job_id=excluded)
+        if job_id:
+            return job_id
     return None
+
+
+def _recoverability_lineage_lookup(dispatcher, comms_lookup: _CommsLookup):
+    def lookup(job):
+        job_id = str(getattr(job, 'job_id', '') or '').strip()
+        if not job_id:
+            return None
+        attempt = comms_lookup.attempt_by_job_id(job_id)
+        if attempt is None:
+            return None
+        message_id = str(getattr(attempt, 'message_id', '') or '').strip()
+        agent_name = str(getattr(attempt, 'agent_name', '') or '').strip()
+        latest_attempt = comms_lookup.latest_attempt_for_message_agent(message_id, agent_name)
+        return _ProjectViewLineage(attempt=attempt, latest_attempt=latest_attempt, inbound=None)
+
+    return lookup
+
+
+@dataclass(frozen=True)
+class _ProjectViewLineage:
+    attempt: object
+    latest_attempt: object | None
+    inbound: object | None
 
 
 def _attempt_job_id(attempt, *, exclude_job_id: str | None = None) -> str | None:
@@ -727,6 +943,7 @@ def _comm_record(
     reply_delivery,
     configured_agents: frozenset[str],
     running_recover_hint: str | None = None,
+    lineage_for_recoverability=None,
 ) -> dict[str, object]:
     business_status, status_label = _comm_business_status(
         job,
@@ -742,6 +959,7 @@ def _comm_record(
         job,
         reply_delivery=reply_delivery,
         running_hint=running_recover_hint,
+        lineage_for_job=lineage_for_recoverability,
     )
     return {
         'id': job.job_id,
@@ -905,15 +1123,14 @@ def _runtime_state(runtime) -> str | None:
     return runtime.state.value
 
 
-def _focus_snapshot(deps: ProjectViewDependencies, *, namespace) -> dict[str, object]:
+def _focus_snapshot(context: _ProjectViewBuildContext) -> dict[str, object]:
+    namespace = context.namespace
     if namespace is None:
         return {}
-    controller = getattr(deps, 'namespace_controller', None)
-    backend_factory = getattr(controller, '_backend_factory', None)
-    if backend_factory is None:
+    backend = context.namespace_backend()
+    if backend is None:
         return {}
     try:
-        backend = backend_for_namespace(backend_factory, namespace)
         cp = backend._tmux_run(
             [
                 'display-message',

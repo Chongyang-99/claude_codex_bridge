@@ -66,18 +66,19 @@ def comms_recoverability_for_job(
     *,
     reply_delivery: JobRecord | None = None,
     running_hint: str | None = None,
+    lineage_for_job=None,
 ) -> CommsRecoverability:
     if (
         reply_delivery is not None
         and reply_delivery.status in _FAILED_TERMINAL_STATUSES
-        and _can_retry_job(dispatcher, reply_delivery)
+        and _can_retry_job(dispatcher, reply_delivery, lineage_for_job=lineage_for_job)
     ):
         return CommsRecoverability(
             True,
             f'reply_delivery_{reply_delivery.status.value}',
             CommsRecoverTarget(job.job_id, reply_delivery.job_id),
         )
-    if job.status in _FAILED_TERMINAL_STATUSES and _can_retry_job(dispatcher, job):
+    if job.status in _FAILED_TERMINAL_STATUSES and _can_retry_job(dispatcher, job, lineage_for_job=lineage_for_job):
         return CommsRecoverability(True, f'job_{job.status.value}', CommsRecoverTarget(job.job_id, None))
     if job.status is JobStatus.RUNNING:
         stale_reason = _running_stale_reason(dispatcher, job, running_hint=running_hint)
@@ -344,6 +345,15 @@ def _lineage_for_job(dispatcher, job: JobRecord) -> _Lineage | None:
     return _Lineage(attempt=attempt, latest_attempt=latest_attempt, inbound=inbound)
 
 
+def _lookup_lineage_for_job(dispatcher, job: JobRecord, lineage_for_job=None):
+    if callable(lineage_for_job):
+        try:
+            return lineage_for_job(job)
+        except Exception:
+            return None
+    return _lineage_for_job(dispatcher, job)
+
+
 def _latest_attempt_for_agent(control, message_id: str, agent_name: str):
     latest = None
     for attempt in control._attempt_store.list_message(message_id):
@@ -363,8 +373,8 @@ def _is_latest_attempt(lineage: _Lineage) -> bool:
     return False
 
 
-def _can_retry_job(dispatcher, job: JobRecord) -> bool:
-    lineage = _lineage_for_job(dispatcher, job)
+def _can_retry_job(dispatcher, job: JobRecord, *, lineage_for_job=None) -> bool:
+    lineage = _lookup_lineage_for_job(dispatcher, job, lineage_for_job=lineage_for_job)
     if lineage is None or lineage.latest_attempt is None:
         return False
     if not _is_latest_attempt(lineage):

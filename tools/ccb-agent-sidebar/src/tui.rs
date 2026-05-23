@@ -24,7 +24,7 @@ use crate::model::{
 use crate::status::{activity_color, activity_symbol};
 
 const PROJECT_VIEW_REFRESH_MIN_MS: u64 = 100;
-const PROJECT_VIEW_REFRESH_MAX_MS: u64 = 250;
+const PROJECT_VIEW_REFRESH_MAX_MS: u64 = 5000;
 const PROJECT_VIEW_REFRESH_DEFAULT_MS: u64 = 1000;
 const COMMS_ACTION_RETRY_COLS: std::ops::RangeInclusive<u16> = 0..=1;
 const COMMS_ACTION_CANCEL_COLS: std::ops::RangeInclusive<u16> = 3..=4;
@@ -917,11 +917,11 @@ mod tests {
     }
 
     #[test]
-    fn refresh_interval_caps_project_view_ttl_for_focus_following() {
+    fn refresh_interval_respects_project_view_ttl_for_focus_following() {
         let mut app = SidebarApp::new("main".into());
         app.apply_response(sample_response());
 
-        assert_eq!(app.refresh_interval(), Duration::from_millis(PROJECT_VIEW_REFRESH_MAX_MS));
+        assert_eq!(app.refresh_interval(), Duration::from_millis(1000));
     }
 
     #[test]

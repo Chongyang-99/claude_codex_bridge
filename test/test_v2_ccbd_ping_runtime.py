@@ -197,6 +197,35 @@ def test_ping_handler_ccbd_does_not_force_health_check() -> None:
     assert payload['diagnostics']['last_ping_duration_s'] >= 0.0
 
 
+def test_ping_handler_prefers_local_daemon_health() -> None:
+    config = _config()
+    calls: list[str] = []
+
+    handler = build_ping_handler(
+        project_id='proj-1',
+        config=config,
+        paths=_paths(),
+        registry=SimpleNamespace(
+            list_known_agents=lambda: ('demo',),
+            spec_for=lambda name: config.agents[name],
+            get=lambda name: None,
+        ),
+        health_monitor=SimpleNamespace(
+            daemon_health=lambda: calls.append('remote') or _inspection(phase='failed', desired_state='running'),
+            local_daemon_health=lambda: calls.append('local')
+            or _inspection(phase='mounted', desired_state='running'),
+        ),
+        execution_registry=SimpleNamespace(get=lambda provider: None),
+        execution_state_store=SimpleNamespace(summary=lambda: {}),
+        metrics=_metrics(),
+    )
+
+    payload = handler({'target': 'ccbd'})
+
+    assert payload['mount_state'] == 'mounted'
+    assert calls == ['local']
+
+
 def test_build_agent_payload_prefers_runtime_mount_state_over_project_phase() -> None:
     config = _config()
     runtime = AgentRuntime(

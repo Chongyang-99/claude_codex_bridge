@@ -6,8 +6,10 @@ from agents.models import AgentState, RuntimeBindingSource, normalize_runtime_bi
 from ccbd.services.project_inspection import load_project_daemon_inspection
 
 
-def daemon_health(monitor):
-    lease_inspection = monitor._ownership_guard.inspect()
+def daemon_health(monitor, *, assume_socket_connectable: bool = False):
+    lease_inspection = monitor._ownership_guard.inspect(
+        assume_mounted_socket_connectable=assume_socket_connectable,
+    )
     project_id = str(monitor._project_id or '').strip()
     lifecycle_store = monitor._lifecycle_store
     if not project_id or lifecycle_store is None:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import faulthandler
+import os
+import signal
 import sys
 import traceback
 from pathlib import Path
@@ -12,11 +15,21 @@ if str(_LIB_ROOT) not in sys.path:
 from ccbd.app import CcbdApp
 
 
+def _install_signal_traceback_dump() -> None:
+    if os.environ.get('CCB_CCBD_FAULTHANDLER') not in {'1', 'true', 'yes', 'on'}:
+        return
+    try:
+        faulthandler.register(signal.SIGUSR1, file=sys.stderr, all_threads=True)
+    except Exception:
+        return
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog='python -m ccbd.main')
     parser.add_argument('--project', required=True)
     args = parser.parse_args(argv)
 
+    _install_signal_traceback_dump()
     app = CcbdApp(args.project)
     try:
         app.serve_forever()

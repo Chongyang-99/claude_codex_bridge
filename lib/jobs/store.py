@@ -28,6 +28,16 @@ class JobStore:
             loader=_job_record_from_record,
         )
 
+    def list_agent_tail(self, agent_name: str, *, limit: int) -> list[JobRecord]:
+        return self.list_target_tail(TargetKind.AGENT, agent_name, limit=limit)
+
+    def list_target_tail(self, target_kind: TargetKind | str, target_name: str, *, limit: int) -> list[JobRecord]:
+        return self._store.read_tail(
+            self._layout.target_jobs_path(target_kind, target_name),
+            limit,
+            loader=_job_record_from_record,
+        )
+
     def get_latest(self, agent_name: str, job_id: str) -> JobRecord | None:
         return self.get_latest_target(TargetKind.AGENT, agent_name, job_id)
 
