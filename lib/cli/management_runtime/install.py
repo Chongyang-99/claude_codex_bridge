@@ -95,6 +95,13 @@ def _normalize_lf_bytes(content: bytes) -> bytes:
     return content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
+def _is_probably_binary(content: bytes) -> bool:
+    sample = content[:8192]
+    if b"\0" in sample:
+        return True
+    return sample.startswith((b"\x7fELF", b"\xca\xfe\xba\xbe", b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf"))
+
+
 def _should_normalize_unix_text(rel_path: Path) -> bool:
     rel = Path(rel_path)
     if rel.name in {"install.sh", "ccb"}:
@@ -175,6 +182,8 @@ def _stage_unix_installer_tree(source_dir: Path, *, temp_base: Path) -> tuple[Pa
         if not _should_normalize_unix_text(rel_path):
             continue
         original = path.read_bytes()
+        if _is_probably_binary(original):
+            continue
         normalized = _normalize_lf_bytes(original)
         if normalized != original:
             path.write_bytes(normalized)

@@ -12,8 +12,9 @@ def test_install_script_links_sidebar_helper() -> None:
     assert 'bin/build-ccb-agent-sidebar' in text
     assert 'build_sidebar_helper_if_possible' in text
     assert 'is_sidebar_wrapper' in text
+    assert 'require_sidebar_rust_toolchain' in text
     assert 'cargo build --release --manifest-path "$crate_dir/Cargo.toml"' in text
-    assert 'WARN: ccb-agent-sidebar binary not available' in text
+    assert 'ERROR: ccb-agent-sidebar binary not available' in text
 
 
 def test_sidebar_bin_wrapper_is_source_install_fallback() -> None:
@@ -251,6 +252,9 @@ chmod +x "$crate_dir/target/release/ccb-agent-sidebar"
         encoding='utf-8',
     )
     fake_cargo.chmod(0o755)
+    fake_rustc = fake_bin / 'rustc'
+    fake_rustc.write_text('#!/usr/bin/env bash\nexit 0\n', encoding='utf-8')
+    fake_rustc.chmod(0o755)
     harness = tmp_path / 'harness.sh'
     install_text = Path('install.sh').read_text(encoding='utf-8')
     install_body = install_text.rsplit('main "$@"', 1)[0]
@@ -278,6 +282,48 @@ build_sidebar_helper_if_possible
     assert proc.returncode == 0, proc.stderr
     assert 'Built ccb-agent-sidebar' in proc.stdout
     assert 'rebuilt-sidebar' in out_bin.read_text(encoding='utf-8')
+
+
+def test_install_script_fails_when_sidebar_build_needs_missing_rust(tmp_path: Path) -> None:
+    install_prefix = tmp_path / 'install'
+    crate_dir = install_prefix / 'tools' / 'ccb-agent-sidebar'
+    out_bin = install_prefix / 'bin' / 'ccb-agent-sidebar'
+    fake_bin = tmp_path / 'fake-bin'
+    crate_dir.mkdir(parents=True)
+    out_bin.parent.mkdir(parents=True)
+    fake_bin.mkdir()
+    (crate_dir / 'Cargo.toml').write_text('[package]\nname = "ccb-agent-sidebar"\nversion = "0.0.0"\n', encoding='utf-8')
+    out_bin.write_text('# CCB_AGENT_SIDEBAR_WRAPPER\n', encoding='utf-8')
+    out_bin.chmod(0o755)
+    harness = tmp_path / 'harness.sh'
+    install_text = Path('install.sh').read_text(encoding='utf-8')
+    install_body = install_text.rsplit('main "$@"', 1)[0]
+    harness.write_text(
+        f"""#!/usr/bin/env bash
+set -euo pipefail
+export CODEX_INSTALL_PREFIX={install_prefix}
+export CODEX_BIN_DIR={tmp_path / 'bin'}
+{install_body}
+build_sidebar_helper_if_possible
+""",
+        encoding='utf-8',
+    )
+    harness.chmod(0o755)
+
+    proc = subprocess.run(
+        ['/bin/bash', str(harness)],
+        env={**os.environ, 'PATH': '/usr/bin:/bin'},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode != 0
+    assert 'ERROR: Rust toolchain required to build ccb-agent-sidebar' in proc.stdout
+    assert 'Missing:' in proc.stdout
+    assert 'cargo' in proc.stdout
+    assert 'rustc' in proc.stdout
 
 
 def test_install_copy_excludes_rust_target_directory() -> None:

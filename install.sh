@@ -1531,6 +1531,40 @@ sidebar_helper_runs_on_this_host() {
   esac
 }
 
+require_sidebar_rust_toolchain() {
+  local missing=()
+  if ! command -v cargo >/dev/null 2>&1; then
+    missing+=(cargo)
+  fi
+  if ! command -v rustc >/dev/null 2>&1; then
+    missing+=(rustc)
+  fi
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "ERROR: Rust toolchain required to build ccb-agent-sidebar"
+  echo "   Missing: ${missing[*]}"
+  echo "   Sidebar panes require bin/ccb-agent-sidebar; install Rust or use a release package with a prebuilt helper."
+  case "$(detect_platform)" in
+    macos)
+      echo "   macOS: brew install rust"
+      ;;
+    linux)
+      echo "   Debian/Ubuntu: sudo apt-get install -y cargo rustc"
+      ;;
+  esac
+  echo "   Rustup: https://rustup.rs/"
+  exit 1
+}
+
+sidebar_helper_unavailable_error() {
+  echo "ERROR: ccb-agent-sidebar binary not available"
+  echo "   Sidebar panes will not work without a runnable helper."
+  echo "   Install Rust and re-run install.sh, or install an official release package with a prebuilt helper."
+  exit 1
+}
+
 install_prebuilt_sidebar_helper() {
   local binary="$1"
   local target="$2"
@@ -1555,22 +1589,23 @@ build_sidebar_helper_if_possible() {
   target="$asset_root/bin/ccb-agent-sidebar"
 
   if [[ ! -f "$crate_dir/Cargo.toml" ]]; then
-    return
+    if [[ -x "$target" ]] && ! is_sidebar_wrapper "$target" && sidebar_helper_runs_on_this_host "$target"; then
+      return
+    fi
+    sidebar_helper_unavailable_error
   fi
 
   if install_uses_live_source; then
-    if [[ -x "$binary" ]]; then
+    if [[ -x "$binary" ]] && sidebar_helper_runs_on_this_host "$binary"; then
       return
     fi
-    if command -v cargo >/dev/null 2>&1; then
-      echo "Building ccb-agent-sidebar..."
-      if cargo build --release --manifest-path "$crate_dir/Cargo.toml" >/dev/null 2>&1 && [[ -x "$binary" ]]; then
-        echo "Built ccb-agent-sidebar"
-        return
-      fi
+    require_sidebar_rust_toolchain
+    echo "Building ccb-agent-sidebar..."
+    if cargo build --release --manifest-path "$crate_dir/Cargo.toml" >/dev/null 2>&1 && [[ -x "$binary" ]]; then
+      echo "Built ccb-agent-sidebar"
+      return
     fi
-    echo "WARN: ccb-agent-sidebar binary not available; sidebar panes will show a helper-missing message"
-    return
+    sidebar_helper_unavailable_error
   fi
 
   mkdir -p "$asset_root/bin"
@@ -1582,20 +1617,19 @@ build_sidebar_helper_if_possible() {
     return
   fi
 
-  if command -v cargo >/dev/null 2>&1; then
-    echo "Building ccb-agent-sidebar..."
-    if cargo build --release --manifest-path "$crate_dir/Cargo.toml" >/dev/null 2>&1 && [[ -x "$binary" ]]; then
-      cp -f "$binary" "$target"
-      chmod +x "$target" 2>/dev/null || true
-      if sidebar_helper_runs_on_this_host "$target"; then
-        echo "Built ccb-agent-sidebar"
-        return
-      fi
-      rm -f "$target"
+  require_sidebar_rust_toolchain
+  echo "Building ccb-agent-sidebar..."
+  if cargo build --release --manifest-path "$crate_dir/Cargo.toml" >/dev/null 2>&1 && [[ -x "$binary" ]]; then
+    cp -f "$binary" "$target"
+    chmod +x "$target" 2>/dev/null || true
+    if sidebar_helper_runs_on_this_host "$target"; then
+      echo "Built ccb-agent-sidebar"
+      return
     fi
+    rm -f "$target"
   fi
 
-  echo "WARN: ccb-agent-sidebar binary not available; sidebar panes will show a helper-missing message"
+  sidebar_helper_unavailable_error
 }
 
 install_bin_links() {

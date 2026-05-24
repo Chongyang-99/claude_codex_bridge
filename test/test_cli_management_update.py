@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import shutil
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
+from cli.management_runtime import install as install_runtime
 from cli.management_runtime.commands_runtime import update as update_runtime
 
 
@@ -220,3 +222,21 @@ def test_update_via_tarball_uses_macos_release_artifact(monkeypatch, tmp_path: P
     assert calls["action"] == "install"
     assert calls["source_dir"] == tmp_base / "ccb_update" / "ccb-macos-universal"
     assert calls["install_dir"] == install_dir
+
+
+def test_staged_unix_installer_preserves_binary_sidebar_helper(tmp_path: Path) -> None:
+    source_dir = tmp_path / "ccb-macos-universal"
+    bin_dir = source_dir / "bin"
+    bin_dir.mkdir(parents=True)
+    (source_dir / "install.sh").write_bytes(b"#!/usr/bin/env bash\r\necho install\r\n")
+    (bin_dir / "ask").write_bytes(b"#!/usr/bin/env bash\r\necho ask\r\n")
+    sidebar_bytes = b"\xca\xfe\xba\xbe\x00\x00\x00\x02\r\nbinary\rpayload\x00"
+    (bin_dir / "ccb-agent-sidebar").write_bytes(sidebar_bytes)
+
+    staging_root, staged_source = install_runtime._stage_unix_installer_tree(source_dir, temp_base=tmp_path)
+    try:
+        assert (staged_source / "install.sh").read_bytes() == b"#!/usr/bin/env bash\necho install\n"
+        assert (staged_source / "bin" / "ask").read_bytes() == b"#!/usr/bin/env bash\necho ask\n"
+        assert (staged_source / "bin" / "ccb-agent-sidebar").read_bytes() == sidebar_bytes
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
