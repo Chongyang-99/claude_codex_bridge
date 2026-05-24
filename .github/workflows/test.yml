@@ -140,6 +140,9 @@ jobs:
             test/test_cli_management_update.py \
             test/test_cli_startup_update.py
 
+      - name: Build macOS sidebar helper for release install smoke
+        run: bin/build-ccb-agent-sidebar
+
       - name: Smoke macOS release install
         shell: bash
         run: |

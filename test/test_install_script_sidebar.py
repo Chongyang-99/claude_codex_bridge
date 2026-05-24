@@ -341,6 +341,16 @@ def test_ci_runs_rust_sidebar_checks() -> None:
     assert 'bin/build-ccb-agent-sidebar' in text
 
 
+def test_macos_install_smoke_uses_prebuilt_sidebar_helper() -> None:
+    text = Path('.github/workflows/test.yml').read_text(encoding='utf-8')
+
+    build_marker = 'Build macOS sidebar helper for release install smoke'
+    smoke_marker = 'Smoke macOS release install'
+    assert build_marker in text
+    assert text.index(build_marker) < text.index(smoke_marker)
+    assert 'run: bin/build-ccb-agent-sidebar' in text
+
+
 def test_sidebar_release_workflow_publishes_linux_artifact() -> None:
     text = Path('.github/workflows/release-sidebar.yml').read_text(encoding='utf-8')
 
@@ -359,7 +369,7 @@ def test_sidebar_release_workflow_publishes_linux_artifact() -> None:
 def test_release_artifacts_workflow_sets_up_rust_for_sidebar_build() -> None:
     text = Path('.github/workflows/release-artifacts.yml').read_text(encoding='utf-8')
 
-    assert 'default: "v7.0.5"' in text
+    assert 'default: "v7.0.6"' in text
     assert 'os: ubuntu-22.04' in text
     assert 'uses: dtolnay/rust-toolchain@stable' in text
     assert 'rustup target add x86_64-apple-darwin aarch64-apple-darwin' in text

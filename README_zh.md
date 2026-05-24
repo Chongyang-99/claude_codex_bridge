@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-7.0.5-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.6-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,10 +74,10 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
+- **macOS release 验证已修复**：GitHub Tests 在 macOS release-install smoke 前先构建 sidebar helper，和正式 release 包安装形态一致。
 - **Claude Keychain 绑定可显式指定**：`CCB_KEYCHAIN_SERVICE_OVERRIDE` 可把 managed Claude 物化绑定到指定 macOS Keychain service。
 - **macOS 更新会保留 sidebar helper**：update staging 会跳过二进制文件的换行归一化，避免破坏 `bin/ccb-agent-sidebar`。
 - **Sidebar 本地重建失败更清楚**：当 helper 必须本机重建但缺少 Rust toolchain 时，安装脚本会明确报错。
-- **Release 测试覆盖热修路径**：provider profile、control-plane env、update staging 和 sidebar installer 测试覆盖这些行为。
 
 完整历史见 [新版本记录](#新版本记录)。
 
@@ -330,6 +330,14 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v7.0.6</b> - macOS Release Test Smoke Hotfix</summary>
+
+- 修复 macOS GitHub Tests 的 release-install smoke：在从源码 checkout 模拟 release install 前，先构建可在当前主机运行的 `bin/ccb-agent-sidebar`。
+- 保留 v7.0.5 的 Claude keychain service override、macOS update 二进制保留、sidebar rebuild 明确失败信息等修复。
+
+</details>
+
+<details>
 <summary><b>v7.0.5</b> - Claude Keychain And macOS Update Hotfix</summary>
 
 - 增加 `CCB_KEYCHAIN_SERVICE_OVERRIDE`，用于 managed Claude 的 macOS Keychain service 绑定，并在 control-plane 环境中保留该变量。

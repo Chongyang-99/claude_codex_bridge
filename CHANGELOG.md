@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## v7.0.6 (2026-05-24)
+
+### macOS Release Test Smoke Hotfix
+
+- **macOS Release Install Smoke Fixed**: GitHub Tests now prebuild a host-runnable `bin/ccb-agent-sidebar` before simulating a release install from a source checkout, matching the packaged release shape.
+- **v7.0.5 Hotfixes Preserved**: this release includes the Claude keychain service override, macOS `ccb update` sidebar helper preservation, and explicit sidebar rebuild failure handling from v7.0.5.
+
 ## v7.0.5 (2026-05-24)
 
 ### Claude Keychain And macOS Update Hotfix
