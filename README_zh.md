@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/模型皆可控-CF1322?style=for-the-badge" alt="模型皆可控">
 </p>
 
-[![Version](https://img.shields.io/badge/version-7.0.4-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.5-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 [English](README.md) | **中文**
@@ -74,10 +74,10 @@
 <details>
 <summary><b>最新版本亮点</b></summary>
 
-- **Sidebar 刷新更轻量**：project view response 会短暂缓存，避免重复 pane capture，并用 bounded tail 读取 recent jobs。
-- **Runtime 查询更精准**：job、message-bureau 和 JSONL store 新增 latest/tail helper，sidebar comms 不再依赖扫描持续增长的 runtime 文件。
-- **Keeper 检查更严格**：daemon lifecycle 会按 project root 校验 keeper command line，并加固 stopping/ownership 路径。
-- **Config skill 安装清理改进**：继承安装统一使用 `ccb-config`，自动清理旧 `ccb_config`，并刷新 useful tools 包。
+- **Claude Keychain 绑定可显式指定**：`CCB_KEYCHAIN_SERVICE_OVERRIDE` 可把 managed Claude 物化绑定到指定 macOS Keychain service。
+- **macOS 更新会保留 sidebar helper**：update staging 会跳过二进制文件的换行归一化，避免破坏 `bin/ccb-agent-sidebar`。
+- **Sidebar 本地重建失败更清楚**：当 helper 必须本机重建但缺少 Rust toolchain 时，安装脚本会明确报错。
+- **Release 测试覆盖热修路径**：provider profile、control-plane env、update staging 和 sidebar installer 测试覆盖这些行为。
 
 完整历史见 [新版本记录](#新版本记录)。
 
@@ -330,6 +330,15 @@ ccb reinstall
 历史说明：下面较旧的发布记录里仍可能出现 `askd`、旧 flag 或已移除命令。这些内容仅作为 changelog 历史保留，不代表当前 CLI 入口。
 
 <details open>
+<summary><b>v7.0.5</b> - Claude Keychain And macOS Update Hotfix</summary>
+
+- 增加 `CCB_KEYCHAIN_SERVICE_OVERRIDE`，用于 managed Claude 的 macOS Keychain service 绑定，并在 control-plane 环境中保留该变量。
+- `ccb update` staging 不再对二进制文件做换行归一化，避免 macOS 上 packaged `bin/ccb-agent-sidebar` 被破坏。
+- 当 sidebar helper 需要本机重建但缺少 `cargo` 或 `rustc` 时，安装脚本会给出明确失败信息。
+
+</details>
+
+<details>
 <summary><b>v7.0.4</b> - Project View Refresh And Runtime Hardening Release</summary>
 
 - 优化 sidebar/project view 刷新：短 TTL response cache、bounded recent-job tail reads、单次构建内复用 tmux pane capture。

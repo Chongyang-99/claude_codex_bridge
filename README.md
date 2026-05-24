@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/Every_Model_Controllable-CF1322?style=for-the-badge" alt="Every Model Controllable">
 </p>
 
-[![Version](https://img.shields.io/badge/version-7.0.4-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.0.5-orange.svg)]()
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)]()
 
 **English** | [Chinese](README_zh.md)
@@ -74,10 +74,10 @@ Build project-local teams with roles, pane layout, provider state, worktree isol
 <details>
 <summary><b>Latest release highlights</b></summary>
 
-- **Sidebar refresh is lighter**: project view responses now cache briefly, avoid repeated pane captures, and use bounded tail reads for recent jobs.
-- **Runtime lookups are more targeted**: job, message-bureau, and JSONL stores now expose latest/tail helpers so sidebar comms do not scan growing runtime files.
-- **Keeper checks are stricter**: daemon lifecycle checks verify keeper command lines against the project root and harden stopping/ownership paths.
-- **Config skill install cleanup improved**: inherited installs now use canonical `ccb-config`, remove legacy `ccb_config`, and refresh useful tool packaging.
+- **Claude keychain binding is explicit**: `CCB_KEYCHAIN_SERVICE_OVERRIDE` can bind managed Claude materialization to a specific macOS Keychain service.
+- **macOS updates preserve the sidebar helper**: update staging skips line-ending normalization for binary files so `bin/ccb-agent-sidebar` stays executable.
+- **Sidebar rebuild failures are clearer**: installers now require a Rust toolchain when a local helper rebuild is needed.
+- **Release tests cover the hotfix path**: provider profile, control-plane environment, update staging, and sidebar installer tests cover the new behavior.
 
 See [Release Notes](#release-notes) for the full history.
 
@@ -353,6 +353,15 @@ Thanks to the [Linux.do community](https://linux.do) for testing, feedback, and 
 Historical note: older release notes below may mention `askd`, legacy flags, or removed commands. Those references are kept only as changelog history and do not redefine the current CLI surface.
 
 <details open>
+<summary><b>v7.0.5</b> - Claude Keychain And macOS Update Hotfix</summary>
+
+- Adds `CCB_KEYCHAIN_SERVICE_OVERRIDE` for managed Claude macOS Keychain binding and preserves it in control-plane environments.
+- Prevents `ccb update` staging from line-ending-normalizing binary files, keeping the packaged `bin/ccb-agent-sidebar` intact on macOS.
+- Makes sidebar local rebuild requirements explicit when `cargo` or `rustc` is missing.
+
+</details>
+
+<details>
 <summary><b>v7.0.4</b> - Project View Refresh And Runtime Hardening Release</summary>
 
 - Optimizes sidebar/project view refresh with short-lived response caching, bounded recent-job tail reads, and per-build tmux pane capture reuse.

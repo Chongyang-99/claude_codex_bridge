@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## v7.0.5 (2026-05-24)
+
+### Claude Keychain And macOS Update Hotfix
+
+- **Claude Keychain Override Added**: `CCB_KEYCHAIN_SERVICE_OVERRIDE` can bind managed Claude materialization to a specific macOS Keychain service, and control-plane environment handling preserves the override.
+- **macOS Update Preserves Sidebar Helper**: `ccb update` staging now skips line-ending normalization for binary files, so `bin/ccb-agent-sidebar` is not corrupted during macOS updates.
+- **Sidebar Rebuild Failure Made Explicit**: installers now require a Rust toolchain when the sidebar helper must be rebuilt locally, instead of silently continuing with a missing rebuild path.
+
 ## v7.0.4 (2026-05-23)
 
 ### Project View Refresh And Runtime Hardening Release
