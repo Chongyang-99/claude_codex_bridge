@@ -16,14 +16,18 @@ from .lifecycle import (
     start,
 )
 from .policy import mount_agent_from_policy, persist_start_policy, recovery_start_options, remount_project_from_policy
+from .service_graph import current_ccbd_service_graph as current_service_graph
+from .service_graph import publish_ccbd_service_graph as publish_service_graph
 
 __all__ = [
+    'current_service_graph',
     'execute_project_stop',
     'finalize_project_stop',
     'heartbeat',
     'initialize_app',
     'mount_agent_from_policy',
     'persist_start_policy',
+    'publish_service_graph',
     'prepare_project_stop',
     'record_shutdown_report',
     'record_startup_report',

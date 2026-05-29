@@ -34,7 +34,7 @@ from storage.text_artifacts import sweep_expired_text_artifacts
 
 from .handlers import register_handlers
 from .request_guard import lifecycle_is_stopping, rejection_for_request
-from .service_graph import CcbdServiceGraphDependencies, build_ccbd_service_graph
+from .service_graph import CcbdServiceGraphDependencies, build_ccbd_service_graph, publish_ccbd_service_graph
 
 APP_REQUEST_TIMEOUT_S = 0.0
 JOB_HEARTBEAT_SILENCE_START_AFTER_S = 600.0
@@ -54,6 +54,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
     app.keeper_pid = int(keeper_pid) if keeper_pid.isdigit() and int(keeper_pid) > 0 else None
     app.daemon_instance_id = uuid.uuid4().hex
     app.start_maintenance_lock = threading.Lock()
+    app._service_graph_publish_lock = threading.Lock()
     app.provider_catalog = build_default_provider_catalog()
     app.mount_manager = MountManager(app.paths, clock=app.clock)
     app.lifecycle_store = CcbdLifecycleStore(app.paths)
@@ -78,7 +79,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
     )
     app.control_plane_metrics = ControlPlaneMetrics()
     app.lease = None
-    app.service_graph = build_ccbd_service_graph(
+    service_graph = build_ccbd_service_graph(
         CcbdServiceGraphDependencies(
             project_root=app.project_root,
             project_id=app.project_id,
@@ -108,7 +109,7 @@ def initialize_app(app, project_root: str | Path, *, clock, pid: int | None) -> 
             version=1,
         )
     )
-    _publish_service_graph_fields(app, app.service_graph)
+    publish_ccbd_service_graph(app, service_graph)
     app.heartbeat_state_store = HeartbeatStateStore(app.paths)
     app.job_heartbeat = JobHeartbeatService(
         app.paths,
@@ -144,23 +145,6 @@ def _safe_load_lifecycle(app):
         return app.lifecycle_store.load()
     except Exception:
         return None
-
-
-def _publish_service_graph_fields(app, graph) -> None:
-    app.config = graph.config
-    app.config_identity = graph.config_identity
-    app.registry = graph.registry
-    app.runtime_service = graph.runtime_service
-    app.runtime_supervisor = graph.runtime_supervisor
-    app.runtime_supervision = graph.runtime_supervision
-    app.completion_tracker = graph.completion_tracker
-    app.dispatcher = graph.dispatcher
-    app.project_view_service = graph.project_view_service
-    app.project_focus_service = graph.project_focus_service
-    app.health_monitor = graph.health_monitor
-    app.control_plane_metrics.service_graph_version = graph.version
-    app.control_plane_metrics.service_graph_created_at = graph.created_at
-    app.control_plane_metrics.service_graph_retained_count = 1
 
 
 __all__ = ['initialize_app']

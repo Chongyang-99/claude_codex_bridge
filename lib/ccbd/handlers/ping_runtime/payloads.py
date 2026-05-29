@@ -129,6 +129,11 @@ def build_ccbd_payload(
             'service_graph_version': getattr(control_plane_metrics, 'service_graph_version', None),
             'service_graph_created_at': getattr(control_plane_metrics, 'service_graph_created_at', None),
             'service_graph_retained_count': getattr(control_plane_metrics, 'service_graph_retained_count', None),
+            'service_graph_retained_count_scope': getattr(
+                control_plane_metrics,
+                'service_graph_retained_count_scope',
+                None,
+            ),
             'last_reload_duration_s': getattr(control_plane_metrics, 'last_reload_duration_s', None),
             'last_reload_plan_class': getattr(control_plane_metrics, 'last_reload_plan_class', None),
             'last_reload_error': getattr(control_plane_metrics, 'last_reload_error', None),

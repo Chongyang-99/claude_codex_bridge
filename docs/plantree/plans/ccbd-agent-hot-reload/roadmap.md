@@ -22,26 +22,28 @@ Date: 2026-05-29
   heartbeat steps, project-view work, process metrics, and reload placeholders.
 - Introduced the Phase 1 config-bound service graph boundary used by startup,
   with graph version and created-at diagnostics.
+- Added Phase 2 stable handler routing wrappers so request handlers resolve the
+  current service graph at request time without a steady-state publish/read
+  mutex.
 
 ## In Progress
 
-- Architecture review for the Phase 1 service graph boundary before commit.
+- Phase 3 dry-run reload planning: load/validate `.ccb/ccb.config`, compute a
+  no-mutation diff, and return structured planned operations.
 
 ## Next
 
-1. Change handlers to resolve current graph services at request time instead of
-   capturing old dispatcher/config/project-view objects.
-2. Add `ccb reload --dry-run` and `project_reload_config` dry-run mode:
+1. Add `ccb reload --dry-run` and `project_reload_config` dry-run mode:
    load/validate config, compute diff, report the execution plan, mutate
    nothing.
-3. Add bounded draining and retiring state machinery for unload, including
+2. Add bounded draining and retiring state machinery for unload, including
    queue limits, timeouts, and explicit failure responses.
-4. Add namespace additive/remove patch operations behind dry-run-proven plans.
-5. Expose additive mutating reload: view-only, add agent, and add window.
-6. Expose dynamic unload for idle and bounded-draining agents.
-7. Expose replacement only after unload semantics are safe; busy replacement
+3. Add namespace additive/remove patch operations behind dry-run-proven plans.
+4. Expose additive mutating reload: view-only, add agent, and add window.
+5. Expose dynamic unload for idle and bounded-draining agents.
+6. Expose replacement only after unload semantics are safe; busy replacement
    remains pending with explicit bounds.
-8. Run the automatic and manual matrix in
+7. Run the automatic and manual matrix in
     [topics/test-matrix.md](topics/test-matrix.md).
 
 ## Deferred

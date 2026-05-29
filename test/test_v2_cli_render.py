@@ -625,6 +625,7 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
             'service_graph_version': 1,
             'service_graph_created_at': '2026-05-29T00:00:00Z',
             'service_graph_retained_count': 1,
+            'service_graph_retained_count_scope': 'published_graph_count_not_inflight_retention',
             'last_reload_duration_s': None,
             'last_reload_plan_class': None,
             'last_reload_error': None,
@@ -758,6 +759,7 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
     assert 'ccbd_service_graph_version: 1' in doctor_lines
     assert 'ccbd_service_graph_created_at: 2026-05-29T00:00:00Z' in doctor_lines
     assert 'ccbd_service_graph_retained_count: 1' in doctor_lines
+    assert 'ccbd_service_graph_retained_count_scope: published_graph_count_not_inflight_retention' in doctor_lines
     assert 'ccbd_tmux_effective_socket_path: /home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock' in doctor_lines
     assert 'ccbd_tmux_effective_socket_path_bytes: 58' in doctor_lines
     assert 'ccbd_tmux_start_server_command: tmux -f /dev/null -S /home/demo/.local/state/ccb/projects/proj-1/ccbd/tmux.sock start-server' in doctor_lines

@@ -56,6 +56,7 @@ def ping_target(context: CliContext, command: ParsedPingCommand) -> dict:
                 'service_graph_version': None,
                 'service_graph_created_at': None,
                 'service_graph_retained_count': None,
+                'service_graph_retained_count_scope': None,
             }
         return {
             'project_id': local.project_id,

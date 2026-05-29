@@ -17,7 +17,10 @@ Date: 2026-05-29
 - Handler graph routing:
   - after graph replacement, `submit`, `project_view`, `ping`, and focus
     handlers resolve the new graph;
-  - old graph retention is bounded after in-flight requests finish.
+  - wrapper dispatch does not reload `.ccb/ccb.config` or rebuild the graph per
+    request;
+  - old graph retention is bounded after in-flight requests finish once
+    RCU-style retention exists in a later mutating phase.
 - Invalid config:
   - parse/validation error returned;
   - old `app.config_identity` remains published;

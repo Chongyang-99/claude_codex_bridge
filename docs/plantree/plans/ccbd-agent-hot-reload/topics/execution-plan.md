@@ -78,6 +78,11 @@ Exit criteria:
 
 - Tests replace the graph and prove `submit`, `project_view`, `ping`, and
   focus handlers use the new graph.
+- Startup registers stable wrappers once; wrappers read the current graph once
+  per request without reparsing config or rebuilding the graph.
+- `service_graph_retained_count` is explicitly scoped as published graph count
+  until true old-graph in-flight retention is implemented in a later mutating
+  reload phase.
 - Handler latency does not regress beyond the gate in
   [performance-baseline-and-gates.md](performance-baseline-and-gates.md).
 

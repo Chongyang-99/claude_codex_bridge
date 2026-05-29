@@ -80,6 +80,7 @@ def render_doctor(payload: Mapping[str, object]) -> tuple[str, ...]:
         f'ccbd_service_graph_version: {ccbd.get("service_graph_version")}',
         f'ccbd_service_graph_created_at: {ccbd.get("service_graph_created_at")}',
         f'ccbd_service_graph_retained_count: {ccbd.get("service_graph_retained_count")}',
+        f'ccbd_service_graph_retained_count_scope: {ccbd.get("service_graph_retained_count_scope")}',
         f'ccbd_last_reload_duration_s: {ccbd.get("last_reload_duration_s")}',
         f'ccbd_last_reload_plan_class: {ccbd.get("last_reload_plan_class")}',
         f'ccbd_last_reload_error: {ccbd.get("last_reload_error")}',

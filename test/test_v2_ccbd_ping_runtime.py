@@ -109,6 +109,7 @@ def _metrics() -> SimpleNamespace:
         service_graph_version=1,
         service_graph_created_at='2026-05-29T00:00:00Z',
         service_graph_retained_count=1,
+        service_graph_retained_count_scope='published_graph_count_not_inflight_retention',
         last_reload_duration_s=None,
         last_reload_plan_class=None,
         last_reload_error=None,
@@ -171,6 +172,10 @@ def test_build_ccbd_payload_prefers_lifecycle_phase_over_lease_mount_state() -> 
     assert payload['diagnostics']['service_graph_version'] == 1
     assert payload['diagnostics']['service_graph_created_at'] == '2026-05-29T00:00:00Z'
     assert payload['diagnostics']['service_graph_retained_count'] == 1
+    assert (
+        payload['diagnostics']['service_graph_retained_count_scope']
+        == 'published_graph_count_not_inflight_retention'
+    )
     assert payload['diagnostics']['last_reload_duration_s'] is None
     assert payload['diagnostics']['last_reload_plan_class'] is None
     assert payload['diagnostics']['last_reload_error'] is None

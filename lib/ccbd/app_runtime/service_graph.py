@@ -12,6 +12,8 @@ from ccbd.supervision import RuntimeSupervisionLoop
 from ccbd.supervisor import RuntimeSupervisor
 from completion.tracker import CompletionTrackerService
 
+SERVICE_GRAPH_RETAINED_COUNT_SCOPE = 'published_graph_count_not_inflight_retention'
+
 
 @dataclass(frozen=True)
 class CcbdPingPayloadServices:
@@ -182,9 +184,47 @@ def build_ccbd_service_graph(deps: CcbdServiceGraphDependencies) -> CcbdServiceG
     )
 
 
+def current_ccbd_service_graph(app) -> CcbdServiceGraph:
+    graph = getattr(app, 'service_graph', None)
+    if graph is None:
+        raise RuntimeError('ccbd service graph is not published')
+    return graph
+
+
+def publish_ccbd_service_graph(app, graph: CcbdServiceGraph) -> CcbdServiceGraph:
+    lock = getattr(app, '_service_graph_publish_lock', None)
+    if lock is None:
+        _publish_service_graph_fields(app, graph)
+        return graph
+    with lock:
+        _publish_service_graph_fields(app, graph)
+    return graph
+
+
+def _publish_service_graph_fields(app, graph: CcbdServiceGraph) -> None:
+    app.config = graph.config
+    app.config_identity = graph.config_identity
+    app.registry = graph.registry
+    app.runtime_service = graph.runtime_service
+    app.runtime_supervisor = graph.runtime_supervisor
+    app.runtime_supervision = graph.runtime_supervision
+    app.completion_tracker = graph.completion_tracker
+    app.dispatcher = graph.dispatcher
+    app.project_view_service = graph.project_view_service
+    app.project_focus_service = graph.project_focus_service
+    app.health_monitor = graph.health_monitor
+    app.service_graph = graph
+    app.control_plane_metrics.service_graph_version = graph.version
+    app.control_plane_metrics.service_graph_created_at = graph.created_at
+    app.control_plane_metrics.service_graph_retained_count = 1
+    app.control_plane_metrics.service_graph_retained_count_scope = SERVICE_GRAPH_RETAINED_COUNT_SCOPE
+
+
 __all__ = [
     'CcbdPingPayloadServices',
     'CcbdServiceGraph',
     'CcbdServiceGraphDependencies',
     'build_ccbd_service_graph',
+    'current_ccbd_service_graph',
+    'publish_ccbd_service_graph',
 ]

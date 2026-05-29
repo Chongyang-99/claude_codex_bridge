@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ccbd.app_runtime.lifecycle import DEFAULT_CCBD_POLL_INTERVAL_S
 from ccbd.app_runtime import (
+    current_service_graph as current_service_graph_impl,
     execute_project_stop as execute_project_stop_impl,
     finalize_project_stop as finalize_project_stop_impl,
     heartbeat as heartbeat_impl,
@@ -11,6 +12,7 @@ from ccbd.app_runtime import (
     mount_agent_from_policy as mount_agent_from_policy_impl,
     persist_start_policy as persist_start_policy_impl,
     prepare_project_stop as prepare_project_stop_impl,
+    publish_service_graph as publish_service_graph_impl,
     record_shutdown_report as record_shutdown_report_impl,
     record_startup_report as record_startup_report_impl,
     release_backend_ownership as release_backend_ownership_impl,
@@ -33,6 +35,12 @@ class CcbdApp:
         from ccbd.app_runtime.handlers import register_handlers
 
         register_handlers(self)
+
+    def current_service_graph(self):
+        return current_service_graph_impl(self)
+
+    def publish_service_graph(self, graph):
+        return publish_service_graph_impl(self, graph)
 
     def start(self):
         return start_impl(self)

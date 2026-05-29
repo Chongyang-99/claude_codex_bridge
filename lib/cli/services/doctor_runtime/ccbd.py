@@ -69,6 +69,7 @@ def ccbd_summary(*, local, stores: dict[str, object], errors: list[str], remote:
         'service_graph_version': _remote_value(remote, 'service_graph_version'),
         'service_graph_created_at': _remote_value(remote, 'service_graph_created_at'),
         'service_graph_retained_count': _remote_value(remote, 'service_graph_retained_count'),
+        'service_graph_retained_count_scope': _remote_value(remote, 'service_graph_retained_count_scope'),
         'last_reload_duration_s': _remote_metric(remote, 'last_reload_duration_s'),
         'last_reload_plan_class': _remote_value(remote, 'last_reload_plan_class'),
         'last_reload_error': _remote_value(remote, 'last_reload_error'),
