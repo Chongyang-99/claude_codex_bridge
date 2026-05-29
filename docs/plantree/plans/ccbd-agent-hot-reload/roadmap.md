@@ -36,21 +36,27 @@ Date: 2026-05-29
   dry-run drain intent suggestions for unload/replace plans. Phase 4 still does
   not publish a graph, patch namespace, mutate runtime authority, or execute
   tmux operations.
+- Added Phase 5 namespace patch planning foundation: dry-run payloads now
+  include a deferred namespace patch plan for view-only and additive
+  add-agent/add-window classes, with required project/session/slot proofs,
+  preserved-agent reporting, and explicit blocks for remove/replace/move/layout.
+  Mutating apply, tmux writes, runtime authority writes, agent mounting, and
+  service-graph publish remain deferred.
 
 ## In Progress
 
-- Phase 5 namespace patch/additive mutation design is the next implementation
-  target. It must stay behind dry-run-proven plans and must preserve
-  project/session-scoped CCB-owned tmux behavior.
+- Phase 6 additive mutating reload is the next implementation target. It must
+  turn the Phase 5 patch plan into a transaction that patches namespace,
+  mounts new runtimes, updates lifecycle/lease signature, and publishes the new
+  service graph only after all required state is consistent.
 
 ## Next
 
-1. Add namespace additive/remove patch operations behind dry-run-proven plans.
-2. Expose additive mutating reload: view-only, add agent, and add window.
-3. Expose dynamic unload for idle and bounded-draining agents.
-4. Expose replacement only after unload semantics are safe; busy replacement
+1. Expose additive mutating reload: view-only, add agent, and add window.
+2. Expose dynamic unload for idle and bounded-draining agents.
+3. Expose replacement only after unload semantics are safe; busy replacement
    remains pending with explicit bounds.
-5. Run the automatic and manual matrix in
+4. Run the automatic and manual matrix in
     [topics/test-matrix.md](topics/test-matrix.md).
 
 ## Deferred

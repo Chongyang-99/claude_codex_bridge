@@ -101,6 +101,17 @@ The patcher should:
   `@ccb_managed_by`, and epoch options for each new pane;
 - return `namespace_agent_panes` for both existing and newly-created agents.
 
+Phase 5 establishes the planner half of this patch path:
+
+- `ccbd.reload_patch` produces deferred `create_window`,
+  `create_sidebar_pane`, `create_agent_pane`, and view-refresh steps;
+- it records required project/session/window/role/slot proofs before any future
+  apply can mutate tmux;
+- it reports existing agents expected to preserve pane ids;
+- it blocks remove, replace, move, and arbitrary layout changes;
+- it intentionally does not call tmux, mount providers, write runtime
+  authority, or publish a service graph.
+
 ## Safety Invariants
 
 - Existing agent pane ids must not change for accepted additive reloads.

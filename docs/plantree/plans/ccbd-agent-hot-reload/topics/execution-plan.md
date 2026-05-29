@@ -184,23 +184,45 @@ Rollback:
 
 ## Phase 5: Namespace Patch Operations
 
-Goal: introduce namespace patch/additive mutation behind dry-run-proven plans,
-without full namespace recreation or unrelated pane churn.
+Goal: introduce namespace patch/additive mutation foundations behind
+dry-run-proven plans, without full namespace recreation or unrelated pane churn.
 
 Deliverables:
 
-- Add namespace patch operations for add window, add sidebar, add agent pane,
-  remove retired agent pane, and refresh sidebar width/UI.
-- Every operation must prove project id, socket, session, window, role,
-  `slot_key`, and `managed_by=ccbd` before mutation.
-- Do not use full namespace recreation for accepted additive/unload operations.
-- Keep CCB-owned tmux settings project/session-scoped.
+- Add namespace patch planning records for add window, add sidebar, add agent
+  pane, and view refresh.
+- Record the project id, socket, session, namespace epoch, window, role,
+  `slot_key`, and `managed_by=ccbd` proofs future mutation must satisfy.
+- Keep remove/replace/move/layout mutation blocked until later phases.
+- Do not use full namespace recreation for accepted additive plans.
+- Keep future CCB-owned tmux settings project/session-scoped.
 
 Exit criteria:
 
-- Additive reload preserves old pane ids.
-- Retired unload removes only the target agent pane.
-- Failed patch does not publish the new graph.
+- Additive patch planning identifies `create_window`, `create_sidebar_pane`,
+  and `create_agent_pane` steps without touching existing panes.
+- Planner reports preserved existing agents for additive plans.
+- Remove, replace, move, and unsupported layout changes remain blocked for
+  non-dry-run mutation.
+- Failed or blocked patch planning does not publish the new graph.
+
+Phase 5 implementation status:
+
+- Added `ccbd.reload_patch` as a pure namespace patch planner.
+- Dry-run reload payloads now include `namespace_patch_plan` with
+  `apply_deferred=true`, `mutation_enabled=false`, scope verification,
+  required proofs, preserved agents, planned steps, blocked operations, and
+  warnings.
+- Supported planned classes are `view_only_change`, `add_agent`, and
+  `add_window`; `remove_agent`, `replace_agent`, `move_agent`, and
+  `layout_change` remain blocked.
+- Add-agent planning is intentionally append-only inside an existing managed
+  window; inserting/reordering existing agents is blocked as layout mutation.
+- Add-window planning creates only deferred steps for the new window, sidebar,
+  and new agent panes; it does not create tmux windows/panes yet.
+- Non-dry-run `project_reload_config` / `ccb reload` is still rejected before
+  any socket mutation path. Phase 5 performs no tmux calls, provider start/stop,
+  runtime authority writes, lifecycle/lease writes, or service-graph publish.
 
 Rollback:
 

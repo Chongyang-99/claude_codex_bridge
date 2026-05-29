@@ -32,6 +32,8 @@ def build_project_reload_config_handler(app, current_graph_fn):
                     graph.config,
                     new_config,
                     current_config_identity=graph.config_identity,
+                    project_id=getattr(app, 'project_id', None),
+                    current_namespace=_current_namespace(app),
                 )
             plan_class = str(plan.get('plan_class') or plan_class)
             errors = [str(item) for item in (plan.get('errors') or ()) if str(item)]
@@ -56,6 +58,17 @@ def _truthy(value) -> bool:
     if value is False or value is None:
         return False
     return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _current_namespace(app):
+    namespace_controller = getattr(app, 'project_namespace', None)
+    load = getattr(namespace_controller, 'load', None)
+    if not callable(load):
+        return None
+    try:
+        return load()
+    except Exception:
+        return None
 
 
 __all__ = ['build_project_reload_config_handler']

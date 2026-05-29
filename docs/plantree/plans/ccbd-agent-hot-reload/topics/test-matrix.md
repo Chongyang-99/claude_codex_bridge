@@ -23,6 +23,23 @@ Date: 2026-05-29
   - Phase 4 dry-run payloads may include bounded `drain_intents` suggestions
     for `remove_agent` and `replace_agent`, but they remain no-mutation plans
     with `safe_to_apply=false`.
+  - Phase 5 dry-run payloads include `namespace_patch_plan` for view-only and
+    additive classes; the plan is `apply_deferred=true` /
+    `mutation_enabled=false` and does not call tmux or publish a graph.
+- Namespace patch planning:
+  - add-agent append plans one `create_agent_pane` step and reports existing
+    agents as preserved;
+  - add-window plans `create_window`, optional `create_sidebar_pane`, and
+    `create_agent_pane` steps for the new window only;
+  - view-only plans only project-view/sidebar refresh intent, not tmux
+    namespace mutation;
+  - remove/replace/move/layout plans are blocked for non-dry-run mutation;
+  - additive planning requires verified project id, tmux socket, session,
+    namespace epoch, window, role, slot key, and `managed_by=ccbd` proof before
+    future apply;
+  - planner tests monkeypatch app mutation paths and prove no tmux, namespace,
+    runtime authority, service-graph publish, provider start/stop, heartbeat
+    scan, or config watch is introduced.
 - Bounded drain/retire state:
   - idle intent transitions immediately to `idle_ready` / `retiring`;
   - busy intent remains `waiting` / `draining` until timeout;
@@ -118,25 +135,28 @@ Date: 2026-05-29
     or runtime authority write should occur from dry-run alone;
   - break TOML or config validation; dry-run should report `invalid_config`
     while `ccb ping ccbd` still shows the old config signature.
-- Phase 5+ mutating checks:
-- Start a project with two windows and four agents.
-- Start a long-running/manual task in `agent2`.
-- Edit `.ccb/ccb.config` to add `agent5` to an existing window.
-- Run `ccb reload`.
-- Verify via tmux screenshot:
-  - `agent2` remains in the same pane and continues running;
-  - `agent5` appears in a new managed pane;
-  - sidebar shows `agent5`;
-  - no global refresh/restart occurred.
-- Repeat by adding a new window with one new agent.
-- Try changing `agent2` provider/workspace/model while it is running; reload
-  must refuse without killing the pane.
-- Try deleting a running agent; reload must refuse or mark pending removal
-  without killing the pane.
-- Run `ccb reload --dry-run` before each mutating manual test and verify it
-  reports the same planned operation that the mutating command later executes.
-- Measure idle/sidebar-open CPU and RSS before and after the reload feature is
-  installed.
+- Phase 5 dry-run namespace patch checks:
+  - for add-agent/add-window dry-run, inspect `namespace_patch_plan`; it should
+    show deferred additive steps and leave panes/runtime state untouched;
+  - run plain `ccb reload` and confirm it is still rejected before any mutation.
+- Phase 6+ mutating checks:
+  - start a project with two windows and four agents;
+  - start a long-running/manual task in `agent2`;
+  - edit `.ccb/ccb.config` to add `agent5` to an existing window;
+  - run `ccb reload`;
+  - verify via tmux screenshot that `agent2` remains in the same pane and
+    continues running, `agent5` appears in a new managed pane, sidebar shows
+    `agent5`, and no global refresh/restart occurred;
+  - repeat by adding a new window with one new agent;
+  - try changing `agent2` provider/workspace/model while it is running; reload
+    must refuse without killing the pane;
+  - try deleting a running agent; reload must refuse or mark pending removal
+    without killing the pane;
+  - run `ccb reload --dry-run` before each mutating manual test and verify it
+    reports the same planned operation that the mutating command later
+    executes;
+  - measure idle/sidebar-open CPU and RSS before and after the reload feature is
+    installed.
 
 ## Release Gate
 

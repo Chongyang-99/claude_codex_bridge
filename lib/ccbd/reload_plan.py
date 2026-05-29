@@ -5,6 +5,7 @@ from typing import Any
 
 from agents.config_identity import project_config_identity_payload
 from ccbd.reload_drain import drain_intent_suggestions_for_reload_operations
+from ccbd.reload_patch import build_invalid_namespace_patch_plan, build_namespace_patch_plan
 
 
 DRY_RUN_ONLY_WARNING = 'Phase 3 dry-run only; mutation capability is disabled.'
@@ -26,6 +27,8 @@ def build_reload_dry_run_plan(
     new_config,
     *,
     current_config_identity: dict[str, object] | None = None,
+    project_id: str | None = None,
+    current_namespace=None,
 ) -> dict[str, object]:
     old_identity = dict(current_config_identity or project_config_identity_payload(current_config))
     new_identity = project_config_identity_payload(new_config)
@@ -38,6 +41,8 @@ def build_reload_dry_run_plan(
             old_identity=old_identity,
             new_identity=new_identity,
             warnings=warnings,
+            project_id=project_id,
+            current_namespace=current_namespace,
         )
 
     operations = _build_operations(current_config, new_config)
@@ -63,6 +68,13 @@ def build_reload_dry_run_plan(
         old_config_signature=old_identity.get('config_signature'),
         new_config_signature=new_identity.get('config_signature'),
     )
+    namespace_patch_plan = build_namespace_patch_plan(
+        current_config,
+        new_config,
+        operations,
+        project_id=project_id,
+        current_namespace=current_namespace,
+    )
     return _plan_payload(
         status='ok',
         plan_class=plan_class,
@@ -70,6 +82,7 @@ def build_reload_dry_run_plan(
         new_identity=new_identity,
         operations=operations,
         drain_intents=drain_intents,
+        namespace_patch_plan=namespace_patch_plan,
         reasons=_operation_reasons(operations),
         warnings=warnings,
         errors=[],
@@ -91,6 +104,7 @@ def build_invalid_reload_dry_run_plan(
         new_identity={'known_agents': (), 'config_signature': None},
         operations=[],
         drain_intents=[],
+        namespace_patch_plan=build_invalid_namespace_patch_plan(error),
         reasons=['new config could not be loaded or validated'],
         warnings=[DRY_RUN_ONLY_WARNING],
         errors=[str(error)],
@@ -105,6 +119,8 @@ def _identity_preserving_plan(
     old_identity: dict[str, object],
     new_identity: dict[str, object],
     warnings: list[str],
+    project_id: str | None = None,
+    current_namespace=None,
 ) -> dict[str, object]:
     old_full = _canonical_config_record(current_config, include_sidebar_view=True)
     new_full = _canonical_config_record(new_config, include_sidebar_view=True)
@@ -116,6 +132,13 @@ def _identity_preserving_plan(
             new_identity=new_identity,
             operations=[],
             drain_intents=[],
+            namespace_patch_plan=build_namespace_patch_plan(
+                current_config,
+                new_config,
+                [],
+                project_id=project_id,
+                current_namespace=current_namespace,
+            ),
             reasons=['config identity and presentation fields are unchanged'],
             warnings=warnings,
             errors=[],
@@ -142,6 +165,13 @@ def _identity_preserving_plan(
         new_identity=new_identity,
         operations=operations,
         drain_intents=[],
+        namespace_patch_plan=build_namespace_patch_plan(
+            current_config,
+            new_config,
+            operations,
+            project_id=project_id,
+            current_namespace=current_namespace,
+        ),
         reasons=['config identity is unchanged; presentation-only fields changed'],
         warnings=warnings,
         errors=[],
@@ -302,6 +332,7 @@ def _plan_payload(
     new_identity: dict[str, object],
     operations: list[dict[str, object]],
     drain_intents: list[dict[str, object]],
+    namespace_patch_plan: dict[str, object],
     reasons: list[str],
     warnings: list[str],
     errors: list[str],
@@ -320,6 +351,7 @@ def _plan_payload(
         'new_known_agents': list(new_identity.get('known_agents') or ()),
         'operations': operations,
         'drain_intents': drain_intents,
+        'namespace_patch_plan': namespace_patch_plan,
         'reasons': reasons,
         'warnings': warnings,
         'errors': errors,

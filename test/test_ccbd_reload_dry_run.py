@@ -57,6 +57,7 @@ def test_reload_dry_run_no_change_updates_metrics_without_mutation(tmp_path: Pat
     assert payload['plan_class'] == 'no_change'
     assert payload['operations'] == []
     assert payload['drain_intents'] == []
+    assert payload['namespace_patch_plan']['status'] == 'no_op'
     assert payload['safe_to_apply'] is False
     assert payload['future_safe_to_apply'] is True
     assert payload['mutation_enabled'] is False
@@ -146,6 +147,7 @@ def test_reload_plan_classifies_runtime_and_layout_changes(
         assert plan['drain_intents']
     else:
         assert plan['drain_intents'] == []
+    assert 'namespace_patch_plan' in plan
     assert plan['safe_to_apply'] is False
     assert plan['mutation_enabled'] is False
 
@@ -175,6 +177,7 @@ tips = ["C-b c new win"]
     assert plan['plan_class'] == 'view_only_change'
     assert plan['operations'][0]['op'] == 'view_only_change'
     assert plan['drain_intents'] == []
+    assert plan['namespace_patch_plan']['status'] == 'planned'
     assert plan['old_config_signature'] == plan['new_config_signature']
     assert plan['future_safe_to_apply'] is True
 
@@ -251,6 +254,12 @@ def test_reload_cli_parser_endpoint_render_and_phase2_return_code(monkeypatch, t
             'new_config_signature': 'new',
             'operations': [{'op': 'add_agent', 'agent': 'agent3', 'window': 'main', 'reason': 'new'}],
             'drain_intents': [],
+            'namespace_patch_plan': {
+                'status': 'blocked',
+                'apply_deferred': True,
+                'steps': [],
+                'blocked_operations': [{'op': 'namespace_scope', 'reason': 'namespace unavailable'}],
+            },
             'warnings': ['Phase 3 dry-run only; mutation capability is disabled.'],
             'reasons': ['add_agent agent3: new'],
             'errors': [],
@@ -266,6 +275,9 @@ def test_reload_cli_parser_endpoint_render_and_phase2_return_code(monkeypatch, t
         'old_config_signature: old',
         'new_config_signature: new',
         'reload_operation: op=add_agent agent=agent3 window=main reason=new',
+        'reload_namespace_patch_status: blocked',
+        'reload_namespace_patch_apply_deferred: true',
+        'reload_namespace_patch_blocked: op=namespace_scope reason=namespace unavailable',
         'reload_reason: add_agent agent3: new',
         'reload_warning: Phase 3 dry-run only; mutation capability is disabled.',
     )
@@ -296,6 +308,7 @@ def test_reload_cli_parser_endpoint_render_and_phase2_return_code(monkeypatch, t
             'new_config_signature': 'same',
             'operations': [],
             'drain_intents': [],
+            'namespace_patch_plan': {'status': 'no_op', 'apply_deferred': True, 'steps': [], 'blocked_operations': []},
             'reasons': ['config identity and presentation fields are unchanged'],
             'warnings': [],
             'errors': [],

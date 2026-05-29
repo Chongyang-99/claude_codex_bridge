@@ -169,6 +169,9 @@ def render_reload(payload: Mapping[str, object]) -> tuple[str, ...]:
             lines.append(f'reload_drain_intent: {_drain_intent_line(intent)}')
         else:
             lines.append(f'reload_drain_intent: {intent}')
+    patch_plan = payload.get('namespace_patch_plan')
+    if isinstance(patch_plan, Mapping):
+        lines.extend(_namespace_patch_lines(patch_plan))
     for reason in tuple(payload.get('reasons') or ()):
         lines.append(f'reload_reason: {reason}')
     for warning in tuple(payload.get('warnings') or ()):
@@ -203,6 +206,44 @@ def _drain_intent_line(intent: Mapping[str, object]) -> str:
     if intent.get('dry_run_only') is not None:
         fields.append(f'dry_run_only={str(bool(intent.get("dry_run_only"))).lower()}')
     reason = intent.get('reason')
+    if reason:
+        fields.append(f'reason={reason}')
+    return ' '.join(fields)
+
+
+def _namespace_patch_lines(plan: Mapping[str, object]) -> list[str]:
+    lines = [
+        f'reload_namespace_patch_status: {plan.get("status")}',
+        f'reload_namespace_patch_apply_deferred: {str(bool(plan.get("apply_deferred"))).lower()}',
+    ]
+    for step in tuple(plan.get('steps') or ()):
+        if isinstance(step, Mapping):
+            lines.append(f'reload_namespace_patch_step: {_namespace_patch_step_line(step)}')
+    for blocked in tuple(plan.get('blocked_operations') or ()):
+        if isinstance(blocked, Mapping):
+            lines.append(f'reload_namespace_patch_blocked: {_namespace_patch_blocked_line(blocked)}')
+    return lines
+
+
+def _namespace_patch_step_line(step: Mapping[str, object]) -> str:
+    fields = [f'action={step.get("action")}']
+    for key in ('window', 'agent', 'role', 'slot_key', 'managed_by', 'anchor_agent'):
+        value = step.get(key)
+        if value not in (None, ''):
+            fields.append(f'{key}={value}')
+    reason = step.get('reason')
+    if reason:
+        fields.append(f'reason={reason}')
+    return ' '.join(fields)
+
+
+def _namespace_patch_blocked_line(blocked: Mapping[str, object]) -> str:
+    fields = [f'op={blocked.get("op")}']
+    for key in ('agent', 'window'):
+        value = blocked.get(key)
+        if value not in (None, ''):
+            fields.append(f'{key}={value}')
+    reason = blocked.get('reason')
     if reason:
         fields.append(f'reason={reason}')
     return ' '.join(fields)
