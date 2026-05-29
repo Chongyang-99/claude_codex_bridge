@@ -32,6 +32,9 @@ already has user-reported high resource use.
   draining, retiring, pending replacement, and bounded failure behavior.
 - [topics/test-matrix.md](topics/test-matrix.md): automatic and manual test
   coverage for additive reload and unsafe changes.
+- [topics/phase-6-additive-apply-design.md](topics/phase-6-additive-apply-design.md):
+  Phase 6a transaction order, rollback diagnostics, reusable APIs, and required
+  narrow APIs for additive mutating reload.
 - [decisions/001-additive-hot-load-first.md](decisions/001-additive-hot-load-first.md):
   decision to support additive changes first and reject disruptive diffs.
 - [decisions/002-rebuild-config-bound-services-on-reload.md](decisions/002-rebuild-config-bound-services-on-reload.md):

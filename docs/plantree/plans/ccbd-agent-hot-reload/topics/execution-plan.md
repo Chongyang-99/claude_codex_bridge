@@ -232,6 +232,16 @@ Rollback:
 
 Goal: expose the first safe mutation.
 
+Phase 6a design-only status:
+
+- Added [phase-6-additive-apply-design.md](phase-6-additive-apply-design.md).
+- Confirmed `ensure_project_namespace(topology_plan=...)` is not the hot-reload
+  apply API because additive missing windows/panes currently become namespace
+  recreate reasons.
+- Identified lower-level namespace primitives and the runtime mount path to
+  reuse through new narrow APIs.
+- Non-dry-run `project_reload_config` and `ccb reload` remain rejected.
+
 Deliverables:
 
 - Enable view-only, add-agent, and add-window reload.
@@ -247,6 +257,14 @@ Exit criteria:
 - Keeper sees the new config as current.
 - Manual `test_ccb2` screenshots show unchanged old panes and new mounted
   agents.
+- `preserved_agents` is treated only as the pane-preservation gate input; apply
+  must prove unchanged pane ids with before/after snapshots before graph
+  publish.
+- Scope diagnostics distinguish namespace load failure, missing namespace, and
+  missing/mismatched project/socket/session/epoch proofs.
+- The final config-signature handoff is protected against keeper restart races:
+  the keeper must not observe new disk config while daemon ping still reports
+  the old graph signature and then request shutdown.
 
 Rollback:
 

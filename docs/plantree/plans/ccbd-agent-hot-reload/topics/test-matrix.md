@@ -28,7 +28,7 @@ Date: 2026-05-29
     `mutation_enabled=false` and does not call tmux or publish a graph.
 - Namespace patch planning:
   - add-agent append plans one `create_agent_pane` step and reports existing
-    agents as preserved;
+    agents as preservation-gate inputs, not as already-proven reused panes;
   - add-window plans `create_window`, optional `create_sidebar_pane`, and
     `create_agent_pane` steps for the new window only;
   - view-only plans only project-view/sidebar refresh intent, not tmux
@@ -40,6 +40,19 @@ Date: 2026-05-29
   - planner tests monkeypatch app mutation paths and prove no tmux, namespace,
     runtime authority, service-graph publish, provider start/stop, heartbeat
     scan, or config watch is introduced.
+- Phase 6a design contract:
+  - document that `ensure_project_namespace(topology_plan=...)` is not the
+    additive apply entrypoint because it may recreate the namespace;
+  - document transaction order: namespace patch, new runtime mount,
+    lease/lifecycle signature update, service graph publish, project view/sidebar
+    refresh;
+  - document that graph publish is forbidden after any failure before the publish
+    step;
+  - document the keeper config-signature race and require a Phase 6b handoff
+    test before non-dry-run reload is enabled;
+  - document the before/after pane-id proof required for `preserved_agents`;
+  - keep non-dry-run reload rejected until the narrow apply API has fake-backend
+    tests.
 - Bounded drain/retire state:
   - idle intent transitions immediately to `idle_ready` / `retiring`;
   - busy intent remains `waiting` / `draining` until timeout;
@@ -140,6 +153,10 @@ Date: 2026-05-29
     show deferred additive steps and leave panes/runtime state untouched;
   - run plain `ccb reload` and confirm it is still rejected before any mutation.
 - Phase 6+ mutating checks:
+  - before enabling non-dry-run reload, run fake-backend tests for the narrow
+    namespace patch API and verify no `kill-server`, `kill-window`,
+    `reflow_workspace`, or full `ensure_project_namespace` recreation path is
+    called;
   - start a project with two windows and four agents;
   - start a long-running/manual task in `agent2`;
   - edit `.ccb/ccb.config` to add `agent5` to an existing window;

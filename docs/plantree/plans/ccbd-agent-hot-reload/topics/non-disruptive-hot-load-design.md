@@ -112,6 +112,12 @@ Phase 5 establishes the planner half of this patch path:
 - it intentionally does not call tmux, mount providers, write runtime
   authority, or publish a service graph.
 
+Phase 6a documents the apply half in
+[phase-6-additive-apply-design.md](phase-6-additive-apply-design.md). The key
+constraint is that `preserved_agents` is only the input set for a future
+before/after pane-id preservation gate; it is not evidence that reuse already
+happened.
+
 ## Safety Invariants
 
 - Existing agent pane ids must not change for accepted additive reloads.

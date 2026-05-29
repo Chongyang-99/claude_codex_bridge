@@ -42,21 +42,25 @@ Date: 2026-05-29
   preserved-agent reporting, and explicit blocks for remove/replace/move/layout.
   Mutating apply, tmux writes, runtime authority writes, agent mounting, and
   service-graph publish remain deferred.
+- Added Phase 6a additive apply design: documented the transaction order,
+  rollback/diagnostic behavior, pane preservation proof, reusable existing APIs,
+  and required narrow APIs before non-dry-run reload can be enabled.
 
 ## In Progress
 
-- Phase 6 additive mutating reload is the next implementation target. It must
-  turn the Phase 5 patch plan into a transaction that patches namespace,
-  mounts new runtimes, updates lifecycle/lease signature, and publishes the new
-  service graph only after all required state is consistent.
+- Phase 6b additive mutating reload implementation is the next target. It must
+  first add a fake-backend-tested namespace patch apply API, then wire runtime
+  mounts, lease/lifecycle signature updates, and final graph publish.
 
 ## Next
 
-1. Expose additive mutating reload: view-only, add agent, and add window.
-2. Expose dynamic unload for idle and bounded-draining agents.
-3. Expose replacement only after unload semantics are safe; busy replacement
+1. Implement Phase 6b namespace patch apply for `add_window`, then append-only
+   `add_agent`, without opening `ccb reload` until transaction tests pass.
+2. Expose additive mutating reload: view-only, add agent, and add window.
+3. Expose dynamic unload for idle and bounded-draining agents.
+4. Expose replacement only after unload semantics are safe; busy replacement
    remains pending with explicit bounds.
-4. Run the automatic and manual matrix in
+5. Run the automatic and manual matrix in
     [topics/test-matrix.md](topics/test-matrix.md).
 
 ## Deferred
