@@ -24,7 +24,51 @@ def existing_runtime_agents(
     before_new: dict[str, dict[str, object] | None],
     requested_agents: tuple[str, ...],
 ) -> tuple[str, ...]:
-    return tuple(agent for agent in requested_agents if before_new.get(agent) is not None)
+    return tuple(
+        agent
+        for agent in requested_agents
+        if _blocks_new_runtime_mount(before_new.get(agent))
+    )
+
+
+def _blocks_new_runtime_mount(record: dict[str, object] | None) -> bool:
+    if record is None:
+        return False
+    return not _is_retired_runtime_residue(record)
+
+
+def _is_retired_runtime_residue(record: dict[str, object]) -> bool:
+    if _text(record.get('state')) != 'stopped':
+        return False
+    if _text(record.get('health')) != 'stopped':
+        return False
+    if _text(record.get('desired_state')) != 'stopped':
+        return False
+    if _text(record.get('reconcile_state')) != 'stopped':
+        return False
+    live_authority_fields = (
+        'pid',
+        'runtime_ref',
+        'session_ref',
+        'socket_path',
+        'runtime_pid',
+        'pane_id',
+        'active_pane_id',
+        'mount_attempt_id',
+    )
+    return not any(_has_value(record.get(field)) for field in live_authority_fields)
+
+
+def _has_value(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return bool(value)
+
+
+def _text(value: object) -> str:
+    return str(value or '').strip()
 
 
 def _namespace_scope_reason(graph, namespace) -> tuple[str, str] | None:

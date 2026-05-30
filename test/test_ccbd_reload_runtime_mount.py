@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from agents.config_loader import load_project_config
-from agents.models import AgentRuntime
+from agents.models import AgentRuntime, AgentState
 from ccbd.app import CcbdApp
 from ccbd.app_runtime.service_graph import CcbdServiceGraphDependencies, build_ccbd_service_graph
 from ccbd.lifecycle_report_store import CcbdShutdownReportStore, CcbdStartupReportStore
@@ -273,6 +274,81 @@ def test_additive_runtime_mount_blocks_agent_with_existing_runtime_authority(tmp
     assert result.diagnostics['graph_published'] is False
     assert result.diagnostics['lease_or_lifecycle_written'] is False
     assert graph.registry.get('agent3').pane_id == '%old'
+
+
+def test_additive_runtime_mount_reuses_retired_same_name_runtime_residue(tmp_path: Path) -> None:
+    project_root = _project(tmp_path / 'repo-runtime-mount-retired-residue', ADD_AGENT_CONFIG)
+    app = CcbdApp(project_root, clock=lambda: NOW, pid=4242)
+    graph = _build_graph(app, ADD_AGENT_CONFIG, version=2)
+    old = _seed_runtime(graph.runtime_service, 'agent3', pane_id='%old')
+    graph.registry.upsert_authority(
+        replace(
+            old,
+            state=AgentState.STOPPED,
+            pid=None,
+            runtime_ref=None,
+            session_ref=None,
+            socket_path=None,
+            health='stopped',
+            runtime_pid=None,
+            pane_id=None,
+            active_pane_id=None,
+            pane_state=None,
+            desired_state='stopped',
+            reconcile_state='stopped',
+            session_file=str(app.paths.ccb_dir / '.codex-agent3-session'),
+            session_id='old-session-id',
+        )
+    )
+
+    def _fake_start_flow(**kwargs):
+        kwargs['runtime_service'].attach(
+            agent_name='agent3',
+            workspace_path=str(app.paths.workspace_path('agent3')),
+            backend_type='pane-backed',
+            runtime_ref='tmux:%3',
+            session_ref='session-agent3-new',
+            health='healthy',
+            provider='codex',
+            terminal_backend='tmux',
+            pane_id='%3',
+            active_pane_id='%3',
+            pane_state='alive',
+            tmux_socket_path=str(app.paths.ccbd_tmux_socket_path),
+            tmux_window_name='main',
+            slot_key='agent3',
+            lifecycle_state='idle',
+            managed_by='ccbd',
+            binding_source='provider-session',
+        )
+        return StartFlowSummary(
+            project_root=str(project_root),
+            project_id=app.project_id,
+            started=('agent3',),
+            socket_path=str(app.paths.ccbd_socket_path),
+        )
+
+    result = run_additive_agent_mounts(
+        app,
+        graph,
+        namespace=_namespace(app),
+        patch_result=SimpleNamespace(status='applied', agent_panes={'agent3': '%3'}, preserved_before={}),
+        run_start_flow_fn=_fake_start_flow,
+    )
+
+    assert result.status == 'mounted'
+    assert result.requested_agents == ('agent3',)
+    assert result.mounted_agents == ('agent3',)
+    assert result.runtime_authority_written_agents == ('agent3',)
+    assert result.diagnostics['reason'] is None
+    mounted = graph.registry.get('agent3')
+    assert mounted.state is AgentState.IDLE
+    assert mounted.desired_state == 'mounted'
+    assert mounted.runtime_ref == 'tmux:%3'
+    assert mounted.session_ref == 'session-agent3-new'
+    assert mounted.session_file == str(app.paths.ccb_dir / '.codex-agent3-session')
+    assert mounted.session_id == 'old-session-id'
+    assert mounted.pane_id == '%3'
 
 
 def test_additive_runtime_mount_detects_preserved_runtime_authority_change(tmp_path: Path) -> None:

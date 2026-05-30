@@ -44,6 +44,11 @@ ADD_AGENT_CONFIG = BASE_CONFIG.replace(
     'agent1:codex, (agent2:claude; agent3:codex)',
 )
 
+TRAILING_ADD_AGENT_CONFIG = BASE_CONFIG.replace(
+    'agent1:codex, agent2:claude',
+    'agent1:codex, agent2:claude, agent3:codex',
+)
+
 ADD_WINDOW_CONFIG = """version = 2
 entry_window = "main"
 
@@ -317,6 +322,60 @@ def test_additive_reload_apply_remove_agent_success_unloads_then_publishes(tmp_p
     assert old_graph.registry.get('agent2').pane_id is None
     assert app.mount_manager.load_state().config_signature == app.config_identity['config_signature']
     assert app.lifecycle_store.load().config_signature == app.config_identity['config_signature']
+
+
+def test_additive_reload_apply_can_readd_same_agent_after_unload_residue(tmp_path: Path) -> None:
+    app = _started_app(tmp_path / 'repo-remove-then-readd-same-agent', TRAILING_ADD_AGENT_CONFIG)
+    _seed_runtime(app.runtime_service, 'agent1', pane_id='%1')
+    _seed_runtime(app.runtime_service, 'agent2', pane_id='%2')
+    _seed_runtime(app.runtime_service, 'agent3', pane_id='%3')
+
+    remove_result = run_additive_reload_apply(
+        app,
+        _load_config(app.project_root, BASE_CONFIG),
+        current_namespace=_namespace(app),
+        apply_namespace_patch_fn=lambda **_kwargs: _namespace_patch_result(
+            created_panes=(),
+            agent_panes={},
+            removed_agents={'agent3': '%3'},
+            removed_panes=('%3',),
+            preserved_before={'agent1': '%1', 'agent2': '%2'},
+            preserved_after={'agent1': '%1', 'agent2': '%2'},
+        ),
+    )
+
+    assert remove_result.status == 'published'
+    assert remove_result.runtime_mount['status'] == 'unloaded'
+    retired = app.service_graph.registry.get('agent3')
+    assert retired.state is AgentState.STOPPED
+    assert retired.desired_state == 'stopped'
+    assert retired.runtime_ref is None
+    assert retired.pane_id is None
+
+    calls: list[dict[str, object]] = []
+    add_result = run_additive_reload_apply(
+        app,
+        _load_config(app.project_root, TRAILING_ADD_AGENT_CONFIG),
+        current_namespace=_namespace(app),
+        apply_namespace_patch_fn=lambda **_kwargs: _namespace_patch_result(
+            created_panes=('%4',),
+            agent_panes={'agent3': '%4'},
+            preserved_before={'agent1': '%1', 'agent2': '%2'},
+            preserved_after={'agent1': '%1', 'agent2': '%2'},
+        ),
+        run_start_flow_fn=_mounting_start_flow(app, calls),
+    )
+
+    assert add_result.status == 'published'
+    assert add_result.runtime_mount['status'] == 'mounted'
+    assert add_result.runtime_mount['runtime_authority_written_agents'] == ['agent3']
+    assert add_result.diagnostics['graph_published'] is True
+    mounted = app.service_graph.registry.get('agent3')
+    assert mounted.state is AgentState.IDLE
+    assert mounted.desired_state == 'mounted'
+    assert mounted.runtime_ref == 'tmux:%4'
+    assert mounted.pane_id == '%4'
+    assert calls[0]['requested_agents'] == ('agent3',)
 
 
 def test_additive_reload_apply_blocks_busy_remove_before_namespace_patch(tmp_path: Path) -> None:
