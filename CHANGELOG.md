@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v7.2.8 (2026-06-04)
+## v7.2.9 (2026-06-04)
 
 ### Agent Roles Catalog Release
 
@@ -15,6 +15,13 @@
 - **Official Smoke Roots Fixed**: real-platform soak, fastpath, and storage cleanup smoke checks now pass their generated test roots through `CCB_SOURCE_ALLOWED_ROOTS`.
 - **WSL Mounted Startup Smoke Fixed**: the main Tests workflow now passes the generated `/mnt/c/Temp` startup-smoke project through `CCB_SOURCE_ALLOWED_ROOTS`.
 - **Provider Blackbox Wait Hardened**: the Claude restart blackbox test now waits for the running partial reply to be reflected before asserting it.
+- **Role Pack CI Fixture Hardened**: Role Pack tests now use an isolated `agentroles.archi` preview fixture instead of requiring a sibling `agent-roles-spec` checkout in CI.
+
+## v7.2.8 (2026-06-04)
+
+### Superseded Role Fixture Hotfix
+
+- Superseded by v7.2.9 after the release gate found that full GitHub Actions runners did not have the sibling `agent-roles-spec` checkout expected by Role Pack tests.
 
 ## v7.2.7 (2026-06-04)
 

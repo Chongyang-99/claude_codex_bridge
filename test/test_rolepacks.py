@@ -28,14 +28,18 @@ from rolepacks.sources import (
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-AGENT_ROLES_SPEC = REPO_ROOT.parent / 'agent-roles-spec'
-AGENT_ROLES_ARCHI = AGENT_ROLES_SPEC / 'roles' / 'archi'
+
+
+def _agent_roles_archi() -> Path:
+    return Path(os.environ['AGENT_ROLES_SPEC_HOME']) / 'roles' / 'archi'
 
 
 @pytest.fixture(autouse=True)
 def _agent_roles_catalog(monkeypatch, tmp_path: Path) -> None:
+    agent_roles_spec = tmp_path / 'default-agent-roles-spec'
+    _write_agent_roles_archi_fixture(agent_roles_spec)
     monkeypatch.setenv('HOME', str(tmp_path / 'home'))
-    monkeypatch.setenv('AGENT_ROLES_SPEC_HOME', str(AGENT_ROLES_SPEC))
+    monkeypatch.setenv('AGENT_ROLES_SPEC_HOME', str(agent_roles_spec))
     monkeypatch.delenv('CCB_AGENT_ROLES_INCLUDE_REFERENCE', raising=False)
 
 
@@ -119,6 +123,117 @@ def _write_fake_tool_role(script_root: Path) -> None:
         encoding='utf-8',
     )
     (role / 'tools' / 'helper.py').write_text('VALUE = "ok"\n', encoding='utf-8')
+
+
+def _write_agent_roles_archi_fixture(catalog: Path) -> Path:
+    role = catalog / 'roles' / 'archi'
+    (role / 'adapters' / 'ccb' / 'tools').mkdir(parents=True, exist_ok=True)
+    (role / 'adapters' / 'ccb' / 'skills' / 'archi-tooling').mkdir(parents=True, exist_ok=True)
+    for skill in ('archi-advice', 'archi-diff', 'archi-full', 'archi-goal'):
+        (role / 'skills' / skill).mkdir(parents=True, exist_ok=True)
+        (role / 'skills' / skill / 'SKILL.md').write_text(
+            f'---\nname: {skill}\ndescription: Review architecture risk fixture.\n---\n\n# {skill}\n',
+            encoding='utf-8',
+        )
+    (role / 'adapters' / 'ccb' / 'skills' / 'archi-tooling' / 'SKILL.md').write_text(
+        '---\nname: archi-tooling\ndescription: CCB adapter tooling fixture.\n---\n\n# Archi Tooling\n',
+        encoding='utf-8',
+    )
+    (role / 'role.toml').write_text(
+        '\n'.join(
+            [
+                'schema = "agent-role/preview-0.1"',
+                'id = "agentroles.archi"',
+                'name = "Architecture Reviewer"',
+                'version = "0.2.0"',
+                'description = "Reviews architecture drift and structural risk."',
+                '',
+                '[identity]',
+                'default_name = "archi"',
+                '',
+                '[contents]',
+                'memory = ["memory.md"]',
+                'skills = ["skills/archi-advice", "skills/archi-diff", "skills/archi-full", "skills/archi-goal"]',
+            ]
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+    (role / 'adapters' / 'ccb' / 'adapter.toml').write_text(
+        '\n'.join(
+            [
+                'schema = "agent-role-adapter/ccb-preview-0.1"',
+                'host = "ccb"',
+                'default_agent_name = "archi"',
+                'supported_providers = ["codex", "claude"]',
+                'memory = ["adapters/ccb/memory.md"]',
+                'skills = ["adapters/ccb/skills/archi-tooling"]',
+                '',
+                '[tools.architec]',
+                'install = "python -B adapters/ccb/tools/install.py"',
+                'doctor = "python -B adapters/ccb/tools/doctor.py"',
+                'update = "python -B adapters/ccb/tools/update.py"',
+                'required = true',
+            ]
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+    (role / 'memory.md').write_text(
+        'Architecture Reviewer Memory\nArchitec is the architecture analysis CLI.\n',
+        encoding='utf-8',
+    )
+    (role / 'adapters' / 'ccb' / 'memory.md').write_text(
+        'CCB Adapter Memory\n'
+        'Use the managed Architec wrapper named `ccb-archi`.\n'
+        'Do not copy llmgateway secrets into role memory.\n',
+        encoding='utf-8',
+    )
+    for action in ('install', 'update'):
+        (role / 'adapters' / 'ccb' / 'tools' / f'{action}.py').write_text(
+            f'print("architec_status: ok\\naction: {action}")\n',
+            encoding='utf-8',
+        )
+    (role / 'adapters' / 'ccb' / 'tools' / 'doctor.py').write_text(
+        '\n'.join(
+            [
+                'from __future__ import annotations',
+                '',
+                'import os',
+                'from pathlib import Path',
+                'import shutil',
+                '',
+                '',
+                'def _is_executable(path: Path) -> bool:',
+                '    return path.is_file() and os.access(path, os.X_OK)',
+                '',
+                '',
+                'def main() -> int:',
+                "    data_home = Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local' / 'share')",
+                "    root = data_home / 'ccb' / 'tools' / 'architec'",
+                "    wrapper = root / 'bin' / 'ccb-archi'",
+                "    archi_binary = root / 'venv' / 'bin' / 'archi'",
+                '    managed_wrapper_exists = _is_executable(wrapper)',
+                '    managed_archi_binary_exists = _is_executable(archi_binary)',
+                "    path_archi = shutil.which('archi')",
+                "    llmgateway = Path.home() / '.llmgateway' / 'config.yaml'",
+                "    selected_kind = 'managed_wrapper' if managed_wrapper_exists else ('path_archi' if path_archi else 'none')",
+                "    status = 'ok' if managed_wrapper_exists and managed_archi_binary_exists else ('degraded' if path_archi else 'missing')",
+                "    print(f'architec_status: {status}')",
+                "    print(f'managed_wrapper_exists: {managed_wrapper_exists}')",
+                "    print(f'managed_archi_binary_exists: {managed_archi_binary_exists}')",
+                "    print(f'selected_kind: {selected_kind}')",
+                "    print('llmgateway_config: ' + ('present' if llmgateway.is_file() else 'missing'))",
+                "    return 0 if status == 'ok' else 1",
+                '',
+                '',
+                "raise SystemExit(main())",
+            ]
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+    return role
 
 
 def _write_catalog_role(catalog: Path, base_name: str, child_name: str, *, role_id: str, version: str, name: str) -> Path:
@@ -291,7 +406,7 @@ def test_role_manifest_rejects_non_table_identity(tmp_path: Path) -> None:
 
 
 def test_agent_role_preview_manifest_translates_for_ccb() -> None:
-    manifest = load_role_manifest(AGENT_ROLES_ARCHI)
+    manifest = load_role_manifest(_agent_roles_archi())
 
     assert manifest.id == 'agentroles.archi'
     assert manifest.default_agent_name == 'archi'
@@ -424,7 +539,7 @@ def test_system_role_source_precedes_default_agent_roles_catalog(tmp_path: Path,
     assert rows['agentroles.archi']['source'] == 'systemroles'
     assert rows['agentroles.archi']['version'] == '9.9.9'
     assert rows['agentroles.archi']['path'] == str(local_archi)
-    assert rows['agentroles.archi']['duplicates'] == (f'agentroles:{AGENT_ROLES_ARCHI}',)
+    assert rows['agentroles.archi']['duplicates'] == (f'agentroles:{_agent_roles_archi()}',)
     assert 'duplicate_source_roles' in rows['agentroles.archi']['warning']
 
 
@@ -639,7 +754,7 @@ def test_agent_role_preview_can_install_from_path_and_project_skills(tmp_path: P
     project.mkdir()
     _write_project_config(project)
 
-    payload = install_role(source_path=AGENT_ROLES_ARCHI, with_tools=False)
+    payload = install_role(source_path=_agent_roles_archi(), with_tools=False)
     assert payload['role_status'] == 'installed'
     assert payload['role_id'] == 'agentroles.archi'
     assert payload['source'] == 'path'
@@ -677,7 +792,7 @@ def test_agent_role_preview_path_install_cli_supports_shorthand(tmp_path: Path, 
     project.mkdir()
 
     code, out, err = _run_cli(
-        ['roles', 'install', '--path', str(AGENT_ROLES_ARCHI), '--skip-tools'],
+        ['roles', 'install', '--path', str(_agent_roles_archi()), '--skip-tools'],
         cwd=tmp_path,
     )
     assert code == 0
@@ -823,8 +938,8 @@ def test_archi_doctor_degrades_when_managed_wrapper_missing(tmp_path: Path, monk
     monkeypatch.setenv('PATH', str(fake_bin))
 
     result = subprocess.run(
-        [sys.executable, str(AGENT_ROLES_ARCHI / 'adapters' / 'ccb' / 'tools' / 'doctor.py')],
-        cwd=AGENT_ROLES_ARCHI,
+        [sys.executable, str(_agent_roles_archi() / 'adapters' / 'ccb' / 'tools' / 'doctor.py')],
+        cwd=_agent_roles_archi(),
         env=dict(os.environ),
         text=True,
         stdout=subprocess.PIPE,
