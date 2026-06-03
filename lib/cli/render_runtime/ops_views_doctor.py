@@ -7,6 +7,7 @@ from .ops_views_common import binding_line
 
 def render_doctor(payload: Mapping[str, object]) -> tuple[str, ...]:
     installation = payload.get('installation') or {}
+    runtime = payload.get('runtime') or {}
     requirements = payload.get('requirements') or {}
     ccbd = payload['ccbd']
     lines = [
@@ -20,6 +21,17 @@ def render_doctor(payload: Mapping[str, object]) -> tuple[str, ...]:
         f'install_build_time: {installation.get("build_time")}',
         f'install_platform: {installation.get("platform")}',
         f'install_arch: {installation.get("arch")}',
+        f'user_id: {runtime.get("user_id")}',
+        f'user_name: {runtime.get("user_name")}',
+        f'home: {runtime.get("home")}',
+        f'root_runtime: {runtime.get("root_runtime")}',
+        f'install_root_owned: {runtime.get("install_root_owned")}',
+        f'install_user_id: {runtime.get("install_user_id")}',
+        f'install_user_name: {runtime.get("install_user_name")}',
+        f'sudo_user: {runtime.get("sudo_user")}',
+        f'project_owner: {runtime.get("project_owner")}',
+        f'ccb_dir_owner: {runtime.get("ccb_dir_owner")}',
+        f'install_owner: {runtime.get("install_owner")}',
         f'requirement_python_executable: {requirements.get("python_executable")}',
         f'requirement_python_version: {requirements.get("python_version")}',
         f'requirement_tmux_available: {requirements.get("tmux_available")}',
@@ -155,6 +167,8 @@ def render_doctor(payload: Mapping[str, object]) -> tuple[str, ...]:
             f'available={provider.get("available")} '
             f'path={provider.get("path")}'
         )
+    for warning in runtime.get('warnings') or ():
+        lines.append(f'runtime_warning: {warning}')
     for error in ccbd.get('diagnostic_errors') or ():
         lines.append(f'ccbd_diagnostic_error: {error}')
     for agent in payload['agents']:

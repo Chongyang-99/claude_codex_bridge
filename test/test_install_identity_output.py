@@ -110,3 +110,49 @@ def test_write_install_metadata_avoids_bash4_parameter_expansion(tmp_path: Path)
     assert payload["version"] == '6.0.26-"quoted"'
     assert payload["source_kind"] == "release"
     assert payload["install_mode"] == "release"
+    assert payload["root_install"] is False
+    assert "install_user_id" in payload
+    assert "install_user_name" in payload
+
+
+def test_write_install_metadata_records_root_profile(tmp_path: Path) -> None:
+    install_prefix = tmp_path / "install"
+    install_prefix.mkdir()
+    (install_prefix / "ccb").write_text(
+        'VERSION = "0.0.0"\nGIT_COMMIT = "abc123"\nGIT_DATE = "2026-05-04"\n',
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env.update(
+        {
+            "CODEX_INSTALL_PREFIX": str(install_prefix),
+            "CCB_BUILD_VERSION": "6.0.26",
+            "CCB_BUILD_CHANNEL": "stable",
+            "CCB_SOURCE_KIND": "release",
+            "CCB_BUILD_TIME": "2026-05-04T00:00:00Z",
+            "CCB_TEST_EUID": "0",
+            "CCB_TEST_USER_NAME": "root",
+            "SUDO_USER": "demo",
+        }
+    )
+    command = textwrap.dedent(
+        f"""
+        set -euo pipefail
+        source {shlex.quote(str(INSTALL_SH))}
+        write_install_metadata
+        """
+    )
+
+    completed = subprocess.run(
+        ["bash", "-lc", command],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+    payload = json.loads((install_prefix / "BUILD_INFO.json").read_text(encoding="utf-8"))
+    assert payload["install_user_id"] == 0
+    assert payload["install_user_name"] == "root"
+    assert payload["root_install"] is True
+    assert payload["sudo_user"] == "demo"

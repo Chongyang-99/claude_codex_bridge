@@ -18,6 +18,10 @@ def get_version_info(dir_path: Path) -> dict:
         "source_kind": None,
         "install_mode": None,
         "installed_at": None,
+        "install_user_id": None,
+        "install_user_name": None,
+        "root_install": None,
+        "sudo_user": None,
     }
     info.update(read_build_info(dir_path / "BUILD_INFO.json"))
     info.update(read_version_file(dir_path / "VERSION"))
@@ -71,7 +75,7 @@ def read_version_file(version_file: Path) -> dict[str, str | None]:
     return {"version": value}
 
 
-def read_build_info(build_info_file: Path) -> dict[str, str | None]:
+def read_build_info(build_info_file: Path) -> dict[str, object]:
     if not build_info_file.exists():
         return {}
     try:
@@ -80,7 +84,7 @@ def read_build_info(build_info_file: Path) -> dict[str, str | None]:
         return {}
     if not isinstance(payload, dict):
         return {}
-    normalized: dict[str, str | None] = {}
+    normalized: dict[str, object] = {}
     for key in (
         "version",
         "commit",
@@ -92,9 +96,16 @@ def read_build_info(build_info_file: Path) -> dict[str, str | None]:
         "source_kind",
         "install_mode",
         "installed_at",
+        "install_user_id",
+        "install_user_name",
+        "root_install",
+        "sudo_user",
     ):
         value = payload.get(key)
-        normalized[key] = str(value).strip() if value not in (None, "") else None
+        if key == "root_install" and isinstance(value, bool):
+            normalized[key] = value
+        else:
+            normalized[key] = str(value).strip() if value not in (None, "") else None
     return normalized
 
 

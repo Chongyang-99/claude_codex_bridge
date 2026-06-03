@@ -143,11 +143,104 @@ msg() {
   fi
 }
 
-require_non_root_execution() {
-  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-    msg root_error >&2
+current_effective_uid() {
+  if [[ -n "${CCB_TEST_EUID:-}" ]]; then
+    echo "$CCB_TEST_EUID"
+    return
+  fi
+  if [[ -n "${EUID:-}" ]]; then
+    echo "$EUID"
+    return
+  fi
+  id -u
+}
+
+current_effective_user_name() {
+  if [[ -n "${CCB_TEST_USER_NAME:-}" ]]; then
+    echo "$CCB_TEST_USER_NAME"
+    return
+  fi
+  id -un 2>/dev/null || echo "unknown"
+}
+
+install_stdin_is_tty() {
+  if [[ "${CCB_TEST_STDIN_TTY:-}" == "1" ]]; then
+    return 0
+  fi
+  [[ -t 0 ]]
+}
+
+ccb_data_home() {
+  if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+    echo "$XDG_DATA_HOME"
+  else
+    echo "$HOME/.local/share"
+  fi
+}
+
+print_root_install_warning() {
+  local data_home sudo_user
+  data_home="$(ccb_data_home)"
+  sudo_user="${SUDO_USER:-}"
+  echo "WARN: Root install is not recommended." >&2
+  echo >&2
+  echo "You are installing CCB as root." >&2
+  echo >&2
+  echo "This will install and run CCB in root's own profile:" >&2
+  echo "  install prefix : $INSTALL_PREFIX" >&2
+  echo "  bin directory  : $BIN_DIR" >&2
+  echo "  role store     : $data_home/ccb/roles" >&2
+  echo "  tool store     : $data_home/ccb/tools" >&2
+  echo "  provider auth  : root-owned provider homes and credentials" >&2
+  echo >&2
+  if [[ -n "$sudo_user" && "$sudo_user" != "root" ]]; then
+    echo "Detected sudo user: $sudo_user" >&2
+    echo "This will not install CCB for $sudo_user; it will install for root." >&2
+    echo >&2
+  fi
+  echo "Do not use root unless you intentionally run Codex/Claude/Gemini as root." >&2
+  echo "If this command was started with sudo by mistake, cancel now and rerun as your normal user." >&2
+  echo >&2
+}
+
+confirm_root_install_if_needed() {
+  local uid
+  uid="$(current_effective_uid)"
+  if [[ "$uid" != "0" ]]; then
+    return 0
+  fi
+
+  if [[ "${CCB_ALLOW_ROOT_INSTALL:-}" == "1" ]]; then
+    echo "WARN: Continuing root install because CCB_ALLOW_ROOT_INSTALL=1 is set." >&2
+    if [[ -n "${SUDO_USER:-}" && "${SUDO_USER:-}" != "root" ]]; then
+      echo "WARN: Detected sudo user ${SUDO_USER}; this will install for root, not ${SUDO_USER}." >&2
+    fi
+    return 0
+  fi
+
+  print_root_install_warning
+
+  if ! install_stdin_is_tty; then
+    echo "ERROR: Root install requires explicit confirmation." >&2
+    echo "   Re-run with CCB_ALLOW_ROOT_INSTALL=1 only if this is intentional." >&2
     exit 1
   fi
+
+  local reply
+  read -r -p "Continue root install? (y/N): " reply
+  case "$reply" in
+    y|Y|yes|YES)
+      return 0
+      ;;
+    *)
+      echo "Installation cancelled" >&2
+      exit 1
+      ;;
+  esac
+}
+
+require_non_root_execution() {
+  confirm_root_install_if_needed
 }
 
 SCRIPTS_TO_LINK=(
@@ -234,6 +327,7 @@ Optional environment variables:
   CCB_INSTALL_WATCHDOG     Auto-install optional watchdog dependency (default: 1; set 0 to skip)
   CCB_INSTALL_NEOVIM       Install default Neovim/LazyVim tool: ask (default), 1 force, 0 skip
   CCB_INSTALL_ROLES        Install bundled Role Packs and dependencies: ask (default), 1 force, 0 skip
+  CCB_ALLOW_ROOT_INSTALL   Set to 1 to explicitly allow a root-owned install
   CCB_CONFIRM_MAJOR_UPGRADE Set to 1 to confirm replacing a pre-v6 install with v6+
 USAGE
 }
@@ -1045,6 +1139,7 @@ print_install_identity_notice() {
 
 write_install_metadata() {
   local version commit date build_time installed_at platform_name arch_name channel source_kind install_mode
+  local install_user_id install_user_name sudo_user root_install_json install_user_id_json
   version="$(resolve_install_version)"
   commit="$(read_embedded_assignment "$INSTALL_PREFIX/ccb" "GIT_COMMIT")"
   date="$(read_embedded_assignment "$INSTALL_PREFIX/ccb" "GIT_DATE")"
@@ -1070,12 +1165,26 @@ write_install_metadata() {
   source_kind="$(resolve_source_kind)"
   channel="$(resolve_build_channel)"
   install_mode="$(resolve_install_mode)"
+  install_user_id="$(current_effective_uid)"
+  install_user_name="$(current_effective_user_name)"
+  sudo_user="${SUDO_USER:-}"
+  if [[ "$install_user_id" =~ ^[0-9]+$ ]]; then
+    install_user_id_json="$install_user_id"
+  else
+    install_user_id_json="None"
+  fi
+  if [[ "$install_user_id" == "0" ]]; then
+    root_install_json="True"
+  else
+    root_install_json="False"
+  fi
 
   if ! pick_any_python_bin; then
     echo "WARN: python required to write VERSION/BUILD_INFO metadata"
     return
   fi
   local version_json commit_json date_json build_time_json platform_json arch_json channel_json source_kind_json install_mode_json installed_at_json
+  local install_user_name_json sudo_user_json
   version_json="$(json_string_literal "$version")"
   commit_json="$(json_string_literal "$commit")"
   date_json="$(json_string_literal "$date")"
@@ -1086,6 +1195,8 @@ write_install_metadata() {
   source_kind_json="$(json_string_literal "$source_kind")"
   install_mode_json="$(json_string_literal "$install_mode")"
   installed_at_json="$(json_string_literal "$installed_at")"
+  install_user_name_json="$(json_string_literal "$install_user_name")"
+  sudo_user_json="$(json_string_literal "$sudo_user")"
 
   "$PYTHON_BIN" - <<PY
 from pathlib import Path
@@ -1103,6 +1214,10 @@ payload = {
     "source_kind": ${source_kind_json},
     "install_mode": ${install_mode_json},
     "installed_at": ${installed_at_json},
+    "install_user_id": ${install_user_id_json},
+    "install_user_name": ${install_user_name_json},
+    "root_install": ${root_install_json},
+    "sudo_user": ${sudo_user_json},
 }
 
 version_text = str(payload["version"] or "").strip()
@@ -3104,10 +3219,9 @@ main() {
     exit 1
   fi
 
-  require_non_root_execution
-
   case "$1" in
     install)
+      confirm_root_install_if_needed
       install_all
       ;;
     uninstall)
