@@ -12,6 +12,11 @@ from provider_core.caller_env import (
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
+from provider_core.runtime_shared import apply_provider_command_template
+
+
+_ROOT_SANDBOX_ENV = {'IS_SANDBOX': '1'}
+_ROOT_SKIP_PERMISSIONS_FLAG = '--dangerously-skip-permissions'
 
 
 def build_runtime_launcher(
@@ -58,7 +63,9 @@ def build_start_cmd(
     build_env_prefix_fn,
     resolve_restore_target_fn,
     provider_start_parts_fn,
+    is_root_user_fn,
 ) -> str:
+    root_user = bool(is_root_user_fn())
     profile = load_profile_fn(runtime_dir)
     restore_target = resolve_restore_target_fn(
         spec=spec,
@@ -79,11 +86,14 @@ def build_start_cmd(
         build_env_prefix_fn(profile=profile, extra_env=spec.env),
         export_env_clause(provider_user_session_env()),
         export_env_clause(home_overrides),
+        export_env_clause(_ROOT_SANDBOX_ENV if root_user else {}),
         export_env_clause(
             caller_context_env(actor=spec.name, runtime_dir=runtime_dir, launch_session_id=launch_session_id)
         ),
     )
     cmd_parts = provider_start_parts_fn('claude')
+    if root_user and _ROOT_SKIP_PERMISSIONS_FLAG not in cmd_parts and _ROOT_SKIP_PERMISSIONS_FLAG not in spec.startup_args:
+        cmd_parts.append(_ROOT_SKIP_PERMISSIONS_FLAG)
     cmd_parts.extend(['--setting-sources', 'user,project,local'])
     if settings_path is not None:
         cmd_parts.extend(['--settings', str(settings_path)])
@@ -94,6 +104,7 @@ def build_start_cmd(
     cmd_parts.extend(spec.startup_args)
 
     cmd = ' '.join(shlex.quote(str(part)) for part in cmd_parts)
+    cmd = apply_provider_command_template(cmd, spec.provider_command_template)
     if env_prefix:
         return f'{env_prefix}; {cmd}'
     return cmd

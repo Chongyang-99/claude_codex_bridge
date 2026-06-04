@@ -94,6 +94,10 @@ class WorkspacePathMixin:
             return base / self.project_slug / normalized
         return self.workspaces_dir / normalized
 
+    def workspace_group_path(self, group_name: str) -> Path:
+        normalized = normalize_agent_name(group_name)
+        return self.workspaces_dir / 'groups' / normalized
+
     def workspace_binding_path(
         self,
         agent_name: str,
@@ -103,6 +107,9 @@ class WorkspacePathMixin:
             agent_name,
             workspace_root=workspace_root,
         ) / WORKSPACE_BINDING_FILENAME
+
+    def workspace_group_binding_path(self, group_name: str) -> Path:
+        return self.workspace_group_path(group_name) / WORKSPACE_BINDING_FILENAME
 
 
 __all__ = [

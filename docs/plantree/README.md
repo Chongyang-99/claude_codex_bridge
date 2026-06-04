@@ -35,6 +35,7 @@ to resume across agents and sessions.
 | [rolepack-system](plans/rolepack-system/README.md) | Planning | Define a host-neutral Role Pack system for reusable agent roles, with CCB installation, projection, and governance as the first adapter. |
 | [agent-roles-open-source](plans/agent-roles-open-source/README.md) | Planning | Plan the public `agent-roles` GitHub project as a spec-first RolePack standard with templates, reference roles, and future host adapters. |
 | [install-update-stability](plans/install-update-stability/README.md) | Planning | Make fresh install, managed update, dependency provisioning, Role Pack refresh, and bilingual user output stable across supported environments. |
+| [workspace-sharing](plans/workspace-sharing/README.md) | In progress | Add explicit external workspace paths and internal shared worktree groups without changing default per-agent worktree behavior. |
 
 ## Legacy Planning Sources
 

@@ -21,6 +21,7 @@ class WorkspacePlan:
     branch_name: str | None
     branch_template: str | None
     unsafe_shared_workspace: bool
+    workspace_scope: str = 'agent'
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'project_root', Path(self.project_root).expanduser().resolve())
@@ -29,6 +30,7 @@ class WorkspacePlan:
         if self.binding_path is not None:
             object.__setattr__(self, 'binding_path', Path(self.binding_path).expanduser().resolve())
         object.__setattr__(self, 'agent_name', normalize_agent_name(self.agent_name))
+        object.__setattr__(self, 'workspace_scope', str(self.workspace_scope or 'agent').strip().lower())
 
 
 @dataclass(frozen=True)

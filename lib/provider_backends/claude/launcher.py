@@ -88,6 +88,7 @@ def build_start_cmd(
         build_env_prefix_fn=build_claude_env_prefix,
         resolve_restore_target_fn=_resolve_claude_restore_target,
         provider_start_parts_fn=provider_start_parts,
+        is_root_user_fn=is_root_user,
     )
 
 
@@ -234,6 +235,16 @@ def should_drop_claude_base_url(value: str) -> bool:
 
 def local_tcp_listener_available(host: str, port: int) -> bool:
     return _local_tcp_listener_available_impl(host, port)
+
+
+def is_root_user() -> bool:
+    geteuid = getattr(os, 'geteuid', None)
+    if geteuid is None:
+        return False
+    try:
+        return int(geteuid()) == 0
+    except Exception:
+        return False
 
 
 __all__ = [

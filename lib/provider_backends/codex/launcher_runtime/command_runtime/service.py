@@ -7,6 +7,7 @@ from typing import Callable
 
 from agents.policy import should_restore_provider_history
 from provider_core.caller_env import caller_context_env, provider_user_session_env
+from provider_core.runtime_shared import apply_provider_command_template
 from provider_backends.codex.runtime_artifacts import codex_runtime_artifact_layout
 from provider_backends.codex.session_authority import (
     current_memory_projection_fingerprint,
@@ -61,6 +62,7 @@ def build_start_cmd(
     if exports:
         prefix_parts.append(f'export {exports}')
     cmd = ' '.join(shlex.quote(str(part)) for part in codex_args)
+    cmd = apply_provider_command_template(cmd, spec.provider_command_template)
     if prefix_parts:
         return f"{'; '.join(prefix_parts)}; {cmd}"
     return cmd

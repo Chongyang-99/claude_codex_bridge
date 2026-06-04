@@ -17,7 +17,7 @@ from provider_core.caller_env import (
 )
 from provider_core.contracts import ProviderRuntimeLauncher
 from provider_core.memory_projection import write_projection_event_and_marker
-from provider_core.runtime_shared import provider_start_parts
+from provider_core.runtime_shared import apply_provider_command_template, provider_start_parts
 from provider_profiles import load_resolved_provider_profile
 from project_memory import materialize_runtime_memory_bundle
 from project_memory.hashing import sha256_text
@@ -93,6 +93,7 @@ def build_start_cmd(
         cmd_parts.append('--continue')
     cmd_parts.extend(spec.startup_args)
     cmd = ' '.join(shlex.quote(str(part)) for part in cmd_parts)
+    cmd = apply_provider_command_template(cmd, spec.provider_command_template)
     env_prefix = join_env_prefix(
         export_env_clause(provider_user_session_env()),
         export_env_clause(memory_env),

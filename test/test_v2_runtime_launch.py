@@ -41,7 +41,13 @@ from terminal_runtime.tmux_identity import pane_visual
 from workspace.planner import WorkspacePlanner
 
 
-def _spec(name: str, provider: str = 'codex') -> AgentSpec:
+def _spec(
+    name: str,
+    provider: str = 'codex',
+    *,
+    startup_args: tuple[str, ...] = (),
+    provider_command_template: str | None = None,
+) -> AgentSpec:
     return AgentSpec(
         name=name,
         provider=provider,
@@ -52,6 +58,8 @@ def _spec(name: str, provider: str = 'codex') -> AgentSpec:
         restore_default=RestoreMode.AUTO,
         permission_default=PermissionMode.MANUAL,
         queue_policy=QueuePolicy.SERIAL_PER_AGENT,
+        provider_command_template=provider_command_template,
+        startup_args=startup_args,
     )
 
 
@@ -1801,6 +1809,46 @@ def test_codex_launcher_build_start_cmd_uses_agent_scoped_resume_session(monkeyp
     assert 'agent2-session-id' not in cmd
 
 
+def test_codex_launcher_provider_command_template_wraps_original_resume_command(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / 'repo-codex-template'
+    runtime_dir = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-runtime' / 'codex'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    ccb_dir = project_root / '.ccb'
+    ccb_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec(
+        'agent1',
+        provider_command_template='sandbox=1 {command} omx --madmax',
+    )
+    command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=True, auto_permission=False)
+
+    monkeypatch.delenv('CODEX_HOME', raising=False)
+    _write_project_memory(project_root, 'shared memory\n')
+    prepared = _prepare_codex_home_for_test(spec, runtime_dir)
+    marker = json.loads((runtime_dir / 'codex-memory-projection.json').read_text(encoding='utf-8'))
+    (ccb_dir / '.codex-agent1-session').write_text(
+        json.dumps(
+            {
+                'codex_session_id': 'agent1-session-id',
+                'codex_memory_projection_sha256': marker['sha256'],
+                'codex_start_cmd': 'codex resume agent1-session-id',
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+
+    cmd = codex_launcher.build_start_cmd(command, spec, runtime_dir, 'sess-template', prepared_state=prepared)
+
+    assert '{command}' not in cmd
+    assert cmd.startswith('export ')
+    assert '; sandbox=1 codex -c disable_paste_burst=true resume agent1-session-id omx --madmax' in cmd
+    assert 'sandbox=1 export ' not in cmd
+
+
 def test_codex_launcher_build_start_cmd_respects_agent_restore_fresh(monkeypatch, tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-codex-fresh'
     runtime_dir = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-runtime' / 'codex'
@@ -1910,6 +1958,49 @@ def test_claude_launcher_build_start_cmd_uses_overlay_and_drops_dead_local_user_
     assert settings_payload['skipDangerousModePermissionPrompt'] is True
 
 
+def test_claude_launcher_provider_command_template_wraps_command_after_env_prefix(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    runtime_dir = tmp_path / 'runtime-claude-template'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec(
+        'reviewer',
+        provider='claude',
+        provider_command_template='sandbox=1 {command} omx --madmax',
+    )
+    command = ParsedStartCommand(project=None, agent_names=('reviewer',), restore=True, auto_permission=False)
+
+    monkeypatch.setattr(claude_launcher, 'is_root_user', lambda: False)
+    monkeypatch.setattr(
+        claude_launcher,
+        '_resolve_claude_restore_target',
+        lambda **kwargs: ProviderRestoreTarget(run_cwd=runtime_dir, has_history=True),
+    )
+    monkeypatch.setattr(
+        'provider_backends.claude.launcher.write_claude_settings_overlay',
+        lambda runtime_dir, profile=None: runtime_dir / 'claude-settings.json',
+    )
+    monkeypatch.setattr(
+        'provider_backends.claude.launcher.build_claude_env_prefix',
+        lambda profile=None, extra_env=None: 'unset ANTHROPIC_BASE_URL',
+    )
+
+    start_cmd = claude_launcher.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'claude-sess-template',
+        prepared_state=_claude_prepared_state(runtime_dir),
+    )
+
+    assert '{command}' not in start_cmd
+    assert start_cmd.startswith('unset ANTHROPIC_BASE_URL; ')
+    assert '; sandbox=1 claude --setting-sources user,project,local --settings ' in start_cmd
+    assert start_cmd.endswith(' --continue omx --madmax')
+    assert 'sandbox=1 unset ANTHROPIC_BASE_URL' not in start_cmd
+
+
 def test_claude_launcher_build_start_cmd_respects_agent_restore_fresh(monkeypatch, tmp_path: Path) -> None:
     runtime_dir = tmp_path / 'runtime-claude-fresh'
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -1950,7 +2041,7 @@ def test_claude_launcher_build_start_cmd_respects_agent_restore_fresh(monkeypatc
     assert '--continue' not in start_cmd
 
 
-def test_claude_launcher_build_start_cmd_includes_agent_model_shortcut(tmp_path: Path) -> None:
+def test_claude_launcher_build_start_cmd_includes_agent_model_shortcut(monkeypatch, tmp_path: Path) -> None:
     runtime_dir = tmp_path / 'runtime-claude-model'
     runtime_dir.mkdir(parents=True, exist_ok=True)
     spec = AgentSpec(
@@ -1967,6 +2058,7 @@ def test_claude_launcher_build_start_cmd_includes_agent_model_shortcut(tmp_path:
     )
     command = ParsedStartCommand(project=None, agent_names=('reviewer',), restore=False, auto_permission=False)
 
+    monkeypatch.setattr(claude_launcher, 'is_root_user', lambda: False)
     start_cmd = claude_launcher.build_start_cmd(
         command,
         spec,
@@ -1975,7 +2067,62 @@ def test_claude_launcher_build_start_cmd_includes_agent_model_shortcut(tmp_path:
         prepared_state=_claude_prepared_state(runtime_dir),
     )
 
+    assert 'IS_SANDBOX=1' not in start_cmd
+    assert '--dangerously-skip-permissions' not in start_cmd
     assert start_cmd.endswith('claude --setting-sources user,project,local --model opus')
+
+
+def test_claude_launcher_build_start_cmd_adds_root_sandbox_compat(monkeypatch, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / 'runtime-claude-root'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec('reviewer', provider='claude')
+    command = ParsedStartCommand(project=None, agent_names=('reviewer',), restore=False, auto_permission=False)
+
+    monkeypatch.setattr(claude_launcher, 'is_root_user', lambda: True)
+    monkeypatch.setattr(
+        claude_launcher,
+        '_resolve_claude_restore_target',
+        lambda **kwargs: ProviderRestoreTarget(run_cwd=runtime_dir, has_history=False),
+    )
+
+    start_cmd = claude_launcher.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'claude-sess-root',
+        prepared_state=_claude_prepared_state(runtime_dir),
+    )
+
+    assert 'IS_SANDBOX=1' in start_cmd
+    assert start_cmd.endswith('claude --dangerously-skip-permissions --setting-sources user,project,local')
+
+
+def test_claude_launcher_build_start_cmd_does_not_duplicate_root_skip_flag(monkeypatch, tmp_path: Path) -> None:
+    runtime_dir = tmp_path / 'runtime-claude-root-dedup'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec('reviewer', provider='claude', startup_args=('--dangerously-skip-permissions', '--debug'))
+    command = ParsedStartCommand(project=None, agent_names=('reviewer',), restore=False, auto_permission=False)
+
+    monkeypatch.setattr(claude_launcher, 'is_root_user', lambda: True)
+    monkeypatch.setattr(
+        claude_launcher,
+        '_resolve_claude_restore_target',
+        lambda **kwargs: ProviderRestoreTarget(run_cwd=runtime_dir, has_history=False),
+    )
+
+    start_cmd = claude_launcher.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'claude-sess-root-dedup',
+        prepared_state=_claude_prepared_state(runtime_dir),
+    )
+
+    assert 'IS_SANDBOX=1' in start_cmd
+    assert start_cmd.count('--dangerously-skip-permissions') == 1
+    assert start_cmd.endswith(
+        'claude --setting-sources user,project,local --dangerously-skip-permissions --debug'
+    )
 
 
 def test_claude_launcher_build_start_cmd_requires_launch_context(tmp_path: Path) -> None:

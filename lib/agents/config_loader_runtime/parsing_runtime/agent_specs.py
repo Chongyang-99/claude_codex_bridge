@@ -63,6 +63,24 @@ def build_agent_spec(agent_name: str, raw: dict[str, Any]) -> AgentSpec:
                 if raw.get('workspace_root') is not None
                 else None
             ),
+            workspace_path=(
+                expect_string(raw['workspace_path'], field_name=f'agents.{agent_name}.workspace_path')
+                if raw.get('workspace_path') is not None
+                else None
+            ),
+            workspace_group=(
+                expect_string(raw['workspace_group'], field_name=f'agents.{agent_name}.workspace_group')
+                if raw.get('workspace_group') is not None
+                else None
+            ),
+            provider_command_template=(
+                expect_string(
+                    raw['provider_command_template'],
+                    field_name=f'agents.{agent_name}.provider_command_template',
+                )
+                if raw.get('provider_command_template') is not None
+                else None
+            ),
             runtime_mode=normalize_runtime_mode(
                 expect_string(
                     raw.get('runtime_mode', RuntimeMode.PANE_BACKED.value),

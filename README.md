@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.2.12-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.3.0-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **English** | [中文](README_zh.md)
@@ -519,12 +519,22 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.3.0</b> - Agent Roles, Artifact Ask, And Shared Workspace Release</summary>
+
+- Adds daemon-managed ask artifact transport with `--artifact-request`, `--artifact-reply`, and `--artifact-io`, including callback-compatible artifact replies for long outputs.
+- Finalizes the Agent Roles store path around the external `agent-roles` manager and `.roles/installed`, while preserving `ccb.archi` compatibility for `agentroles.archi`.
+- Adds shared workspace controls with `workspace_path` and `workspace_group`, plus `provider_command_template` for wrapping the CCB-built provider command without breaking resume handling.
+- Fixes Claude startup under root, OpenCode `ccb clear` submit timing after restored sessions, and managed Neovim activation so the original runtime path is preserved.
+- Refreshes inherited `ask` and `ccb-config` skills for submit-only ask rules, artifact modes, windows-first config, shared workspaces, and provider command templates.
+
+</details>
+
+<details>
 <summary><b>v7.2.12</b> - Agent Roles Store Migration Release</summary>
 
 - Uses the external `agent-roles` package manager by default for Role Pack install, update, and sync.
-- Writes Role Pack payloads into the spec-owned `.roles/installed` store, with `$XDG_DATA_HOME/ccb/roles` kept as a legacy fallback.
-- Copies existing legacy installed role snapshots into `.roles/installed` without deleting the old store, preserving project lock digest resolution.
-- Keeps `CCB_AGENT_ROLES_MANAGER=0` / `legacy` / `ccb` as a temporary rollback valve for troubleshooting.
+- Writes Role Pack payloads into the spec-owned `.roles/installed` store.
+- Copies existing legacy installed role snapshots into `.roles/installed` without deleting the old store; runtime lookup reads the spec-owned store only after migration.
 - Routes `ccb roles update --path ...` through the Agent Roles manager so path updates also write `.roles/installed`.
 - Supersedes v7.2.11, which was an incomplete opt-in preview release and should not be used as the recommended release.
 

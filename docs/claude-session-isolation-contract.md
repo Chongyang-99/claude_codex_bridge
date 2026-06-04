@@ -231,6 +231,11 @@ When `ccb` starts a managed Claude agent:
   not allow caller-global runtime variables such as `HOME`,
   `CLAUDE_PROJECTS_ROOT`, `CLAUDE_PROJECT_ROOT`, `CLAUDE_*`, or
   `CCB_CALLER_*` to override the managed launcher's agent-scoped values
+- when the CCB process itself runs as root, managed Claude startup must add
+  `IS_SANDBOX=1` and Claude Code's
+  `--dangerously-skip-permissions` root-compatibility flag so Claude can start
+  under root; this is a root-only compatibility path and must not affect
+  non-root launches
 - it must install Claude hook/trust state only inside that managed home
 - it must write the effective `claude_home`, `claude_projects_root`, and
   `claude_session_env_root` into the agent session file

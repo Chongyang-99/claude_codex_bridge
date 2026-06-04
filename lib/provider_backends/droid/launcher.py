@@ -13,7 +13,7 @@ from provider_core.caller_env import (
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
-from provider_core.runtime_shared import provider_start_parts
+from provider_core.runtime_shared import apply_provider_command_template, provider_start_parts
 from workspace.models import WorkspacePlan
 
 from .home import managed_droid_home_for_runtime
@@ -57,6 +57,7 @@ def build_start_cmd(
         cmd_parts.append('-r')
     cmd_parts.extend(spec.startup_args)
     cmd = ' '.join(shlex.quote(str(part)) for part in cmd_parts)
+    cmd = apply_provider_command_template(cmd, spec.provider_command_template)
     runtime_dir = Path(runtime_dir)
     droid_home = _droid_home(runtime_dir, prepared_state)
     droid_sessions_root = _droid_sessions_root(droid_home, prepared_state)

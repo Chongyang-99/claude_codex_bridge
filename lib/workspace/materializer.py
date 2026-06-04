@@ -41,12 +41,16 @@ class WorkspaceMaterializer:
 
     def _materialize_git_worktree(self, plan: WorkspacePlan) -> MaterializationResult:
         if plan.branch_name is None:
-            raise ValueError('git-worktree workspace requires branch_name')
+            if plan.workspace_scope != 'external':
+                raise ValueError('git-worktree workspace requires branch_name')
         if not can_use_git_worktree(plan.project_root):
             raise RuntimeError(
                 'git-worktree workspace requires a git repository: '
                 f'{plan.project_root}; use workspace_mode="copy" for an explicit directory copy'
             )
+        if plan.workspace_scope == 'external':
+            self._validate_external_git_workspace(plan)
+            return MaterializationResult(workspace_path=plan.workspace_path, created=False, mode=plan.workspace_mode.value)
 
         if self._is_existing_git_workspace(plan.workspace_path):
             self._validate_existing_git_workspace(plan)
@@ -142,6 +146,23 @@ class WorkspaceMaterializer:
                     f'workspace branch mismatch for {plan.agent_name}: expected {plan.branch_name}, got {current_branch}'
                 )
 
+    def _validate_external_git_workspace(self, plan: WorkspacePlan) -> None:
+        if plan.workspace_path == plan.project_root:
+            raise RuntimeError(
+                f'external workspace_path must not equal the project root; use workspace_mode="inplace": {plan.workspace_path}'
+            )
+        if not plan.workspace_path.exists():
+            raise RuntimeError(f'external workspace_path does not exist: {plan.workspace_path}')
+        if not self._is_existing_git_workspace(plan.workspace_path):
+            raise RuntimeError(f'external workspace_path is not a git workspace root: {plan.workspace_path}')
+        self._validate_existing_git_workspace(plan)
+        project_common = self._git_common_dir(plan.project_root)
+        workspace_common = self._git_common_dir(plan.workspace_path)
+        if project_common != workspace_common:
+            raise RuntimeError(
+                f'external workspace_path is not from the project git repository: {plan.workspace_path}'
+            )
+
     def _is_existing_git_workspace(self, path: Path) -> bool:
         git_dir = path / '.git'
         if not git_dir.exists():
@@ -188,6 +209,13 @@ class WorkspaceMaterializer:
         if result.returncode != 0:
             raise RuntimeError((result.stderr or result.stdout or 'git command failed').strip())
         return (result.stdout or '').strip()
+
+    def _git_common_dir(self, cwd: Path) -> Path:
+        raw = self._git_output(cwd, ['rev-parse', '--git-common-dir'])
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = Path(cwd) / path
+        return path.resolve()
 
     def _run(self, args: list[str], *, error: str) -> None:
         result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

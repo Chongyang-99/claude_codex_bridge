@@ -1,6 +1,65 @@
 # Changelog
 
-## Unreleased
+## v7.3.0 (2026-06-05)
+
+### Agent Roles, Artifact Ask, And Shared Workspace Release
+
+- **Agent Roles Store Flow Simplified**: CCB now uses the external Agent Roles
+  manager as the only Role Pack writer and reads installed roles only from
+  `.roles/installed`. The old CCB-owned writer and
+  `CCB_AGENT_ROLES_MANAGER` rollback switch were removed.
+- **Legacy Role Store Is Migration-Only**: existing `$XDG_DATA_HOME/ccb/roles`
+  snapshots are copied into `.roles/installed` at management boundaries, but
+  runtime lookup no longer falls back to the legacy store.
+- **Role Add Aligned With Agent Roles**: `ccb roles add` now auto-installs
+  missing system-source roles through `agent-roles --path`, preserving
+  `ccb.archi` compatibility while writing canonical `agentroles.archi`
+  bindings and locks.
+- **Ask Artifact Transport Added**: `ask` and `ccb ask` now support
+  `--artifact-request`, `--artifact-reply`, and `--artifact-io` so large or
+  explicitly artifact-backed request/reply bodies can be stored as CCB text
+  artifacts while the visible message carries the file path, byte count, and
+  digest.
+- **Callback Artifact Replies Preserved**: daemon-managed artifact replies work
+  with callback continuations, letting child agents return long evidence through
+  artifact paths without requiring agent-authored sentinel files.
+- **OpenCode Clear Timing Fixed**: `ccb clear` adds an OpenCode-only submit
+  delay after restoring old sessions, fixing cases where `/clear` appeared in
+  the pane but was not submitted automatically.
+- **Managed Neovim Runtime Path Preserved**: managed Neovim activation now
+  links or wraps the extracted original binary instead of copying the bare
+  executable, so Neovim can still resolve its relative `../lib/nvim/runtime`
+  tree and LazyVim health checks pass.
+- **Claude Root Startup Fixed**: managed Claude startup under root now includes
+  the required sandbox environment and permission bypass flags
+  (`IS_SANDBOX=1` and `--dangerously-skip-permissions`) while keeping the root
+  install confirmation safeguards from v7.2.2/v7.2.3.
+- **Shared Workspace Controls Added**: `.ccb/ccb.config` supports
+  `workspace_path` for explicitly pointing an agent at an external worktree and
+  `workspace_group` for sharing an internal grouped worktree across multiple
+  agents.
+- **Provider Command Templates Added**: agent config supports
+  `provider_command_template`, where `{command}` expands to CCB's normal
+  provider startup command after resume/session logic has been applied. This
+  allows wrappers such as environment assignments or extra flags before/after
+  the provider command without replacing the resume flow.
+- **Config Skill Updated**: inherited `ccb-config` skills now default to a
+  windows-first topology discussion, proactively clarify key choices, and cover
+  Agent Roles, shared workspaces, and provider command templates.
+- **Ask Skill Guidance Tightened**: inherited `ask` skills now make submit-only
+  behavior, callback-only nested ask, artifact modes, and diagnostics-only
+  `ask get`/`pend`/`watch`/`ping` commands explicit.
+- **Source Development Isolation Preserved**: project memory and release
+  guidance keep source checkout changes isolated from the system-installed CCB;
+  development runtime testing should use `ccb_test` from external test projects
+  such as `test_ccb2`.
+- **Test Gates Stabilized**: Role Pack tests now use a fake Agent Roles CLI that
+  does not require `tomllib`, `tomli`, or `toml` in the subprocess interpreter,
+  and inherited ask skill template checks remain stable across line wrapping.
+- **v7.2.x Hotfixes Included**: this release also carries the v7.2.x fixes for
+  Antigravity runtime follow-up, source checkout guards, WSL mounted-drive smoke
+  roots, provider blackbox wait timing, Role Pack CI fixtures, post-update role
+  migration, and release artifact dispatch.
 
 ## v7.2.12 (2026-06-04)
 
@@ -8,7 +67,6 @@
 
 - **Agent Roles Manager Default Enabled**: Role Pack install, update, and sync now use the external `agent-roles` package manager and write role payloads into the spec-owned `.roles/installed` store by default.
 - **Legacy Store Migration Added**: existing `$XDG_DATA_HOME/ccb/roles` installed snapshots are copied into `.roles/installed` at Role Pack management boundaries without deleting the old store, preserving existing project lock digest resolution.
-- **Compatibility Rollback Kept**: `CCB_AGENT_ROLES_MANAGER=0`, `legacy`, or `ccb` temporarily restores the old CCB-owned writer for troubleshooting.
 - **Path Update Aligned**: `ccb roles update --path ...` now also routes through the Agent Roles manager and writes `.roles/installed` instead of the legacy CCB store.
 - **Sync Validation Hardened**: malformed `agent-roles sync --json` role rows now fail closed, while `ccb roles sync --with-tools` composes manager-owned payload sync with CCB-owned tool hook execution.
 - **Role Config Guidance Updated**: inherited `ccb-config` skill docs now describe `.roles/installed` as the default package store while keeping `.ccb/ccb.config` limited to canonical role ids.
