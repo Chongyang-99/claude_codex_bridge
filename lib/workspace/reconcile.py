@@ -61,26 +61,38 @@ def reconcile_start_workspaces(project_root: Path, config) -> WorkspaceGuardSumm
 
     warnings: list[WorktreeAlert] = []
     blockers: list[WorktreeAlert] = []
-    pending_worktree_retirements: list[tuple[AgentSpec, str, bool]] = []
+    pending_worktree_retirements: list[tuple[AgentSpec, str, bool, bool]] = []
     pending_state_cleanup: list[tuple[str, str]] = []
 
     for agent_name, persisted_spec in persisted_specs.items():
         desired_spec = desired_specs.get(agent_name)
         if persisted_spec.workspace_mode is WorkspaceMode.GIT_WORKTREE:
+            persisted_plan = WorkspacePlanner().plan(persisted_spec, project_ctx)
             reason = _retirement_reason(persisted_spec, desired_spec, project_ctx)
             if reason is None:
+                continue
+            if persisted_plan.workspace_scope == 'external':
+                if desired_spec is None:
+                    pending_state_cleanup.append((agent_name, 'removed_from_config'))
                 continue
             alert = _inspect_worktree(root, project_ctx, persisted_spec, reason=reason)
             if alert.needs_merge:
                 blockers.append(alert)
                 continue
-            pending_worktree_retirements.append((persisted_spec, reason, desired_spec is None))
+            remove_workspace = not _workspace_referenced_by_other_desired_agent(
+                persisted_spec,
+                desired_specs,
+                project_ctx,
+            )
+            pending_worktree_retirements.append((persisted_spec, reason, desired_spec is None, remove_workspace))
             continue
         if desired_spec is None:
             pending_state_cleanup.append((agent_name, 'removed_from_config'))
 
     for spec in desired_specs.values():
         if spec.workspace_mode is not WorkspaceMode.GIT_WORKTREE:
+            continue
+        if WorkspacePlanner().plan(spec, project_ctx).workspace_scope == 'external':
             continue
         alert = _inspect_worktree(root, project_ctx, spec, reason='active_worktree')
         if alert.needs_merge:
@@ -93,7 +105,7 @@ def reconcile_start_workspaces(project_root: Path, config) -> WorkspaceGuardSumm
         )
 
     retired: list[WorkspaceRetirement] = []
-    for spec, reason, remove_agent_state in pending_worktree_retirements:
+    for spec, reason, remove_agent_state, remove_workspace in pending_worktree_retirements:
         retired.append(
             _retire_worktree_spec(
                 root,
@@ -102,6 +114,7 @@ def reconcile_start_workspaces(project_root: Path, config) -> WorkspaceGuardSumm
                 spec,
                 reason=reason,
                 remove_agent_state=remove_agent_state,
+                remove_workspace=remove_workspace,
             )
         )
     for agent_name, reason in pending_state_cleanup:
@@ -165,6 +178,7 @@ def inspect_kill_worktrees(project_root: Path) -> WorkspaceGuardSummary:
         alert
         for spec in _load_persisted_specs(paths).values()
         if spec.workspace_mode is WorkspaceMode.GIT_WORKTREE
+        if WorkspacePlanner().plan(spec, project_ctx).workspace_scope != 'external'
         for alert in (_inspect_worktree(root, project_ctx, spec, reason='kill_warning'),)
         if alert.needs_merge
     )
@@ -224,6 +238,31 @@ def _inspect_worktree(
     )
 
 
+def _workspace_referenced_by_other_desired_agent(
+    retired_spec: AgentSpec,
+    desired_specs: dict[str, AgentSpec],
+    project_ctx: ProjectContext,
+) -> bool:
+    planner = WorkspacePlanner()
+    retired_plan = planner.plan(retired_spec, project_ctx)
+    retired_identity = _workspace_identity(retired_plan)
+    for desired_spec in desired_specs.values():
+        if desired_spec.name == retired_spec.name:
+            continue
+        if desired_spec.workspace_mode is not WorkspaceMode.GIT_WORKTREE:
+            continue
+        desired_plan = planner.plan(desired_spec, project_ctx)
+        if desired_plan.workspace_scope == 'external':
+            continue
+        if _workspace_identity(desired_plan) == retired_identity:
+            return True
+    return False
+
+
+def _workspace_identity(plan) -> tuple[str, str]:
+    return (str(_resolve_path(plan.workspace_path)), str(plan.branch_name or ''))
+
+
 def _retire_worktree_spec(
     project_root: Path,
     paths: PathLayout,
@@ -232,13 +271,15 @@ def _retire_worktree_spec(
     *,
     reason: str,
     remove_agent_state: bool,
+    remove_workspace: bool = True,
 ) -> WorkspaceRetirement:
     plan = WorkspacePlanner().plan(spec, project_ctx)
-    removed = remove_registered_worktree(project_root, plan.workspace_path)
-    if not removed and _path_within(plan.workspace_path, paths.workspaces_dir) and plan.workspace_path.exists():
-        shutil.rmtree(plan.workspace_path)
-    if plan.branch_name:
-        delete_branch(project_root, plan.branch_name)
+    if remove_workspace and plan.workspace_scope != 'external':
+        removed = remove_registered_worktree(project_root, plan.workspace_path)
+        if not removed and _path_within(plan.workspace_path, paths.workspaces_dir) and plan.workspace_path.exists():
+            shutil.rmtree(plan.workspace_path)
+        if plan.branch_name:
+            delete_branch(project_root, plan.branch_name)
     if remove_agent_state:
         _remove_agent_state(paths, spec.name)
     return WorkspaceRetirement(
@@ -289,6 +330,8 @@ def _collect_reset_worktree_specs(
         if spec.workspace_mode is not WorkspaceMode.GIT_WORKTREE:
             return
         plan = WorkspacePlanner().plan(spec, project_ctx)
+        if plan.workspace_scope == 'external':
+            return
         identity = (str(_resolve_path(plan.workspace_path)), plan.branch_name or '')
         if identity in seen:
             return

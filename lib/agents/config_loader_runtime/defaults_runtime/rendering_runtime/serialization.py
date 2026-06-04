@@ -29,6 +29,12 @@ def agent_spec_to_config_dict(spec) -> dict[str, object]:
 def update_optional_agent_fields(payload: dict[str, object], spec) -> None:
     if spec.workspace_root is not None:
         payload['workspace_root'] = spec.workspace_root
+    if spec.workspace_path is not None:
+        payload['workspace_path'] = spec.workspace_path
+    if spec.workspace_group is not None:
+        payload['workspace_group'] = spec.workspace_group
+    if spec.provider_command_template is not None:
+        payload['provider_command_template'] = spec.provider_command_template
     if spec.model is not None:
         payload['model'] = spec.model
     startup_args = _config_startup_args(spec)

@@ -34,7 +34,11 @@ class WorkspaceValidator:
                 errors.append('non-inplace workspace must not reuse project_root')
 
     def _validate_branch_requirements(self, plan: WorkspacePlan, errors: list[str]) -> None:
-        if plan.branch_name is None and plan.workspace_mode is WorkspaceMode.GIT_WORKTREE:
+        if (
+            plan.branch_name is None
+            and plan.workspace_mode is WorkspaceMode.GIT_WORKTREE
+            and plan.workspace_scope != 'external'
+        ):
             errors.append('git-worktree mode requires branch_name')
 
     def _validate_binding(
@@ -57,5 +61,5 @@ class WorkspaceValidator:
             errors.append('workspace binding project_id does not match project_id')
         if Path(binding.workspace_path).expanduser().resolve() != plan.workspace_path:
             errors.append('workspace binding workspace_path does not match workspace_path')
-        if binding.agent_name != plan.agent_name:
+        if binding.agent_name != plan.agent_name and plan.workspace_scope != 'group':
             errors.append('workspace binding agent_name does not match agent_name')

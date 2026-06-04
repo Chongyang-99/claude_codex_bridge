@@ -12,6 +12,9 @@ from ..enums import PermissionMode, QueuePolicy, RestoreMode, RuntimeMode, Works
 from ..names import SCHEMA_VERSION, AgentValidationError, normalize_agent_name
 
 
+_PROVIDER_COMMAND_PLACEHOLDER = '{command}'
+
+
 def normalize_agent_api(api) -> AgentApiSpec:
     if isinstance(api, AgentApiSpec):
         return api
@@ -41,6 +44,9 @@ class AgentSpec:
     restore_default: RestoreMode
     permission_default: PermissionMode
     queue_policy: QueuePolicy
+    workspace_path: str | None = None
+    workspace_group: str | None = None
+    provider_command_template: str | None = None
     model: str | None = None
     startup_args: tuple[str, ...] = field(default_factory=tuple)
     env: dict[str, str] = field(default_factory=dict)
@@ -62,6 +68,23 @@ class AgentSpec:
             raise AgentValidationError('target cannot be empty')
         object.__setattr__(self, 'provider', provider)
         object.__setattr__(self, 'target', target)
+        workspace_mode = WorkspaceMode(self.workspace_mode)
+        object.__setattr__(self, 'workspace_mode', workspace_mode)
+        workspace_root = self._normalize_optional_string(self.workspace_root, field_name='workspace_root')
+        workspace_path = self._normalize_optional_string(self.workspace_path, field_name='workspace_path')
+        workspace_group = self._normalize_workspace_group()
+        provider_command_template = self._normalize_provider_command_template()
+        self._validate_workspace_overrides(
+            workspace_mode=workspace_mode,
+            workspace_root=workspace_root,
+            workspace_path=workspace_path,
+            workspace_group=workspace_group,
+            branch_template=self.branch_template,
+        )
+        object.__setattr__(self, 'workspace_root', workspace_root)
+        object.__setattr__(self, 'workspace_path', workspace_path)
+        object.__setattr__(self, 'workspace_group', workspace_group)
+        object.__setattr__(self, 'provider_command_template', provider_command_template)
         object.__setattr__(self, 'runtime_mode', normalize_runtime_mode(self.runtime_mode))
         model = self._normalize_model()
         startup_args = tuple(str(item) for item in self.startup_args)
@@ -90,19 +113,57 @@ class AgentSpec:
             raise AgentValidationError('role cannot be empty')
         allowed = set('abcdefghijklmnopqrstuvwxyz0123456789._-')
         if any(ch not in allowed for ch in normalized) or '.' not in normalized:
-            raise AgentValidationError('role must use publisher.role form, for example agentroles.archi')
-        return normalized
-
-    def _normalize_role(self) -> str | None:
-        if self.role is None:
-            return None
-        normalized = str(self.role).strip().lower()
-        if not normalized:
-            raise AgentValidationError('role cannot be empty')
-        allowed = set('abcdefghijklmnopqrstuvwxyz0123456789._-')
-        if any(ch not in allowed for ch in normalized) or '.' not in normalized:
             raise AgentValidationError('role must use publisher.role form, for example ccb.archi')
         return normalized
+
+    def _normalize_optional_string(self, value: str | None, *, field_name: str) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        if not normalized:
+            raise AgentValidationError(f'{field_name} cannot be empty')
+        return normalized
+
+    def _normalize_workspace_group(self) -> str | None:
+        if self.workspace_group is None:
+            return None
+        try:
+            return normalize_agent_name(str(self.workspace_group))
+        except AgentValidationError as exc:
+            raise AgentValidationError(f'workspace_group is invalid: {exc}') from exc
+
+    def _validate_workspace_overrides(
+        self,
+        *,
+        workspace_mode: WorkspaceMode,
+        workspace_root: str | None,
+        workspace_path: str | None,
+        workspace_group: str | None,
+        branch_template: str | None,
+    ) -> None:
+        if workspace_path is not None and workspace_group is not None:
+            raise AgentValidationError('workspace_path and workspace_group are mutually exclusive')
+        if workspace_path is not None and workspace_root is not None:
+            raise AgentValidationError('workspace_path cannot be combined with workspace_root')
+        if workspace_group is not None and workspace_root is not None:
+            raise AgentValidationError('workspace_group cannot be combined with workspace_root')
+        if (workspace_path is not None or workspace_group is not None) and workspace_mode is not WorkspaceMode.GIT_WORKTREE:
+            raise AgentValidationError('workspace_path and workspace_group require workspace_mode="git-worktree"')
+        if (workspace_path is not None or workspace_group is not None) and branch_template is not None:
+            raise AgentValidationError('workspace_path and workspace_group cannot be combined with branch_template')
+
+    def _normalize_provider_command_template(self) -> str | None:
+        value = self._normalize_optional_string(
+            self.provider_command_template,
+            field_name='provider_command_template',
+        )
+        if value is None:
+            return None
+        if value.count(_PROVIDER_COMMAND_PLACEHOLDER) != 1:
+            raise AgentValidationError(
+                f'provider_command_template must contain exactly one {_PROVIDER_COMMAND_PLACEHOLDER}'
+            )
+        return value
 
     def _normalize_startup_args(
         self,
@@ -139,6 +200,9 @@ class AgentSpec:
             'target': self.target,
             'workspace_mode': self.workspace_mode.value,
             'workspace_root': self.workspace_root,
+            'workspace_path': self.workspace_path,
+            'workspace_group': self.workspace_group,
+            'provider_command_template': self.provider_command_template,
             'runtime_mode': self.runtime_mode.value,
             'restore_default': self.restore_default.value,
             'permission_default': self.permission_default.value,

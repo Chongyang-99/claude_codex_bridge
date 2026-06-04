@@ -346,6 +346,144 @@ OPENAI_API_KEY = "sk-test"
     assert spec.provider_profile.env == {'OPENAI_API_KEY': 'sk-test'}
 
 
+def test_load_project_config_supports_workspace_path_and_group_fields(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    external = tmp_path / 'manual-worktree'
+    _write(
+        config_path,
+        f"""version = 2
+default_agents = ["agent1", "agent2"]
+
+[agents.agent1]
+provider = "codex"
+target = "."
+workspace_mode = "git-worktree"
+workspace_path = "{external}"
+restore = "auto"
+permission = "manual"
+
+[agents.agent2]
+provider = "claude"
+target = "."
+workspace_mode = "git-worktree"
+workspace_group = "main"
+restore = "auto"
+permission = "manual"
+""",
+    )
+
+    result = load_project_config(project_root)
+
+    assert result.config.agents['agent1'].workspace_path == str(external)
+    assert result.config.agents['agent1'].workspace_group is None
+    assert result.config.agents['agent2'].workspace_path is None
+    assert result.config.agents['agent2'].workspace_group == 'main'
+
+
+def test_load_project_config_supports_provider_command_template(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+default_agents = ["agent1"]
+
+[agents.agent1]
+provider = "codex"
+target = "."
+workspace_mode = "git-worktree"
+restore = "auto"
+permission = "manual"
+provider_command_template = "sandbox=1 {command} omx --madmax"
+""",
+    )
+
+    result = load_project_config(project_root)
+    spec = result.config.agents['agent1']
+    rendered = render_project_config_text(result.config)
+
+    assert spec.provider_command_template == 'sandbox=1 {command} omx --madmax'
+    assert 'provider_command_template = "sandbox=1 {command} omx --madmax"' in rendered
+
+
+@pytest.mark.parametrize(
+    'template',
+    [
+        'sandbox=1 codex omx --madmax',
+        'sandbox=1 {command} {command}',
+    ],
+)
+def test_load_project_config_rejects_invalid_provider_command_template(
+    tmp_path: Path,
+    template: str,
+) -> None:
+    project_root = tmp_path / 'repo'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        f"""version = 2
+default_agents = ["agent1"]
+
+[agents.agent1]
+provider = "codex"
+target = "."
+workspace_mode = "git-worktree"
+restore = "auto"
+permission = "manual"
+provider_command_template = "{template}"
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match='provider_command_template must contain exactly one'):
+        load_project_config(project_root)
+
+
+def test_load_project_config_rejects_workspace_path_and_group_together(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+default_agents = ["agent1"]
+
+[agents.agent1]
+provider = "codex"
+target = "."
+workspace_mode = "git-worktree"
+workspace_path = "/tmp/manual"
+workspace_group = "main"
+restore = "auto"
+permission = "manual"
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match='workspace_path and workspace_group are mutually exclusive'):
+        load_project_config(project_root)
+
+
+def test_load_project_config_rejects_workspace_group_without_git_worktree_mode(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """version = 2
+default_agents = ["agent1"]
+
+[agents.agent1]
+provider = "codex"
+target = "."
+workspace_mode = "inplace"
+workspace_group = "main"
+restore = "auto"
+permission = "manual"
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match='workspace_path and workspace_group require workspace_mode'):
+        load_project_config(project_root)
+
+
 @pytest.mark.parametrize('provider', ['claude', 'gemini'])
 def test_load_project_config_rejects_non_codex_provider_profile_home(tmp_path: Path, provider: str) -> None:
     project_root = tmp_path / 'repo'

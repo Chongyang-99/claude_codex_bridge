@@ -12,6 +12,7 @@ from provider_core.caller_env import (
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
+from provider_core.runtime_shared import apply_provider_command_template
 
 
 _ROOT_SANDBOX_ENV = {'IS_SANDBOX': '1'}
@@ -103,6 +104,7 @@ def build_start_cmd(
     cmd_parts.extend(spec.startup_args)
 
     cmd = ' '.join(shlex.quote(str(part)) for part in cmd_parts)
+    cmd = apply_provider_command_template(cmd, spec.provider_command_template)
     if env_prefix:
         return f'{env_prefix}; {cmd}'
     return cmd

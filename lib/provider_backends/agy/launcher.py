@@ -13,7 +13,7 @@ from provider_core.caller_env import (
     provider_user_session_env,
 )
 from provider_core.contracts import ProviderRuntimeLauncher
-from provider_core.runtime_shared import provider_start_parts
+from provider_core.runtime_shared import apply_provider_command_template, provider_start_parts
 from workspace.models import WorkspacePlan
 
 
@@ -62,6 +62,7 @@ def build_start_cmd(
         cmd_parts.append('--continue')
     cmd_parts.extend(spec.startup_args)
     cmd = ' '.join(shlex.quote(str(part)) for part in cmd_parts)
+    cmd = apply_provider_command_template(cmd, spec.provider_command_template)
     runtime_dir = Path(runtime_dir)
     env_prefix = join_env_prefix(
         export_env_clause(provider_user_session_env()),

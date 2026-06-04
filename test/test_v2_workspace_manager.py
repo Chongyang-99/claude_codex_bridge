@@ -7,10 +7,13 @@ import subprocess
 import pytest
 
 from agents.models import AgentSpec, PermissionMode, QueuePolicy, RestoreMode, RuntimeMode, WorkspaceMode
+from agents.store import AgentSpecStore
 from project.resolver import bootstrap_project
+from storage.paths import PathLayout
 from workspace.binding import WorkspaceBindingStore
 from workspace.materializer import WorkspaceMaterializer
 from workspace.planner import WorkspacePlanner
+from workspace.reconcile import reconcile_start_workspaces
 from workspace.validator import WorkspaceValidator
 
 
@@ -18,14 +21,19 @@ def _spec(
     *,
     workspace_mode: WorkspaceMode = WorkspaceMode.GIT_WORKTREE,
     workspace_root: str | None = None,
+    workspace_path: str | None = None,
+    workspace_group: str | None = None,
     branch_template: str | None = None,
+    name: str = 'agent1',
 ) -> AgentSpec:
     return AgentSpec(
-        name='agent1',
+        name=name,
         provider='codex',
         target='.',
         workspace_mode=workspace_mode,
         workspace_root=workspace_root,
+        workspace_path=workspace_path,
+        workspace_group=workspace_group,
         runtime_mode=RuntimeMode.PANE_BACKED,
         restore_default=RestoreMode.AUTO,
         permission_default=PermissionMode.MANUAL,
@@ -44,6 +52,7 @@ def test_workspace_planner_builds_git_worktree_plan(tmp_path: Path) -> None:
     assert plan.workspace_path == (project_root / '.ccb' / 'workspaces' / 'agent1').resolve()
     assert plan.branch_name == 'ccb/agent1'
     assert plan.binding_path is not None
+    assert plan.workspace_scope == 'agent'
 
 
 def test_workspace_planner_supports_external_root_and_custom_branch_template(tmp_path: Path) -> None:
@@ -59,6 +68,33 @@ def test_workspace_planner_supports_external_root_and_custom_branch_template(tmp
     assert external.resolve() in plan.workspace_path.parents
     assert plan.branch_name is not None
     assert 'agent1' in plan.branch_name
+
+
+def test_workspace_planner_supports_exact_external_workspace_path(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    external = tmp_path / 'external-worktree'
+    project_root.mkdir()
+    ctx = bootstrap_project(project_root)
+
+    plan = WorkspacePlanner().plan(_spec(workspace_path=str(external)), ctx)
+
+    assert plan.workspace_path == external.resolve()
+    assert plan.workspace_scope == 'external'
+    assert plan.branch_name is None
+    assert plan.binding_path is None
+
+
+def test_workspace_planner_supports_internal_workspace_group(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    project_root.mkdir()
+    ctx = bootstrap_project(project_root)
+
+    plan = WorkspacePlanner().plan(_spec(workspace_group='main'), ctx)
+
+    assert plan.workspace_path == (project_root / '.ccb' / 'workspaces' / 'groups' / 'main').resolve()
+    assert plan.workspace_scope == 'group'
+    assert plan.branch_name == 'ccb/group/main'
+    assert plan.binding_path == plan.workspace_path / '.ccb-workspace.json'
 
 
 def test_workspace_planner_inplace_uses_project_root(tmp_path: Path) -> None:
@@ -91,6 +127,24 @@ def test_workspace_binding_and_validator_roundtrip(tmp_path: Path) -> None:
     binding_path = WorkspaceBindingStore().save(plan)
     assert binding_path is not None and binding_path.exists()
     result = WorkspaceValidator().validate(plan)
+    assert result.ok is True
+    assert result.errors == ()
+
+
+def test_workspace_group_binding_allows_multiple_agents(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    project_root.mkdir()
+    ctx = bootstrap_project(project_root)
+    planner = WorkspacePlanner()
+    plan1 = planner.plan(_spec(name='agent1', workspace_group='main'), ctx)
+    plan2 = planner.plan(_spec(name='agent2', workspace_group='main'), ctx)
+    plan1.workspace_path.mkdir(parents=True)
+
+    WorkspaceBindingStore().save(plan2)
+
+    result = WorkspaceValidator().validate(plan1)
+
+    assert plan1.workspace_path == plan2.workspace_path
     assert result.ok is True
     assert result.errors == ()
 
@@ -133,6 +187,80 @@ def test_workspace_materializer_creates_real_git_worktree(tmp_path: Path) -> Non
         text=True,
     ).stdout.strip()
     assert branch == 'ccb/agent1'
+
+
+def test_workspace_materializer_reuses_internal_group_worktree(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    _init_git_repo(project_root)
+    ctx = bootstrap_project(project_root)
+    planner = WorkspacePlanner()
+    plan1 = planner.plan(_spec(name='agent1', workspace_group='main'), ctx)
+    plan2 = planner.plan(_spec(name='agent2', workspace_group='main'), ctx)
+    materializer = WorkspaceMaterializer()
+
+    first = materializer.materialize(plan1)
+    second = materializer.materialize(plan2)
+
+    assert first.created is True
+    assert second.created is False
+    assert plan1.workspace_path == plan2.workspace_path
+    branch = subprocess.run(
+        ['git', '-C', str(plan1.workspace_path), 'branch', '--show-current'],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    assert branch == 'ccb/group/main'
+
+
+def test_workspace_materializer_validates_external_workspace_path_without_creating(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    external = tmp_path / 'external-worktree'
+    _init_git_repo(project_root)
+    subprocess.run(
+        ['git', '-C', str(project_root), 'worktree', 'add', '-b', 'manual/shared', str(external), 'HEAD'],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    ctx = bootstrap_project(project_root)
+    plan = WorkspacePlanner().plan(_spec(workspace_path=str(external)), ctx)
+
+    result = WorkspaceMaterializer().materialize(plan)
+
+    assert result.created is False
+    assert plan.binding_path is None
+    branch = subprocess.run(
+        ['git', '-C', str(external), 'branch', '--show-current'],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ).stdout.strip()
+    assert branch == 'manual/shared'
+
+
+def test_workspace_materializer_rejects_missing_external_workspace_path(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    external = tmp_path / 'missing-worktree'
+    _init_git_repo(project_root)
+    ctx = bootstrap_project(project_root)
+    plan = WorkspacePlanner().plan(_spec(workspace_path=str(external)), ctx)
+
+    with pytest.raises(RuntimeError, match='external workspace_path does not exist'):
+        WorkspaceMaterializer().materialize(plan)
+
+
+def test_workspace_materializer_rejects_external_workspace_path_equal_to_project_root(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    _init_git_repo(project_root)
+    ctx = bootstrap_project(project_root)
+    plan = WorkspacePlanner().plan(_spec(workspace_path=str(project_root)), ctx)
+
+    with pytest.raises(RuntimeError, match='external workspace_path must not equal the project root'):
+        WorkspaceMaterializer().materialize(plan)
 
 
 def test_workspace_materializer_rejects_git_worktree_for_non_git_project(tmp_path: Path) -> None:
@@ -216,3 +344,35 @@ def test_workspace_materializer_recovers_missing_registered_git_worktree(tmp_pat
     assert result.created is True
     assert (plan.workspace_path / '.git').exists()
     assert (plan.workspace_path / 'README.md').read_text(encoding='utf-8') == 'hello\n'
+
+
+def test_reconcile_does_not_remove_group_worktree_still_referenced(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    _init_git_repo(project_root)
+    ctx = bootstrap_project(project_root)
+    paths = PathLayout(project_root)
+    spec1 = _spec(name='agent1', workspace_group='main')
+    spec2 = _spec(name='agent2', workspace_group='main')
+    store = AgentSpecStore(paths)
+    store.save(spec1)
+    store.save(spec2)
+    plan = WorkspacePlanner().plan(spec1, ctx)
+    WorkspaceMaterializer().materialize(plan)
+
+    summary = reconcile_start_workspaces(project_root, type('Config', (), {'agents': {'agent2': spec2}})())
+
+    assert plan.workspace_path.exists() is True
+    assert paths.agent_dir('agent1').exists() is False
+    assert paths.agent_dir('agent2').exists() is True
+    assert len(summary.retired) == 1
+    assert summary.retired[0].agent_name == 'agent1'
+
+
+def _init_git_repo(project_root: Path) -> None:
+    project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / 'README.md').write_text('hello\n', encoding='utf-8')
+    subprocess.run(['git', 'init'], cwd=project_root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    subprocess.run(['git', 'config', 'user.email', 'test@example.com'], cwd=project_root, check=True)
+    subprocess.run(['git', 'config', 'user.name', 'Test User'], cwd=project_root, check=True)
+    subprocess.run(['git', 'add', '.'], cwd=project_root, check=True)
+    subprocess.run(['git', 'commit', '-m', 'init'], cwd=project_root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

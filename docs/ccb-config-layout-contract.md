@@ -308,7 +308,29 @@ Contract:
 - Config rendering and recovery must preserve the user-facing `model` field
   instead of expanding it into provider-specific `startup_args`.
 
-### 4.4 Workspace Mode Semantics
+### 4.4 Provider Command Template
+
+For provider-specific launch wrappers, rich or hybrid `ccb.config` may define an
+agent-local command template:
+
+```toml
+[agents.agent1]
+provider_command_template = "sandbox=1 {command} omx --madmax"
+```
+
+Contract:
+
+- `provider_command_template` must contain exactly one `{command}` placeholder.
+- CCB first builds the normal provider command segment, including managed
+  provider arguments, agent `startup_args`, and provider resume flags.
+- CCB then replaces `{command}` with that provider command segment.
+- The template wraps only the provider command segment. CCB-managed env prefixes,
+  managed provider homes, caller context exports, and shell setup stay outside
+  the template and keep their original ordering.
+- Providers must reject malformed templates during config loading rather than
+  attempting partial fallback at startup.
+
+### 4.5 Workspace Mode Semantics
 
 - `workspace_mode = "inplace"` means the agent uses the project root directly.
 - `workspace_mode = "git-worktree"` means the project root must be a valid git
@@ -316,6 +338,15 @@ Contract:
 - `git-worktree` must not silently fall back to copying the project directory
   when the project root is not a git repository. Startup must fail with an
   actionable error instead.
+- `workspace_path` may be set on an agent with `workspace_mode =
+  "git-worktree"` to point at an exact external worktree path. CCB validates the
+  path but does not create, remove, prune, copy, or switch branches in that
+  external workspace.
+- `workspace_group` may be set on an agent with `workspace_mode =
+  "git-worktree"` to share a CCB-managed internal worktree with other agents in
+  the same group. Group worktrees live under `.ccb/workspaces/groups/<group>`
+  and use branch `ccb/group/<group>`.
+- `workspace_path` and `workspace_group` are mutually exclusive.
 - `workspace_mode = "copy"` is the only mode that may create an explicit
   directory copy of the project tree.
 
