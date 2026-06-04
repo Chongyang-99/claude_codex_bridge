@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from agents.config_loader_runtime.role_lookup import role_store_root
+from agents.config_loader_runtime.role_lookup import role_store_root, role_store_roots
 from role_aliases import legacy_role_ids, role_id_candidates
 from storage.atomic import atomic_write_text
 
@@ -233,28 +233,34 @@ def find_source_role(role_id: str, *, refresh_default: bool = False) -> SourceRo
 
 
 def installed_role_metadata(role_id: str) -> dict[str, Any]:
-    for candidate_id in role_id_candidates(normalize_role_id(role_id)):
-        path = role_store_root() / candidate_id / 'install.json'
-        try:
-            payload = json.loads(path.read_text(encoding='utf-8'))
-        except Exception:
-            continue
-        return dict(payload) if isinstance(payload, dict) else {}
+    for store_root in role_store_roots():
+        for candidate_id in role_id_candidates(normalize_role_id(role_id)):
+            path = store_root / candidate_id / 'install.json'
+            try:
+                payload = json.loads(path.read_text(encoding='utf-8'))
+            except Exception:
+                continue
+            return dict(payload) if isinstance(payload, dict) else {}
     return {}
 
 
 def installed_role_ids() -> tuple[str, ...]:
-    root = role_store_root()
-    if not root.is_dir():
-        return ()
     ids: list[str] = []
-    for child in sorted(root.iterdir(), key=lambda item: item.name):
-        if not child.is_dir():
+    seen: set[str] = set()
+    for root in role_store_roots():
+        if not root.is_dir():
             continue
-        try:
-            ids.append(normalize_role_id(child.name))
-        except Exception:
-            continue
+        for child in sorted(root.iterdir(), key=lambda item: item.name):
+            if not child.is_dir():
+                continue
+            try:
+                role_id = normalize_role_id(child.name)
+            except Exception:
+                continue
+            if role_id in seen:
+                continue
+            ids.append(role_id)
+            seen.add(role_id)
     return tuple(ids)
 
 

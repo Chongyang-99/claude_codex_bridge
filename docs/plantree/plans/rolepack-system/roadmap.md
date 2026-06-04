@@ -79,28 +79,45 @@ Date: 2026-06-01
   path/default behavior, provider memory/skill projection, `ccb` startup,
   `ccb reload`, and runtime doctor. See
   [history/final-rolepack-validation-2026-06-03.md](history/final-rolepack-validation-2026-06-03.md).
+- Accepted the long-term boundary that `agent-roles-spec` should own `.roles`
+  package management while CCB wraps those operations for project/runtime
+  integration. See
+  [decisions/006-agent-roles-spec-owns-roles-store.md](decisions/006-agent-roles-spec-owns-roles-store.md)
+  and [topics/spec-owned-roles-store.md](topics/spec-owned-roles-store.md).
+- Added the first executable `agent-roles` package-manager slice in
+  `agent-roles-spec`: `.roles/installed` store, JSON package commands, and the
+  `ccb.archi -> agentroles.archi` alias.
+- Added the first CCB compatibility bridge: runtime/config lookup can read both
+  `$XDG_DATA_HOME/ccb/roles` and spec-owned `AGENT_ROLES_STORE` or
+  `~/.roles/installed`; `CCB_AGENT_ROLES_MANAGER=1` lets `ccb roles
+  install/update/sync` delegate role payload operations to `agent-roles`.
 
 ## In Progress
 
-- Hand release execution to agent4 after the final validation checkpoint. See
-  [topics/management-runtime-boundaries.md](topics/management-runtime-boundaries.md).
+- Harden the spec-owned package manager bridge before making it the default
+  CCB role payload path.
 
 ## Next
 
-1. Decide whether stale role locks should stay warning-only or become hard
+1. Add a dual-store migration plan from `$XDG_DATA_HOME/ccb/roles/` to the
+   spec-owned `.roles` store, including legacy `ccb.archi` metadata and stale
+   `source_path` cases.
+2. Decide whether CCB should keep calling `agent-roles` through subprocess JSON
+   or also support a library API for management commands.
+3. Add import-boundary smoke tests so config loading, provider hooks, and
+   provider-home projection cannot accidentally import role management,
+   package-manager subprocess, or network-capable source discovery paths.
+4. Decide whether stale role locks should stay warning-only or become hard
    startup errors for mounted agents, especially when locked digest content is
    missing.
-2. Add import-boundary smoke tests so config loading, provider hooks, and
-   provider-home projection cannot accidentally import role management or
-   network-capable source discovery paths.
-3. Harden role install/update/sync resilience: tool-hook failure state or
+5. Harden role install/update/sync resilience: tool-hook failure state or
    rollback, concurrent same-role operations, and config-plus-lock mutation
    consistency.
-4. Improve stale lock diagnostics in CLI output.
-5. Add `ccb roles refresh` or project role adopt/check command and decide its
+6. Improve stale lock diagnostics in CLI output.
+7. Add `ccb roles refresh` or project role adopt/check command and decide its
    relationship to `ccb reload`.
-6. Harden role projection cleanup when a role is removed or changed.
-7. Add PR governance and compatibility tests from
+8. Harden role projection cleanup when a role is removed or changed.
+9. Add PR governance and compatibility tests from
    [topics/test-and-governance.md](topics/test-and-governance.md).
 
 ## Deferred
