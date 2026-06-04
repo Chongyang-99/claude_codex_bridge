@@ -102,6 +102,7 @@ def provision_neovim(*, required: bool = False) -> dict[str, object]:
         'lazyvim_health_status': lazyvim_sync.get('health_status'),
         'lazyvim_repaired': bool(lazyvim_sync.get('repaired')),
         'uses_system_nvim': not _is_managed_binary(paths, nvim),
+        'managed_neovim_target': manifest.get('managed_neovim_target'),
         'managed_neovim_version': manifest.get('managed_neovim_version'),
         'managed_neovim_asset': manifest.get('managed_neovim_asset'),
         **_status_paths(paths),
@@ -139,6 +140,7 @@ def neovim_status() -> dict[str, object]:
             'lazyvim_sync_error': manifest.get('lazyvim_sync_error'),
             'lazyvim_health_error': health.get('error') if lazyvim_enabled and health.get('status') != 'ok' else None,
             'uses_system_nvim': manifest.get('uses_system_nvim'),
+            'managed_neovim_target': manifest.get('managed_neovim_target'),
             'managed_neovim_version': manifest.get('managed_neovim_version'),
             'managed_neovim_asset': manifest.get('managed_neovim_asset'),
             **_status_paths(paths),
@@ -189,6 +191,7 @@ def _ensure_managed_nvim(paths: dict[str, Path]) -> dict[str, object]:
         return {
             'status': 'ok',
             'binary': str(paths['managed_nvim']),
+            'managed_neovim_target': manifest.get('managed_neovim_target'),
             'managed_neovim_version': manifest.get('managed_neovim_version'),
             'managed_neovim_asset': manifest.get('managed_neovim_asset'),
         }
@@ -293,6 +296,7 @@ def _download_and_activate_nvim(
     payload = {
         'status': 'ok',
         'binary': str(paths['managed_nvim']),
+        'managed_neovim_target': str(binary),
         'managed_neovim_version': version_name,
         'managed_neovim_asset': str(asset['name']),
         'managed_neovim_sha256': actual,
@@ -352,8 +356,17 @@ def _activate_managed_nvim(paths: dict[str, Path], binary: Path) -> None:
     target = paths['managed_nvim']
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f'.{target.name}.tmp')
-    shutil.copy2(binary, tmp)
-    tmp.chmod(0o755)
+    if tmp.exists() or tmp.is_symlink():
+        tmp.unlink()
+    try:
+        tmp.symlink_to(binary)
+    except OSError:
+        tmp.write_text(
+            '#!/usr/bin/env sh\n'
+            f'exec {_shell_quote(str(binary))} "$@"\n',
+            encoding='utf-8',
+        )
+        tmp.chmod(0o755)
     tmp.replace(target)
 
 
@@ -850,6 +863,7 @@ def _print_status(status: dict[str, object], stdout: TextIO) -> None:
         'binary',
         'wrapper',
         'bin_link',
+        'managed_neovim_target',
         'lazyvim_profile',
         'lazyvim_sync_status',
         'lazyvim_sync_error',

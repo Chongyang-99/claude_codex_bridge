@@ -472,9 +472,48 @@ def test_neovim_provisioning_downloads_managed_binary_when_system_nvim_missing(
     assert result['managed_neovim_version'] == 'v0.11.4'
     managed_nvim = tmp_path / 'xdg-data' / 'ccb' / 'tools' / 'neovim' / 'bin' / 'nvim'
     assert Path(str(result['binary'])) == managed_nvim
-    assert managed_nvim.read_text(encoding='utf-8').startswith('#!/usr/bin/env sh')
+    assert managed_nvim.is_symlink()
+    managed_target = managed_nvim.resolve()
+    assert managed_target == (
+        tmp_path
+        / 'xdg-data'
+        / 'ccb'
+        / 'tools'
+        / 'neovim'
+        / 'versions'
+        / 'v0.11.4-nvim-linux-x86_64.tar.gz'
+        / 'nvim-linux-x86_64'
+        / 'bin'
+        / 'nvim'
+    )
+    assert result['managed_neovim_target'] == str(managed_target)
+    assert managed_target.read_text(encoding='utf-8').startswith('#!/usr/bin/env sh')
     wrapper = Path(str(result['wrapper']))
     assert f"exec {neovim_tools._shell_quote(str(managed_nvim))}" in wrapper.read_text(encoding='utf-8')
+
+
+def test_neovim_managed_activation_falls_back_to_wrapper_when_symlink_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    binary = tmp_path / 'versions' / 'nvim-linux-x86_64' / 'bin' / 'nvim'
+    binary.parent.mkdir(parents=True)
+    binary.write_text('#!/usr/bin/env sh\nexit 0\n', encoding='utf-8')
+    binary.chmod(0o755)
+    managed_nvim = tmp_path / 'root' / 'bin' / 'nvim'
+
+    def _fail_symlink(self, target, target_is_directory=False):
+        del self, target, target_is_directory
+        raise OSError('symlink disabled')
+
+    monkeypatch.setattr(Path, 'symlink_to', _fail_symlink)
+
+    neovim_tools._activate_managed_nvim({'managed_nvim': managed_nvim}, binary)
+
+    assert not managed_nvim.is_symlink()
+    text = managed_nvim.read_text(encoding='utf-8')
+    assert text.startswith('#!/usr/bin/env sh\n')
+    assert f"exec {neovim_tools._shell_quote(str(binary))}" in text
 
 
 def test_neovim_provisioning_keeps_missing_on_checksum_mismatch(
