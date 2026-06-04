@@ -60,8 +60,8 @@ worktree.
 - In `agent-roles-spec`: `python -m pytest -q`
 - In `agent-roles-spec`: `python -m compileall -q agent_roles`
 - In `agent-roles-spec`: `git diff --check`
-- In `ccb_source`: `python -m pytest -q test/test_rolepacks.py` (`52 passed`)
-- In `ccb_source`: `python -m pytest -q test/test_rolepacks.py test/test_cli_management_update.py test/test_repo_hygiene.py test/test_source_runtime_guard.py` (`103 passed`)
+- In `ccb_source`: `python -m pytest -q test/test_rolepacks.py` (`53 passed`)
+- In `ccb_source`: `python -m pytest -q test/test_rolepacks.py test/test_cli_management_update.py test/test_repo_hygiene.py test/test_source_runtime_guard.py` (`104 passed`)
 - In `ccb_source`: `python -m compileall -q lib/agents/config_loader_runtime/role_lookup.py lib/rolepacks/runtime_lookup.py lib/rolepacks/sources.py lib/rolepacks/service.py lib/rolepacks/agent_roles_manager.py`
 - In `ccb_source`: `git diff --check`
 - In `ccb_source`: `python ccb --print-version` (`v7.2.12`)

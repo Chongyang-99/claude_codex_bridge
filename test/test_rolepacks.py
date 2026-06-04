@@ -316,6 +316,37 @@ def _write_legacy_installed_role(
     }
 
 
+def _write_spec_installed_role(tmp_path: Path, source: Path) -> dict[str, object]:
+    role = load_role_manifest(source)
+    digest = tree_digest(source)
+    role_dir = _agent_roles_installed_root(tmp_path) / role.id
+    target = role_dir / 'versions' / role.version / digest
+    shutil.copytree(source, target, symlinks=True)
+    current = role_dir / 'current'
+    if current.exists() or current.is_symlink():
+        if current.is_symlink() or current.is_file():
+            current.unlink()
+        else:
+            shutil.rmtree(current)
+    current.symlink_to(target, target_is_directory=True)
+    metadata = {
+        'schema': 'agent-roles-install/v1',
+        'id': role.id,
+        'version': role.version,
+        'source': 'agentroles',
+        'source_path': str(source),
+        'digest': f'sha256:{digest}',
+    }
+    (role_dir / 'install.json').write_text(json.dumps(metadata, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+    return {
+        'role_id': role.id,
+        'version': role.version,
+        'digest': f'sha256:{digest}',
+        'path': str(target),
+        'role_dir': str(role_dir),
+    }
+
+
 def _write_project_config(project: Path) -> None:
     ccb = project / '.ccb'
     ccb.mkdir()
@@ -1878,6 +1909,72 @@ def test_project_role_lock_blocks_silent_current_drift(tmp_path: Path, monkeypat
     assert 'locked memory v1' in rendered_memory
     assert 'role_lock_mismatch: test.locked' not in rendered_memory
     assert 'drifted memory v2' not in rendered_memory
+
+
+def test_legacy_migration_merges_locked_digest_into_existing_spec_store(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv('XDG_DATA_HOME', str(tmp_path / 'xdg-data'))
+    catalog = tmp_path / 'agent-roles-spec'
+    monkeypatch.setenv('AGENT_ROLES_SPEC_HOME', str(catalog))
+    old_role = _write_memory_catalog_role(catalog, memory_text='legacy locked memory')
+    legacy_payload = _write_legacy_installed_role(tmp_path, role_dir_name='test.locked', source=old_role)
+    new_role = _write_memory_catalog_role(catalog, memory_text='new current memory')
+    current_payload = _write_spec_installed_role(tmp_path, new_role)
+    project = tmp_path / 'project'
+    project.mkdir()
+    _write_project_config_text(
+        project,
+        '\n'.join(
+            [
+                'version = 2',
+                'entry_window = "main"',
+                '',
+                '[windows]',
+                'main = "locked:codex"',
+                '',
+                '[agents.locked]',
+                'provider = "codex"',
+                'role = "test.locked"',
+            ]
+        )
+        + '\n',
+    )
+    (project / '.ccb' / 'role-lock.json').write_text(
+        json.dumps(
+            {
+                'schema': 'rolepack-lock/v1',
+                'roles': {
+                    'test.locked': {
+                        'version': '1.0.0',
+                        'digest': legacy_payload['digest'],
+                        'source': 'installed',
+                        'default_agent_name': 'locked',
+                    }
+                },
+            },
+            sort_keys=True,
+            indent=2,
+        )
+        + '\n',
+        encoding='utf-8',
+    )
+
+    result = migrate_legacy_installed_roles('test.locked')
+    locked_digest_hex = str(legacy_payload['digest']).removeprefix('sha256:')
+    locked_path = _agent_roles_installed_root(tmp_path) / 'test.locked' / 'versions' / '1.0.0' / locked_digest_hex
+    metadata = json.loads((_agent_roles_installed_root(tmp_path) / 'test.locked' / 'install.json').read_text(encoding='utf-8'))
+    current = (_agent_roles_installed_root(tmp_path) / 'test.locked' / 'current').resolve()
+    sources = load_memory_sources(project, agent_name='locked', provider='codex')
+    warnings = [source.warning for source in sources if source.kind == 'role_memory' and source.warning]
+    role_memory = '\n'.join(source.content for source in sources if source.kind == 'role_memory')
+
+    assert result['migration_status'] == 'ok'
+    assert result['migrated'] == 1
+    assert locked_path.is_dir()
+    assert metadata['digest'] == current_payload['digest']
+    assert current == Path(str(current_payload['path'])).resolve()
+    assert warnings == []
+    assert 'legacy locked memory' in role_memory
+    assert 'new current memory' not in role_memory
 
 
 def test_codex_role_skills_project_to_managed_home(tmp_path: Path, monkeypatch) -> None:

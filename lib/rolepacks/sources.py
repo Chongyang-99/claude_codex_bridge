@@ -297,14 +297,23 @@ def migrate_legacy_installed_roles(role_id: str | None = None) -> dict[str, obje
             continue
         target_dir = target_root / canonical_id
         try:
-            if (target_dir / 'install.json').is_file() and (target_dir / 'current').exists():
-                skipped += 1
-                continue
             target_dir.parent.mkdir(parents=True, exist_ok=True)
             if not target_dir.exists():
                 shutil.copytree(legacy_dir, target_dir, symlinks=True)
+                _rewrite_migrated_install_metadata(target_dir, canonical_id)
+                migrated += 1
+                continue
             else:
+                copied_versions = _merge_missing_legacy_versions(legacy_dir, target_dir)
+                if (target_dir / 'install.json').is_file() and (target_dir / 'current').exists():
+                    if copied_versions:
+                        migrated += 1
+                    else:
+                        skipped += 1
+                    continue
                 _copy_missing_legacy_install_files(legacy_dir, target_dir)
+                if copied_versions:
+                    _repair_current_pointer(target_dir, _load_install_metadata(target_dir))
             _rewrite_migrated_install_metadata(target_dir, canonical_id)
             migrated += 1
         except Exception:
@@ -396,6 +405,42 @@ def _copy_missing_legacy_install_files(legacy_dir: Path, canonical_dir: Path) ->
             shutil.copytree(source, target, symlinks=True)
         else:
             shutil.copy2(source, target)
+
+
+def _merge_missing_legacy_versions(legacy_dir: Path, canonical_dir: Path) -> int:
+    legacy_versions = legacy_dir / 'versions'
+    if not legacy_versions.is_dir():
+        return 0
+    copied = 0
+    target_versions = canonical_dir / 'versions'
+    target_versions.mkdir(parents=True, exist_ok=True)
+    for legacy_version in sorted(legacy_versions.iterdir(), key=lambda item: item.name):
+        if not legacy_version.is_dir():
+            continue
+        target_version = target_versions / legacy_version.name
+        if (legacy_version / 'role.toml').is_file():
+            if not target_version.exists():
+                shutil.copytree(legacy_version, target_version, symlinks=True)
+                copied += 1
+            continue
+        target_version.mkdir(parents=True, exist_ok=True)
+        for legacy_digest in sorted(legacy_version.iterdir(), key=lambda item: item.name):
+            if not legacy_digest.is_dir():
+                continue
+            target_digest = target_version / legacy_digest.name
+            if target_digest.exists():
+                continue
+            shutil.copytree(legacy_digest, target_digest, symlinks=True)
+            copied += 1
+    return copied
+
+
+def _load_install_metadata(role_dir: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads((role_dir / 'install.json').read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    return dict(payload) if isinstance(payload, dict) else {}
 
 
 def _repair_current_pointer(role_dir: Path, metadata: dict[str, Any]) -> None:
