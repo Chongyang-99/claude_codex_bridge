@@ -24,7 +24,10 @@ Do not edit generated runtime state, provider-state homes, `.ccb/provider-profil
 
 ## Compact Format
 
-Use compact format for ordinary single-window team layouts, especially when the user wants a persistent `cmd` pane. Existing compact configs remain single-window configs and do not need migration to `[windows]`:
+Use compact format only when the user explicitly wants a persistent `cmd` pane,
+asks to keep compact syntax, or needs a tiny one-line single-window layout.
+Existing compact configs remain valid, but structural edits should usually
+migrate them to `[windows]`:
 
 ```text
 cmd; main:codex, worker1:codex(worktree); reviewer:claude
@@ -74,6 +77,45 @@ Meaning:
 
 Worktree branch naming can be customized with `branch_template`, but do not set it by default. Supported variables are `{agent_name}`, `{project_slug}`, and `{date}`. The default branch template is `ccb/{agent_name}`.
 
+Rich or hybrid TOML can pin a worktree to a specific external path:
+
+```toml
+[agents.worker1]
+workspace_mode = "git-worktree"
+workspace_path = "/home/user/project-worktrees/worker1"
+```
+
+Semantics:
+
+- `workspace_path` requires `workspace_mode = "git-worktree"`;
+- CCB validates the path as an external worktree but does not create, delete,
+  copy, prune, or switch branches there;
+- use this only when the user provides the path or clearly asks for a specific
+  existing workspace.
+
+Rich or hybrid TOML can intentionally share one CCB-managed worktree across
+multiple agents:
+
+```toml
+[agents.worker1]
+workspace_mode = "git-worktree"
+workspace_group = "build"
+
+[agents.worker2]
+workspace_mode = "git-worktree"
+workspace_group = "build"
+```
+
+Semantics:
+
+- `workspace_group` requires `workspace_mode = "git-worktree"`;
+- agents in the same group share `.ccb/workspaces/groups/<group>`;
+- the group uses branch `ccb/group/<group>`;
+- use this when the user wants multiple agents to collaborate in the same
+  managed worktree;
+- `workspace_path`, `workspace_group`, `workspace_root`, and `branch_template`
+  must not be mixed for the same agent.
+
 ## Hybrid Format
 
 Use hybrid format when the compact single-window layout is enough but one or more agents need extra fields. Hybrid configs without `[windows]` also remain single-window configs:
@@ -106,7 +148,9 @@ Hybrid overlay rules:
 
 ## Explicit Windows Topology
 
-Use windows topology when the user wants named tmux windows, per-window agent grouping, or native sidebar layout across multiple windows:
+Use windows topology by default for new CCB configs and for structural
+migrations. It supports named tmux windows, per-window agent grouping, tool
+windows, and native sidebar layout:
 
 ```toml
 version = 2
@@ -116,6 +160,9 @@ entry_window = "main"
 main = "main:codex"
 work = "worker1:codex(worktree), worker2:codex(worktree), worker3:claude(worktree)"
 review = "reviewer:claude, discuss:codex"
+
+[tool_windows.neovim]
+command = "ccb-nvim"
 
 [ui.sidebar]
 mode = "every_window"
@@ -150,17 +197,32 @@ tips = [
 
 Rules:
 
-- Only `[windows]` enables multi-window topology. Do not rewrite an existing compact/hybrid config into `[windows]` unless the user asks for named windows or per-window grouping.
+- Only `[windows]` enables windows topology. Prefer rewriting an existing
+  compact/hybrid config into `[windows]` when making topology, roster, role, or
+  workspace changes unless the user wants compact/cmd preserved.
 - `[windows]` owns layout and the effective configured-agent set.
 - Each configured agent must appear in exactly one window layout.
 - Window layout leaves must declare providers: `agent:provider` or `agent:provider(worktree)`.
 - `cmd` is not supported inside `[windows]` topology. Use compact/hybrid config when a persistent command pane is required.
 - Do not combine windows topology with `default_agents`, `layout`, or `cmd_enabled`.
 - `entry_window` is optional; it defaults to the first window.
+- `[tool_windows.<name>]` is optional and can define managed tool windows such
+  as `neovim`.
 - `[ui.sidebar]` is optional. Defaults are `mode = "every_window"`, `width = "15%"`, and `bottom_height = 20`.
 - Agent leaves provide default provider and workspace mode. Same-name `[agents.<name>]` tables are overlays; they may override fields such as `workspace_mode`, and the provider there must match the provider in `[windows]` if it is repeated.
 - `[agents.<name>]` tables for names no longer present in `[windows]` are ignored as stale overlay residue.
 - `[ui.sidebar.view]` is optional and UI-only. It can tune sidebar tree height, Comms visible row count/compactness, and short Tips text without changing the managed window topology.
+
+Single-window windows topology is valid when the user wants modern config
+without a persistent `cmd` pane:
+
+```toml
+version = 2
+entry_window = "main"
+
+[windows]
+main = "main:codex, worker1:codex(worktree), reviewer:claude"
+```
 
 ## Role Pack Agents
 
@@ -225,18 +287,24 @@ only; do not preserve legacy store paths in config.
 
 ## Migrating Old Configs To Windows
 
-Old compact and hybrid configs are still valid single-window configs. Migrate them only when the user asks for multi-window behavior, named windows, or per-window sidebar layout.
+Old compact and hybrid configs are still valid single-window configs. When the
+user asks for topology, roster, role, workspace, sidebar, or modernization
+changes, recommend migrating them to windows topology by default. Preserve
+compact/hybrid only when the user wants a persistent `cmd` pane or explicitly
+asks to keep compact syntax.
 
 Migration rules:
 
-- ask one concise target-shape question when needed: number of windows and rough grouping;
+- ask one concise target-shape question when needed: confirm windows migration,
+  window grouping, workspace sharing, and whether `cmd` must be preserved;
 - preserve agent names, providers, worktree markers, and ordering unless the user asks to redesign roles;
 - preserve TOML overlay fields by moving them under the same `[agents.<name>]` table after `[windows]`;
 - preserve memory files without editing them unless the user explicitly asks for workflow memory changes;
 - remove `cmd` from the migrated layout because `[windows]` does not support the persistent command pane;
 - choose concise workflow window names such as `main`, `work`, `review`, `research`, or `ops`;
 - keep each agent in exactly one window;
-- keep compact/hybrid format if the requested change is only a single-window pane rearrangement.
+- keep compact/hybrid format only if the requested change is a single-window
+  pane rearrangement and the user wants `cmd`/compact preserved.
 
 Compact to windows example:
 
@@ -307,6 +375,25 @@ Do not mix `key` or `url` with provider API env fields under `agents.<name>.env`
 
 Use `provider_profile` only for advanced inheritance or environment behavior. Do not create `.ccb/provider-profiles/` directories manually.
 
+Use `provider_command_template` only when an agent needs a shell wrapper around
+the generated provider command that cannot be represented as `startup_args`:
+
+```toml
+[agents.builder]
+provider_command_template = "sandbox=1 {command} omx --madmax"
+```
+
+Semantics:
+
+- the template must contain exactly one `{command}`;
+- CCB first generates the normal provider command segment, including managed
+  provider arguments, `startup_args`, and resume flags;
+- CCB then replaces `{command}` with that provider command segment;
+- the template wraps only the provider command segment, not CCB's env prefix,
+  managed provider home exports, caller context, or shell setup;
+- do not use this field to replace CCB's generated command or manually encode
+  resume behavior.
+
 ## Skill Inheritance
 
 CCB config supports `agents.<name>.provider_profile.inherit_skills`, which enables or disables inheritance of the provider source-home skills as a whole. It does not support a per-skill allowlist in `.ccb/ccb.config`.
@@ -348,19 +435,19 @@ Prefer role names over generic names:
 
 ## Common Topologies
 
-Light engineering team:
+Light engineering team, windows-first:
 
-```text
-cmd; main:codex, worker1:codex(worktree); reviewer:claude
+```toml
+version = 2
+entry_window = "main"
+
+[windows]
+main = "main:codex"
+work = "worker1:codex(worktree)"
+review = "reviewer:claude"
 ```
 
 Full parallel team:
-
-```text
-cmd; main:codex, worker1:codex(worktree), worker2:codex(worktree), worker3:claude(worktree); reviewer:claude, discuss:codex
-```
-
-Full parallel team with named windows and native sidebars:
 
 ```toml
 version = 2
@@ -372,16 +459,42 @@ work = "worker1:codex(worktree), worker2:codex(worktree), worker3:claude(worktre
 review = "reviewer:claude, discuss:codex"
 ```
 
+Full parallel team with native sidebars and a Neovim tool window:
+
+```toml
+version = 2
+entry_window = "main"
+
+[windows]
+main = "main:codex"
+work = "worker1:codex(worktree), worker2:codex(worktree), worker3:claude(worktree)"
+review = "reviewer:claude, discuss:codex"
+
+[tool_windows.neovim]
+command = "ccb-nvim"
+```
+
 Multi-provider research and implementation:
 
-```text
-cmd; main:codex, builder:codex(worktree), research:gemini; reviewer:claude
+```toml
+version = 2
+entry_window = "main"
+
+[windows]
+main = "main:codex"
+work = "builder:codex(worktree)"
+research = "research:gemini"
+review = "reviewer:claude"
 ```
 
 Two Codex agents with different explicit API routes:
 
 ```toml
-cmd; fast:codex, deep:codex
+version = 2
+entry_window = "main"
+
+[windows]
+main = "fast:codex, deep:codex"
 
 [agents.fast]
 key = "sk-fast..."
