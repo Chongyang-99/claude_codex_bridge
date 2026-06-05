@@ -1,5 +1,24 @@
 # Changelog
 
+## v7.3.2 (2026-06-05)
+
+### First-Install Role Pack Provisioning Hotfix
+
+- **Blank Install Role Pack Provisioning Fixed**: release and source installs
+  in a completely blank environment now recover when the initial
+  `ccb roles update agentroles.archi` reports that the role is not installed.
+  The installer falls back to `ccb roles install agentroles.archi`, allowing
+  the first install to provision `.roles/installed` and the `ccb-archi`
+  wrapper automatically.
+- **Existing Install Refresh Preserved**: existing installations still use the
+  update path first, so already-installed Role Packs continue to refresh in
+  place without forcing a reinstall.
+- **Install Prompt Copy Aligned**: optional Role Pack provisioning skip text now
+  refers to install rather than update, matching the blank-install path.
+- **v7.3.1 Superseded For First Installs**: v7.3.1 remains a published release
+  but has a known first-install Role Pack provisioning bug in blank
+  environments. Use v7.3.2 as the recommended stable release.
+
 ## v7.3.1 (2026-06-05)
 
 ### Agent Roles, Artifact Ask, And Shared Workspace Release

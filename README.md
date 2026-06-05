@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.3.1-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.3.2-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **English** | [中文](README_zh.md)
@@ -519,6 +519,16 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.3.2</b> - First-Install Role Pack Provisioning Hotfix</summary>
+
+- Fixes a blank-environment first install bug where `install.sh` tried to update `agentroles.archi` before it was installed, leaving Role Pack provisioning incomplete.
+- Keeps the existing install refresh path: `ccb roles update agentroles.archi` is still attempted first, then falls back to `ccb roles install agentroles.archi` when the role is missing.
+- Aligns optional Role Pack skip messaging with the install path.
+- Supersedes v7.3.1 as the recommended stable release for new installs; v7.3.1 is published but has the blank first-install Role Pack provisioning bug.
+
+</details>
+
+<details>
 <summary><b>v7.3.1</b> - Agent Roles, Artifact Ask, And Shared Workspace Release</summary>
 
 - Adds daemon-managed ask artifact transport with `--artifact-request`, `--artifact-reply`, and `--artifact-io`, including callback-compatible artifact replies for long outputs.
