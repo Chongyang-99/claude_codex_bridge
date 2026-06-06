@@ -12,6 +12,7 @@ import tarfile
 from release_artifacts import release_artifact_name
 from cli.roles_runtime.commands import cmd_roles
 from cli.tools_runtime.neovim import provision_neovim
+from cli.services.tmux_ui import set_tmux_ui_active
 from rolepacks.sources import role_catalog_status
 
 from ..install import (
@@ -324,6 +325,10 @@ def _truthy_env(name: str) -> bool:
 
 def _run_post_update_provisioning(*, install_dir: Path) -> int:
     failures = 0
+    try:
+        set_tmux_ui_active(True)
+    except Exception as exc:
+        print(f"⚠️  Tmux UI post-update refresh skipped: {type(exc).__name__}: {exc}")
     try:
         failures += int(_update_builtin_roles_after_update(install_dir=install_dir) or 0)
     except Exception as exc:
