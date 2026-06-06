@@ -222,7 +222,7 @@ def _annotate_layout_with_agent_specs(node, config):
         assert node.leaf is not None
         name = str(node.leaf.name or '').strip()
         if name.lower() == 'cmd':
-            return LayoutNode(kind='leaf', leaf=LayoutLeaf(name='cmd'))
+            return LayoutNode(kind='leaf', leaf=LayoutLeaf(name='cmd', percent=node.leaf.percent))
         normalized_name = normalize_agent_name(name)
         spec = config.agents[normalized_name]
         return LayoutNode(
@@ -231,6 +231,7 @@ def _annotate_layout_with_agent_specs(node, config):
                 name=normalized_name,
                 provider=spec.provider,
                 workspace_mode='worktree' if spec.workspace_mode.value == 'git-worktree' else None,
+                percent=node.leaf.percent,
             ),
         )
     assert node.left is not None

@@ -147,6 +147,7 @@ def _expand_compact_role_layout(node, *, project_root: Path | None):
                 name=name,
                 provider=node.leaf.provider,
                 workspace_mode=node.leaf.workspace_mode,
+                percent=node.leaf.percent,
             ),
         )
     assert node.left is not None

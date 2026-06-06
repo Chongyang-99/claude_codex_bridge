@@ -209,6 +209,7 @@ def _expand_role_layout(node, *, role_bindings: dict[str, str], project_root: Pa
                     name=agent_name,
                     provider=node.leaf.provider,
                     workspace_mode=node.leaf.workspace_mode,
+                    percent=node.leaf.percent,
                 ),
             )
         return node

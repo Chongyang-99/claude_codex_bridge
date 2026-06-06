@@ -63,6 +63,12 @@ Leaf tokens:
 
 - `cmd`
 - `agent_name:provider`
+- `agent_name:provider(worktree)`
+
+Any leaf token may add an `@N` pane split percent hint, for example `cmd@30`,
+`agent_name:provider@70`, or `agent_name:provider(worktree)@40`. The hint is
+layout syntax, not an agent field or overlay. Runtime materialization clamps
+explicit split hints into the tmux-safe `1..99` range.
 
 Operators:
 
@@ -206,7 +212,7 @@ Contract:
 - `[ui.sidebar.view]` is optional and controls only the sidebar pane's internal presentation. It must not redefine managed windows, agents, pane ownership, provider runtime, or message/job authority.
 - `[ui.sidebar.view]` changes are UI-only: `agents_height`, `comms_height`, `tips_height`, `comms_limit`, `comms_compact`, `tips_enabled`, and `tips` are delivered through `project_view` and must not force namespace topology recreation. `agents_height` controls the top Tree/Agent panel, `comms_height` controls the Comms panel, and `tips_height` controls the Tips panel; all three accept a positive integer row count or a percentage string. The default split is `50%`, `15%`, and `35%`.
 - If a hot-loaded `[ui.sidebar.view]` parse fails, `project_view.namespace.sidebar.view_error` reports the config error and the sidebar displays a `config ✕` warning while retaining the daemon's last valid view config.
-- Agent leaves in `[windows]` provide default `provider` and default `workspace_mode` (`agent:provider` means `inplace`; `agent:provider(worktree)` means `git-worktree`).
+- Agent leaves in `[windows]` provide default `provider` and default `workspace_mode` (`agent:provider` means `inplace`; `agent:provider(worktree)` means `git-worktree`). They may also include an `@N` split hint, for example `agent:provider@60` or `agent:provider(worktree)@40`.
 - `[agents.<name>]` tables are overlays for names referenced by `[windows]`. They may provide any agent-local override, including `workspace_mode`; if they repeat `provider`, it must match the provider declared in `[windows]`.
 - `[agents.<name>].role` may bind a configured agent to a reusable Role Pack
   such as `ccb.archi`. The role id is stable package identity; the agent name
@@ -373,7 +379,7 @@ General rule:
 - Layout execution must prune the configured layout to the requested foreground agent subset plus `cmd`.
 - Layout execution must first build a normalized visible-layout plan from `parse -> prune -> render`, and that normalized render is the visible layout signature.
 - Layout execution must preserve the relative structure of the configured layout after pruning.
-- Recursive split percentages must be computed from leaf-count ratios, not hardcoded repeated `50%` splits.
+- Recursive split percentages must use explicit leaf `@N` hints when present; otherwise they must be computed from leaf-count ratios, not hardcoded repeated `50%` splits.
 - Pane pruning must never silently reorder agents.
 - Incremental in-place splitting on top of an already materialized project namespace is not a valid way to realize a different visible layout signature.
 - When the desired visible layout signature changes, startup must recreate the project namespace before rematerializing tmux panes.

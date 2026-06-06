@@ -75,6 +75,48 @@ def test_prepare_tmux_start_layout_uses_current_pane_as_cmd_anchor(monkeypatch, 
     assert ('title', '%3', 'agent3') in calls
 
 
+def test_prepare_tmux_start_layout_uses_explicit_percent_hint(monkeypatch, tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-layout-percent'
+    project_root.mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text('cmd; agent1:codex@35\n', encoding='utf-8')
+    ctx = _context(project_root)
+    config = load_project_config(project_root).config
+    split_calls: list[tuple[str, str, int]] = []
+
+    class FakeTmuxBackend:
+        def get_current_pane_id(self) -> str:
+            return '%0'
+
+        def set_pane_title(self, pane_id: str, title: str) -> None:
+            return None
+
+        def set_pane_user_option(self, pane_id: str, name: str, value: str) -> None:
+            return None
+
+        def split_pane(
+            self,
+            parent_pane_id: str,
+            direction: str,
+            percent: int,
+            cmd: str | None = None,
+            cwd: str | None = None,
+        ) -> str:
+            split_calls.append((parent_pane_id, direction, percent))
+            return '%1'
+
+    monkeypatch.setattr(tmux_start_layout, 'TmuxBackend', FakeTmuxBackend)
+
+    layout = tmux_start_layout.prepare_tmux_start_layout(
+        ctx,
+        config=config,
+        targets=('agent1',),
+    )
+
+    assert layout.agent_panes == {'agent1': '%1'}
+    assert split_calls == [('%0', 'right', 35)]
+
+
 def test_prepare_tmux_start_layout_assigns_slot_stable_styles(monkeypatch, tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-layout-styles'
     project_root.mkdir(parents=True, exist_ok=True)
