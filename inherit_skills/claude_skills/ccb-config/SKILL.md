@@ -124,6 +124,8 @@ Default rules:
 
 Use this flow when converting compact/hybrid config, adding windows, reorganizing agents, adding roles, changing workspace policy, or modernizing config:
 
+When a legacy compact or hybrid config needs structural edits, treat it as a migration task. Migration to `[windows]` is the default recommendation unless the user wants compact syntax or a persistent `cmd` pane.
+
 1. Read the current config and identify whether it is compact, hybrid, explicit windows, or legacy rich TOML.
 2. Preserve existing agent names, providers, worktree markers, models, keys, urls, descriptions, labels, permissions, restore settings, provider profiles, and role bindings unless the user asks to change them.
 3. Recommend `version = 2` `[windows]` topology for structural changes.
@@ -199,6 +201,9 @@ Rules:
 
 - Keep the project-local ask target natural, usually `archi`.
 - If validation reports the role is missing, tell the user to run `ccb roles install agentroles.archi`.
+- To diagnose role package health, tell the user to run `ccb roles doctor agentroles.archi`.
+- If the user wants the CLI shortcut, use `ccb roles add agentroles.archi:codex`.
+- After the role is configured, talk to the local agent with `ccb ask archi "..."`.
 - Do not copy role memory or skills into `.ccb`; CCB projects role assets from the installed role store.
 - Do not write role store paths into `.ccb/ccb.config`.
 
