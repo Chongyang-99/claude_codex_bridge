@@ -12,15 +12,84 @@ Higher layers replace the whole lower-layer config; CCB does not merge partial c
 
 `.ccb/ccb.config` is the highest-priority project config authority. When it is missing, CCB uses `~/.ccb/ccb.config` if present, then the built-in default. CCB does not write a new project config automatically.
 
+The built-in default is a windows topology and includes the managed Neovim tool
+window. A project that has no `.ccb/ccb.config` and no user-level config should
+still start with a `neovim` tool window when the managed tool is available.
+
 Only write `~/.ccb/ccb.config` when the user explicitly wants a user-level or system-wide default CCB team. For ordinary project setup, write `.ccb/ccb.config`.
 
 Do not write `.ccb_config/ccb.config`. That path is legacy residue in older or migrated workspaces. You may read it as migration evidence, but the current config must be created or updated at `.ccb/ccb.config`.
 
-`.ccb/ccb_memory.md` and `.ccb/agents/<agent>/memory.md` are user-editable memory files. They are context, not layout authority.
+`.ccb/ccb_memory.md` and `.ccb/agents/<agent>/memory.md` are workflow memory files. They are outside the normal scope of this config skill and are not layout authority.
 
-Do not edit memory files for ordinary config design, migration, provider changes, worktree changes, or window layout changes. Update memory only when the user explicitly asks for workflow memory design or role guidance changes.
+Do not edit memory files for ordinary config design, migration, provider changes, worktree changes, or window layout changes. If the user needs persistent collaboration rules, remind them to set workflow memory separately after the config work is done.
 
 Do not edit generated runtime state, provider-state homes, `.ccb/provider-profiles/`, `.ccb/ccbd/`, legacy `.ccb_config/`, or generated runtime memory.
+
+## Language Rules
+
+Use the user's language for menu text, explanations, questions, summaries,
+warnings, and next-step instructions. Keep CCB syntax literal:
+
+- TOML keys and table names stay as documented.
+- Provider names, role ids, command names, env vars, and layout tokens stay
+  literal.
+- Agent names and window names should remain ASCII-safe identifiers unless the
+  current grammar explicitly allows otherwise.
+- Localized human text can be placed in `description`, `labels`, sidebar `tips`,
+  or normal prose when the user wants localized display text.
+- Preserve the existing language of user-authored `description`, `labels`,
+  sidebar `tips`, and comments unless the user asks to translate them.
+
+## Config Option Menu
+
+Use this grouping when the user asks what can be configured or wants an interactive, numbered setup pass:
+
+```text
+CCB Config Options
+
+Basic
+  1. Config source
+  2. Topology
+  3. Windows
+  4. Agents
+  5. Role Pack agents
+  6. Managed tools
+  7. Sidebar
+
+Agent Advanced
+  8. Model
+  9. API route
+ 10. Agent metadata
+
+Workspace Advanced
+ 11. Workspace mode
+ 12. Shared worktree group
+ 13. External worktree path
+ 14. Branch template
+
+Provider Startup Advanced
+ 15. Provider inheritance
+ 16. Provider env
+ 17. Command wrapper
+ 18. Startup args
+
+Runtime Advanced
+ 19. Permission
+ 20. Restore
+ 21. Queue policy
+ 22. Watch paths
+ 23. Pane split percent
+
+Output
+ 24. Preview TOML
+ 25. Apply and validate
+```
+
+Keep Basic visible for ordinary users. Treat Agent Advanced, Workspace Advanced, Provider Startup Advanced, and Runtime Advanced as opt-in controls unless the user asks for them.
+
+When presenting this menu, translate the headings and descriptions into the
+user's language while keeping the option numbers and literal field names stable.
 
 ## Compact Format
 
@@ -38,6 +107,8 @@ Leaf tokens:
 - `cmd`
 - `agent:provider`
 - `agent:provider(worktree)`
+- `agent:provider@N` or `agent:provider(worktree)@N` when the current CCB
+  version supports pane split percent hints
 
 `cmd` is not an agent. It is the shell pane layout keyword and cannot declare a provider.
 
@@ -57,6 +128,14 @@ cmd; main:codex, worker1:codex(worktree), worker2:claude(worktree); reviewer:cla
 ```
 
 Compact config requires providers on agent leaves. Bare `main` is not valid in compact config; write `main:codex`.
+
+Pane split percent hints:
+
+- `@N` is a layout hint on a leaf, not an agent field.
+- Example: `main:codex@60; worker1:codex(worktree)@40`.
+- Values are interpreted by the current layout materializer and should be treated
+  as presentation hints, not agent identity or workspace policy.
+- Do not add `@N` unless the current CCB version supports it.
 
 ## Workspaces
 
@@ -116,6 +195,20 @@ Semantics:
 - `workspace_path`, `workspace_group`, `workspace_root`, and `branch_template`
   must not be mixed for the same agent.
 
+Per-agent workspace controls belong under `[agents.<name>]` overlays. Keep the
+layout leaf focused on provider and the simple `(worktree)` marker:
+
+```toml
+[windows]
+work = "builder:codex(worktree), tester:codex(worktree)"
+
+[agents.builder]
+workspace_group = "build"
+
+[agents.tester]
+workspace_path = "/home/user/project-worktrees/tester"
+```
+
 ## Hybrid Format
 
 Use hybrid format when the compact single-window layout is enough but one or more agents need extra fields. Hybrid configs without `[windows]` also remain single-window configs:
@@ -124,11 +217,11 @@ Use hybrid format when the compact single-window layout is enough but one or mor
 cmd; main:codex, worker1:codex(worktree); reviewer:claude
 
 [agents.main]
-description = "Coordinates planning, progress, and delegation."
+description = "Primary Codex agent."
 model = "gpt-5"
 
 [agents.reviewer]
-description = "Reviews behavior, tests, risks, and regressions."
+description = "Review/check agent."
 ```
 
 The compact header owns:
@@ -163,6 +256,7 @@ review = "reviewer:claude, discuss:codex"
 
 [tool_windows.neovim]
 command = "ccb-nvim"
+label = "neovim"
 
 [ui.sidebar]
 mode = "every_window"
@@ -206,8 +300,11 @@ Rules:
 - `cmd` is not supported inside `[windows]` topology. Use compact/hybrid config when a persistent command pane is required.
 - Do not combine windows topology with `default_agents`, `layout`, or `cmd_enabled`.
 - `entry_window` is optional; it defaults to the first window.
-- `[tool_windows.<name>]` is optional and can define managed tool windows such
-  as `neovim`.
+- `[tool_windows.<name>]` can define managed tool windows such as `neovim`.
+  When writing a new or migrated windows topology, include
+  `[tool_windows.neovim]` with `command = "ccb-nvim"` by default unless the user
+  asks to disable it. To disable Neovim, omit or remove that block; do not write
+  `enabled = false`.
 - `[ui.sidebar]` is optional. Defaults are `mode = "every_window"`, `width = "15%"`, and `bottom_height = 20`.
 - Agent leaves provide default provider and workspace mode. Same-name `[agents.<name>]` tables are overlays; they may override fields such as `workspace_mode`, and the provider there must match the provider in `[windows]` if it is repeated.
 - `[agents.<name>]` tables for names no longer present in `[windows]` are ignored as stale overlay residue.
@@ -222,6 +319,10 @@ entry_window = "main"
 
 [windows]
 main = "main:codex, worker1:codex(worktree), reviewer:claude"
+
+[tool_windows.neovim]
+command = "ccb-nvim"
+label = "neovim"
 ```
 
 ## Role Pack Agents
@@ -299,9 +400,9 @@ Migration rules:
   window grouping, workspace sharing, and whether `cmd` must be preserved;
 - preserve agent names, providers, worktree markers, and ordering unless the user asks to redesign roles;
 - preserve TOML overlay fields by moving them under the same `[agents.<name>]` table after `[windows]`;
-- preserve memory files without editing them unless the user explicitly asks for workflow memory changes;
+- leave memory files untouched; workflow memory is configured separately from `.ccb/ccb.config`;
 - remove `cmd` from the migrated layout because `[windows]` does not support the persistent command pane;
-- choose concise workflow window names such as `main`, `work`, `review`, `research`, or `ops`;
+- choose concise window names such as `main`, `work`, `review`, `research`, or `ops`;
 - keep each agent in exactly one window;
 - keep compact/hybrid format only if the requested change is a single-window
   pane rearrangement and the user wants `cmd`/compact preserved.
@@ -375,6 +476,14 @@ Do not mix `key` or `url` with provider API env fields under `agents.<name>.env`
 
 Use `provider_profile` only for advanced inheritance or environment behavior. Do not create `.ccb/provider-profiles/` directories manually.
 
+Use `startup_args` for provider-native trailing arguments that belong inside
+CCB's generated provider command:
+
+```toml
+[agents.research]
+startup_args = ["--search"]
+```
+
 Use `provider_command_template` only when an agent needs a shell wrapper around
 the generated provider command that cannot be represented as `startup_args`:
 
@@ -393,19 +502,21 @@ Semantics:
   managed provider home exports, caller context, or shell setup;
 - do not use this field to replace CCB's generated command or manually encode
   resume behavior.
+- when both fields are present, `startup_args` are part of the generated
+  `{command}` segment before the template wrapper is applied.
 
 ## Skill Inheritance
 
-CCB config supports `agents.<name>.provider_profile.inherit_skills`, which enables or disables inheritance of the provider source-home skills as a whole. It does not support a per-skill allowlist in `.ccb/ccb.config`.
+CCB config supports provider source-home inheritance flags:
 
-Durable skill installs belong in the provider source home:
+```toml
+[agents.worker1.provider_profile]
+inherit_skills = true
+inherit_commands = true
+inherit_memory = true
+```
 
-- Codex: `${CODEX_HOME:-$HOME/.codex}/skills/<skill>`
-- Claude: `$HOME/.claude/skills/<skill>`
-
-After restart or relaunch, managed agents for that provider inherit those skills when `inherit_skills` is true. This may affect all same-provider agents, not only one agent.
-
-If the user asks for one-agent-only skill injection, explain that it is not a durable config-level feature yet. A temporary copy into `.ccb/agents/<agent>/provider-state/.../skills` may work for an already-mounted agent, but it is runtime/provider-state and can be replaced by projection refresh or restart. Use it only after explicit confirmation, and never write through a symlink.
+These fields only toggle provider source-home inheritance. This skill must not install skills, copy skills into provider homes, write provider-state paths, or perform one-agent temporary skill injection. If the user wants durable skill installation, route that as a separate skill/install task.
 
 ## Agent Names
 
@@ -445,6 +556,10 @@ entry_window = "main"
 main = "main:codex"
 work = "worker1:codex(worktree)"
 review = "reviewer:claude"
+
+[tool_windows.neovim]
+command = "ccb-nvim"
+label = "neovim"
 ```
 
 Full parallel team:
@@ -457,9 +572,13 @@ entry_window = "main"
 main = "main:codex"
 work = "worker1:codex(worktree), worker2:codex(worktree), worker3:claude(worktree)"
 review = "reviewer:claude, discuss:codex"
+
+[tool_windows.neovim]
+command = "ccb-nvim"
+label = "neovim"
 ```
 
-Full parallel team with native sidebars and a Neovim tool window:
+Full parallel team with native sidebars and the default Neovim tool window:
 
 ```toml
 version = 2
@@ -472,6 +591,7 @@ review = "reviewer:claude, discuss:codex"
 
 [tool_windows.neovim]
 command = "ccb-nvim"
+label = "neovim"
 ```
 
 Multi-provider research and implementation:
@@ -485,6 +605,10 @@ main = "main:codex"
 work = "builder:codex(worktree)"
 research = "research:gemini"
 review = "reviewer:claude"
+
+[tool_windows.neovim]
+command = "ccb-nvim"
+label = "neovim"
 ```
 
 Two Codex agents with different explicit API routes:

@@ -79,7 +79,7 @@ fn run_tui(args: &Args) -> io::Result<ExitAction> {
                     KeyCode::Char('Q') => return Ok(ExitAction::KillProject),
                     KeyCode::Char('j') | KeyCode::Down => app.move_selection(1),
                     KeyCode::Char('k') | KeyCode::Up => app.move_selection(-1),
-                    KeyCode::Char('r') => app.reload_config(&client),
+                    KeyCode::Char('r') => app.restart_panes(&client),
                     KeyCode::Char('R') => app.recover_first_visible_comms(&client),
                     KeyCode::Enter => app.focus_selected_target(&client),
                     KeyCode::Tab => app.focus_pane_window(&client),
@@ -201,8 +201,8 @@ impl SidebarApp {
         self.refresh_after = Instant::now();
     }
 
-    pub fn reload_config(&mut self, client: &CcbdClient) {
-        match client.reload_config() {
+    pub fn restart_panes(&mut self, client: &CcbdClient) {
+        match client.restart_panes() {
             Ok(()) => self.force_refresh(),
             Err(err) => {
                 self.set_error(err);
@@ -264,7 +264,7 @@ impl SidebarApp {
     ) -> Option<ExitAction> {
         match header_action_at(column, row, sidebar_areas(area, self.sidebar_view()).tree) {
             Some(HeaderMouseAction::Refresh) => {
-                self.reload_config(client);
+                self.restart_panes(client);
                 return None;
             }
             Some(HeaderMouseAction::KillProject) => return Some(ExitAction::KillProject),
@@ -1815,7 +1815,7 @@ mod tests {
     #[test]
     fn header_buttons_are_right_aligned_and_kill_project() {
         let seen = Arc::new(Mutex::new(Vec::new()));
-        let (socket_path, handle) = spawn_reload_server(Arc::clone(&seen), "published");
+        let (socket_path, handle) = spawn_restart_server(Arc::clone(&seen));
         let client = CcbdClient::new(socket_path);
         let mut app = SidebarApp::new("main".into());
         app.apply_response(sample_response());
@@ -1827,7 +1827,7 @@ mod tests {
         assert_eq!(app.handle_mouse_down(controls.x, 0, area, &client), None);
         handle.join().unwrap();
 
-        assert_eq!(seen.lock().unwrap().as_slice(), ["project_reload_config"]);
+        assert_eq!(seen.lock().unwrap().as_slice(), ["project_restart_panes"]);
         assert!(app.last_error.is_none());
         assert!(app.needs_refresh());
         assert_eq!(
@@ -1838,9 +1838,8 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn header_reload_rejection_still_refreshes_with_error() {
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let (socket_path, handle) = spawn_reload_server(Arc::clone(&seen), "blocked");
+    fn header_restart_rejection_still_refreshes_with_error() {
+        let (socket_path, handle) = spawn_error_server("project_restart_panes", "restart rejected");
         let client = CcbdClient::new(socket_path);
         let mut app = SidebarApp::new("main".into());
         app.apply_response(sample_response());
@@ -1850,11 +1849,7 @@ mod tests {
         assert_eq!(app.handle_mouse_down(controls.x, 0, area, &client), None);
         handle.join().unwrap();
 
-        assert_eq!(seen.lock().unwrap().as_slice(), ["project_reload_config"]);
-        assert_eq!(
-            app.last_error.as_deref(),
-            Some("reload blocked: unsupported_plan_class")
-        );
+        assert_eq!(app.last_error.as_deref(), Some("restart rejected"));
         assert!(app.needs_refresh());
     }
 
@@ -2531,12 +2526,11 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn spawn_reload_server(
+    fn spawn_restart_server(
         seen: Arc<Mutex<Vec<String>>>,
-        status: &'static str,
     ) -> (std::path::PathBuf, thread::JoinHandle<()>) {
         let dir = std::env::temp_dir().join(format!(
-            "ccb-agent-sidebar-reload-test-{}-{}",
+            "ccb-agent-sidebar-restart-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -2555,19 +2549,10 @@ mod tests {
                 reader.read_line(&mut line).unwrap();
             }
             let request: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
-            assert_eq!(request["op"], "project_reload_config");
-            assert_eq!(request["request"]["dry_run"], false);
-            seen.lock().unwrap().push("project_reload_config".into());
-            let response = if status == "published" {
-                json!({"api_version": 2, "ok": true, "status": "published"})
-            } else {
-                json!({
-                    "api_version": 2,
-                    "ok": true,
-                    "status": status,
-                    "diagnostics": {"reason": "unsupported_plan_class"}
-                })
-            };
+            assert_eq!(request["op"], "project_restart_panes");
+            assert_eq!(request["request"], json!({}));
+            seen.lock().unwrap().push("project_restart_panes".into());
+            let response = json!({"api_version": 2, "ok": true, "status": "scheduled"});
             stream
                 .write_all(format!("{response}\n").as_bytes())
                 .unwrap();

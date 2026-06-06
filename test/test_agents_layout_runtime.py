@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from agents.models import build_balanced_layout, iter_layout_names, parse_layout_spec, prune_layout
+from agents.models_runtime.config_runtime.validation import resolve_layout_spec
 
 
 def test_parse_layout_spec_roundtrip_with_parentheses() -> None:
@@ -33,6 +34,7 @@ def test_parse_layout_spec_accepts_role_id_leaf_token() -> None:
     [
         ('debugger:agy@30', 30),
         ('reviewer:claude@50', 50),
+        ('worker:codex(worktree)@40', 40),
         ('debugger:agy', None),
     ],
 )
@@ -66,5 +68,16 @@ def test_build_balanced_layout_adds_cmd_leaf_first() -> None:
 
 
 def test_parse_layout_spec_rejects_invalid_leaf_token() -> None:
-    with pytest.raises(Exception, match='invalid layout token'):
+    with pytest.raises(Exception, match='agent:provider.*@N'):
         parse_layout_spec('cmd; ???')
+
+
+def test_resolve_layout_spec_preserves_percent_token() -> None:
+    rendered = resolve_layout_spec(
+        default_agents=('agent1',),
+        normalized_agents={},
+        cmd_enabled=True,
+        layout_spec='cmd; agent1:codex@65',
+    )
+
+    assert rendered == 'cmd; agent1:codex@65'

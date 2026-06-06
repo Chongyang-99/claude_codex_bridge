@@ -7,7 +7,10 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 from typing import Any
+import urllib.request
+import zipfile
 
 from agents.config_loader_runtime.role_lookup import agent_roles_installed_root, role_store_root, role_store_roots
 from role_aliases import role_id_candidates
@@ -18,6 +21,9 @@ from .manifest import load_role_manifest, normalize_role_id
 
 SOURCE_REGISTRY_SCHEMA = 'rolepack-source-registry/v1'
 DEFAULT_AGENT_ROLES_SPEC_GIT_URL = 'https://github.com/SeemSeam/agent-roles-spec'
+DEFAULT_AGENT_ROLES_SPEC_ARCHIVE_URL = (
+    'https://github.com/SeemSeam/agent-roles-spec/archive/refs/heads/main.zip'
+)
 SYSTEM_ROLE_SOURCE_NAMES = ('systemroles', 'dotroles')
 
 
@@ -614,11 +620,51 @@ def _ensure_remote_agent_roles_source(*, refresh: bool = False) -> Path | None:
             timeout=_remote_agent_roles_git_timeout(),
         )
     except Exception:
-        return None
+        return _download_remote_agent_roles_source_archive(target)
     if result.returncode != 0 or not _looks_like_agent_roles_spec(target):
         shutil.rmtree(target, ignore_errors=True)
-        return None
+        return _download_remote_agent_roles_source_archive(target)
     return target.resolve()
+
+
+def _download_remote_agent_roles_source_archive(target: Path) -> Path | None:
+    if target.exists():
+        return target.resolve() if _looks_like_agent_roles_spec(target) else None
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with tempfile.TemporaryDirectory(prefix=f'{target.name}-', dir=str(target.parent)) as temp:
+            temp_dir = Path(temp)
+            archive_path = temp_dir / 'agent-roles-spec.zip'
+            with urllib.request.urlopen(
+                _remote_agent_roles_archive_url(),
+                timeout=_remote_agent_roles_git_timeout(),
+            ) as response:
+                archive_path.write_bytes(response.read())
+            extract_dir = temp_dir / 'extract'
+            extract_dir.mkdir()
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(extract_dir)
+            source_root = _find_extracted_agent_roles_source(extract_dir)
+            if source_root is None:
+                return None
+            shutil.move(str(source_root), str(target))
+    except Exception:
+        shutil.rmtree(target, ignore_errors=True)
+        return None
+    return target.resolve() if _looks_like_agent_roles_spec(target) else None
+
+
+def _find_extracted_agent_roles_source(root: Path) -> Path | None:
+    if _looks_like_agent_roles_spec(root):
+        return root
+    try:
+        children = tuple(root.iterdir())
+    except OSError:
+        return None
+    for child in children:
+        if child.is_dir() and _looks_like_agent_roles_spec(child):
+            return child
+    return None
 
 
 def _refresh_remote_agent_roles_source(target: Path) -> None:
@@ -648,6 +694,19 @@ def _remote_agent_roles_git_url() -> str:
         if value:
             return value
     return DEFAULT_AGENT_ROLES_SPEC_GIT_URL
+
+
+def _remote_agent_roles_archive_url() -> str:
+    for env_name in ('CCB_AGENT_ROLES_SPEC_ARCHIVE_URL', 'AGENT_ROLES_SPEC_ARCHIVE_URL'):
+        value = str(os.environ.get(env_name) or '').strip()
+        if value:
+            return value
+    git_url = _remote_agent_roles_git_url().rstrip('/')
+    if git_url.endswith('.git'):
+        git_url = git_url[:-4]
+    if git_url.startswith('https://github.com/'):
+        return f'{git_url}/archive/refs/heads/main.zip'
+    return DEFAULT_AGENT_ROLES_SPEC_ARCHIVE_URL
 
 
 def _remote_agent_roles_disabled() -> bool:

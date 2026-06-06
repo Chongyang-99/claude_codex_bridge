@@ -1,5 +1,35 @@
 # Changelog
 
+## v7.3.3 (2026-06-06)
+
+### Architec NPM Tooling And Provider Stability Patch
+
+- **Archi Role Tooling Simplified**: `agentroles.archi` now uses the global
+  `@seemseam/architec` npm package as the single Architec tool source. CCB no
+  longer tries to split Hippo, llmgateway, editable git checkouts, or managed
+  pip/venv installs into separate Archi dependencies.
+- **Archi Doctor Aligned With Bundled Capabilities**: `ccb roles install`,
+  `ccb roles update`, and `ccb roles doctor agentroles.archi` now report and
+  validate the npm package, the `archi` CLI, and its bundled Hippo/llmgateway
+  capabilities instead of CCB-managed Python tool internals.
+- **Legacy `ccb-arch` Forwarder Updated**: `bin/ccb-arch` forwards directly to
+  `archi` when available and otherwise prints the required
+  `npm install -g @seemseam/architec` command.
+- **OpenCode Autoupdate Disabled In Managed Panes**: generated `opencode.json`
+  now sets `autoupdate = false`, and managed OpenCode launches include
+  `OPENCODE_DISABLE_AUTOUPDATE=true` so CCB-owned panes do not self-update
+  under the workspace runtime.
+- **Config Skill Refined**: inherited `ccb-config` skills now support
+  config-only operation, follow the user's language more consistently, fix YAML
+  description quoting, and group menu/config guidance more clearly.
+- **Sidebar Refresh Uses Pane Restart**: sidebar refresh guidance now prefers
+  restarting panes, keeping UI state changes explicit and recoverable.
+- **Config Designer Planning Added**: the plan tree now includes the local
+  config-designer UI roadmap, decisions, and open questions.
+- **Layout And Antigravity Updates Included**: this release carries the main
+  branch `@percent` layout split token support and Antigravity lifecycle/zombie
+  cleanup updates.
+
 ## v7.3.2 (2026-06-05)
 
 ### First-Install Role Pack Provisioning Hotfix

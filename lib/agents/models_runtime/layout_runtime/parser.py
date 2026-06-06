@@ -63,7 +63,7 @@ class _LayoutParser:
         match = _LEAF_TOKEN_RE.fullmatch(token)
         if match is None:
             raise LayoutParseError(
-                f"invalid layout token {token!r}; expected 'cmd', 'agent', 'agent:provider', or 'agent:provider(worktree)'"
+                f"invalid layout token {token!r}; expected 'cmd', 'agent', 'agent:provider', 'agent:provider(worktree)', or any of those forms with '@N'"
             )
         pct_str = match.group('percent')
         pct = int(pct_str) if pct_str is not None else None

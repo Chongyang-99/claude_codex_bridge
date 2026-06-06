@@ -409,9 +409,10 @@ Current status:
   applies or rejects the disk config.
 - CLI rendering includes reload stage, graph versions, publish diagnostics, and
   namespace/runtime residue for failed applies.
-- Sidebar's refresh control and `r` shortcut submit the same non-dry-run reload
-  request and then force a project-view refresh. This is an explicit user action,
-  not a file watcher or steady-state scan.
+- Sidebar's refresh control and `r` shortcut now submit `project_restart_panes`
+  to respawn each configured agent pane in place, then force a project-view
+  refresh. Config changes remain explicit CLI actions through `ccb reload`; the
+  sidebar control is not a file watcher or steady-state scan.
 
 The user-path gate still does not add config watching, replacement, arbitrary
 existing-pane kill/reflow, or busy-drain unload. Daemon-pushed sidebar refresh
