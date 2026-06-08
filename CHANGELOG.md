@@ -1,5 +1,28 @@
 # Changelog
 
+## v7.3.7 (2026-06-08)
+
+### Ask Parameter Policy And Skill Guidance
+
+- **Ask Skills Use Result Intent First**: inherited Claude, Codex, and Droid
+  ask skills now choose `--silence`, `--compact`, `--artifact-reply`, or plain
+  `ask` from the desired result shape first, then add `--callback` only for
+  active parent dependency chains and artifact request/io flags only when exact
+  content preservation is needed.
+- **Artifact Transport Guidance Tightened**: ask skill guidance now separates
+  task relationship flags from content-preservation flags, treats automatic
+  long-message spill as a fallback, and discourages conflicting combinations
+  such as `--silence --artifact-reply`.
+- **README Ask Quick Reference Added**: English and Chinese README Agent
+  Collaboration sections now include a compact ask-parameter selection table
+  for silence, compact, artifact reply/request/io, callback, and plain ask.
+- **Ask Parameter Policy Plan Added**: the plan tree now documents the ask
+  parameter matrix, callback/silence boundaries, artifact transport policy,
+  decisions, roadmap, and validation history.
+- **Skill Template Tests Expanded**: ask skill template tests now assert the
+  result-intent decision card, artifact policy, command shapes, diagnostics
+  guardrails, and no-Chinese drift across inherited templates.
+
 ## v7.3.6 (2026-06-07)
 
 ### Provider Memory Ownership Cleanup

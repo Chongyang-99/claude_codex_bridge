@@ -1,12 +1,9 @@
----
-name: ask
-description: Send a request to a CCB agent with `ask`.
-metadata:
-  short-description: Ask agent
----
+# Skill Update Draft
 
-Use this skill when the user asks you to delegate with CCB, or when project
-memory says to use CCB `ask` for collaboration.
+Date: 2026-06-08
+
+This draft is written in English so it can be copied into inherited skill
+templates without violating template checks that disallow Chinese text.
 
 ## Decision Card
 
@@ -48,20 +45,3 @@ Before every ask, decide:
 - `ask get`, `pend`, `watch`, and `ping` are diagnostics-only commands for
   explicit debugging requests, not normal ask workflow tools.
 - Do not manually append output-policy text; `ask` injects reply guidance.
-
-Use no flags or insert selected flags before `"$TARGET"`:
-
-```bash
-command ask "$TARGET" <<'EOF'
-$MESSAGE
-EOF
-```
-
-```bash
-command ask --callback --artifact-reply "$TARGET" <<'EOF'
-$MESSAGE
-EOF
-```
-
-After submit, stop. Do not wait for a reply, do not run `ask get` / `pend` /
-`ping` / `watch`, and do not poll. For `--callback`, report only submitted.

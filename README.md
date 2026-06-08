@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.3.6-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.3.7-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **English** | [中文](README_zh.md)
@@ -417,6 +417,23 @@ Normal `ask` is submit-and-return: after handing work to the target agent, the c
 | Current agent sends independent work whose successful result does not need to return | `ask --silence worker1` |
 | Queue or status diagnostics | `pend`, `watch`, `ping`, and similar commands are diagnostics only |
 
+When an agent submits a child task, choose flags from the result intent first,
+then add dependency and artifact preservation only when needed:
+
+| Need | Recommended flags |
+| :--- | :--- |
+| Publish or execute work; successful result is not useful | `--silence` |
+| Get a short outcome: status, findings, risks, blockers, or next steps | `--compact` |
+| Get full consultation, analysis, report, generated doc, or structured findings | `--artifact-reply` |
+| Continue an active parent task only after the child result arrives | add `--callback` |
+| Preserve exact pasted logs, diff, JSON/YAML, table, or copied text | add `--artifact-request` |
+| Preserve exact input and full output | `--artifact-io` |
+| Short question or short handoff where inline text is enough | plain `ask` |
+
+`--callback` and `--silence` control task relationship. Artifact flags control
+content preservation. The automatic long-message spill is only a fallback, so
+use artifact flags proactively when exact input or full output matters.
+
 <details>
 <summary><b>Why callback matters</b></summary>
 
@@ -519,6 +536,17 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.3.7</b> - Ask Parameter Policy And Skill Guidance</summary>
+
+- Updates inherited Claude, Codex, and Droid ask skills to choose flags from result intent first: `--silence`, `--compact`, `--artifact-reply`, or plain `ask`.
+- Keeps dependency handling explicit by adding `--callback` only when an active parent job must wait for a child result.
+- Separates artifact transport from task relationship: use `--artifact-request` and `--artifact-io` when exact input or input/output preservation matters.
+- Adds the Agent Collaboration ask-parameter quick reference to README and README_zh.
+- Adds the ask-parameter-policy plan tree, decision records, parameter matrix, and validation notes.
+
+</details>
+
+<details>
 <summary><b>v7.3.6</b> - Provider Memory Ownership Cleanup</summary>
 
 - Adds provider memory ownership policy: Claude, Codex, and OpenCode managed contexts no longer duplicate provider-native project memory inside the CCB generated bundle; Gemini keeps the previous behavior pending audit.

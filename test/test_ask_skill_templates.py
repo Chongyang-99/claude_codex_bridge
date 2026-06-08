@@ -21,8 +21,32 @@ def test_shell_ask_skill_templates_use_short_ask_command() -> None:
         assert 'canonical `ccb ask`' not in text
         assert 'compatibility alias' not in text
         assert 'forwarded verbatim' not in text
-        assert 'diagnostics-only commands for explicit debugging requests' in text
-        assert 'do not run `ask get` / `pend` / `ping` / `watch`' in text
+        assert '## Decision Card' in text
+        assert 'Before every ask, decide:' in text
+        assert 'Need delegation? If no, answer directly.' in text
+        assert '2. Result intent:' in text
+        assert '`--silence`: publish/execute task; success result not needed.' in text
+        assert 'Failures,' in text and 'required next actions still surface.' in text
+        assert '`--compact`: result wanted, but only distilled' in text
+        assert '`+ --artifact-reply`: consultation/analysis/report where full text should' in text
+        assert 'plain `ask`: short question or short handoff where inline text is enough.' in text
+        assert '`--callback`: active CCB parent job + child result required to finish.' in text
+        assert 'Combine with `--compact` or `--artifact-reply` as needed.' in text
+        assert '3. Request fidelity:' in text
+        assert 'Prefer repo paths when the target can read files directly.' in text
+        assert 'Avoid `--silence --artifact-reply`' in text
+        assert 'diagnostics-only commands' in text
+        assert 'explicit debugging requests' in text
+        assert 'do not run `ask get` / `pend`' in text
+        assert '`ping` / `watch`' in text
+        assert 'Do not manually append output-policy text' in text
+        assert 'Artifact flags are orthogonal to `--callback`, `--silence`, and `--compact`.' in text
+        assert 'Automatic spill for text over 4 KiB is a fallback' in text
+        assert 'In `A --silence -> B`, B still runs an active job.' in text
+        assert 'In callback chains, each waiting hop uses callback' in text
+        assert 'command ask "$TARGET"' in text
+        assert 'command ask --callback --artifact-reply "$TARGET"' in text
+        assert '[FLAGS...]' not in text
         assert re.search(r'[\u4e00-\u9fff]', text) is None
 
 
@@ -33,6 +57,28 @@ def test_powershell_ask_skill_template_uses_short_ask_command() -> None:
     assert 'ccb ask' not in text
     assert 'compatibility alias' not in text
     assert 'forwarded verbatim' not in text
-    assert 'diagnostics-only commands for explicit debugging requests' in text
-    assert 'do not run `ask get` / `pend` / `ping` / `watch`' in text
+    assert '## Decision Card' in text
+    assert 'Before every ask, decide:' in text
+    assert 'Need delegation? If no, answer directly.' in text
+    assert '2. Result intent:' in text
+    assert '`--silence`: publish/execute task; success result not needed.' in text
+    assert 'Failures,' in text and 'required next actions still surface.' in text
+    assert '`--compact`: result wanted, but only distilled' in text
+    assert '`+ --artifact-reply`: consultation/analysis/report where full text should' in text
+    assert 'plain `ask`: short question or short handoff where inline text is enough.' in text
+    assert '`--callback`: active CCB parent job + child result required to finish.' in text
+    assert 'Combine with `--compact` or `--artifact-reply` as needed.' in text
+    assert '3. Request fidelity:' in text
+    assert 'Prefer repo paths when the target can read files directly.' in text
+    assert 'Avoid `--silence --artifact-reply`' in text
+    assert 'diagnostics-only commands' in text
+    assert 'explicit debugging requests' in text
+    assert 'do not run `ask get` / `pend`' in text
+    assert '`ping` / `watch`' in text
+    assert 'Do not manually append output-policy text' in text
+    assert 'Artifact flags are orthogonal to `--callback`, `--silence`, and `--compact`.' in text
+    assert 'Automatic spill for text over 4 KiB is a fallback' in text
+    assert 'In `A --silence -> B`, B still runs an active job.' in text
+    assert 'In callback chains, each waiting hop uses callback' in text
+    assert '@("--callback", "--artifact-reply", "$TARGET")' in text
     assert re.search(r'[\u4e00-\u9fff]', text) is None
