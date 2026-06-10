@@ -35,6 +35,14 @@ class ParsedRestartCommand:
 
 
 @dataclass(frozen=True)
+class ParsedMaintenanceCommand:
+    project: str | None
+    action: str = 'status'
+    args: tuple[str, ...] = ()
+    kind: str = 'maintenance'
+
+
+@dataclass(frozen=True)
 class ParsedCleanupCommand:
     project: str | None
     kind: str = 'cleanup'
@@ -91,6 +99,7 @@ __all__ = [
     'ParsedDoctorCommand',
     'ParsedKillCommand',
     'ParsedLogsCommand',
+    'ParsedMaintenanceCommand',
     'ParsedPingCommand',
     'ParsedPsCommand',
     'ParsedReloadCommand',

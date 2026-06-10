@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..names import SCHEMA_VERSION, AgentValidationError
+from .maintenance import MaintenanceHeartbeatConfig
 from .topology import (
     SidebarSpec,
     SidebarViewSpec,
@@ -36,6 +37,7 @@ class ProjectConfig:
     sidebar_view: SidebarViewSpec | None = None
     source_path: str | None = None
     windows_explicit: bool | None = None
+    maintenance_heartbeat: MaintenanceHeartbeatConfig | None = None
 
     def __post_init__(self) -> None:
         if self.version != SCHEMA_VERSION:
@@ -57,6 +59,7 @@ class ProjectConfig:
             )
         sidebar = self.sidebar if self.sidebar is not None else default_sidebar_spec()
         sidebar_view = self.sidebar_view if self.sidebar_view is not None else default_sidebar_view_spec()
+        maintenance_heartbeat = self.maintenance_heartbeat or MaintenanceHeartbeatConfig()
         windows = normalize_windows(
             self.windows,
             layout_spec=rendered_layout,
@@ -81,6 +84,7 @@ class ProjectConfig:
         object.__setattr__(self, 'sidebar', sidebar)
         object.__setattr__(self, 'sidebar_view', sidebar_view)
         object.__setattr__(self, 'windows_explicit', explicit_windows)
+        object.__setattr__(self, 'maintenance_heartbeat', maintenance_heartbeat)
         object.__setattr__(self, 'topology_signature_payload', signature_payload)
         object.__setattr__(self, 'topology_signature', topology_signature(signature_payload))
 
@@ -99,6 +103,9 @@ class ProjectConfig:
             'sidebar': self.sidebar.to_record(),
             'sidebar_view': self.sidebar_view.to_record(),
             'windows_explicit': self.windows_explicit,
+            'maintenance': {
+                'heartbeat': self.maintenance_heartbeat.to_record(),
+            },
             'topology_signature_payload': self.topology_signature_payload,
             'topology_signature': self.topology_signature,
             'source_path': self.source_path,

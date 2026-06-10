@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .targets import (
+    MAINTENANCE_HEARTBEAT_ACTOR,
     NON_AGENT_ACTORS,
     NON_MAILBOX_ACTORS,
     USER_ACTOR,
@@ -11,6 +12,7 @@ from .targets import (
 )
 
 __all__ = [
+    'MAINTENANCE_HEARTBEAT_ACTOR',
     'NON_AGENT_ACTORS',
     'NON_MAILBOX_ACTORS',
     'USER_ACTOR',

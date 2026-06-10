@@ -32,6 +32,6 @@ Date: 2026-06-09
    image input?
 6. What input/output contract should a `ccb_self` running-supervision skill
    expose to the CCB-owned
-   [maintenance heartbeat](../ccb-self-maintenance-heartbeat/README.md), while
+   [maintenance heartbeat](../ccb-maintenance-heartbeat/README.md), while
    keeping scheduler state, cadence changes, and wakeup authority outside the
    Role Pack?

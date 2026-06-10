@@ -48,6 +48,56 @@ def test_load_valid_project_config(tmp_path: Path) -> None:
     assert [window.name for window in result.config.windows] == ['main']
     assert result.config.windows[0].layout_spec == 'agent1:codex'
     assert result.config.windows[0].agent_names == ('agent1',)
+    assert result.config.maintenance_heartbeat.enabled is False
+    assert result.config.maintenance_heartbeat.assessor == 'ccb_self'
+
+
+def test_load_project_config_supports_maintenance_heartbeat_table(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-maintenance'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """demo:codex
+
+[maintenance.heartbeat]
+enabled = true
+assessor = "SelfAgent"
+interval_s = 1200
+min_interval_s = 120
+unknown_streak_cap = 4
+escalation_policy = "ask_user"
+startup_ensure = false
+""",
+    )
+
+    result = load_project_config(project_root)
+    heartbeat = result.config.maintenance_heartbeat
+
+    assert heartbeat.enabled is True
+    assert heartbeat.assessor == 'selfagent'
+    assert heartbeat.interval_s == 1200
+    assert heartbeat.min_interval_s == 120
+    assert heartbeat.unknown_streak_cap == 4
+    assert heartbeat.escalation_policy == 'ask_user'
+    assert heartbeat.startup_ensure is False
+
+
+def test_load_project_config_rejects_invalid_maintenance_heartbeat_values(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-maintenance-invalid'
+    config_path = project_root / '.ccb' / 'ccb.config'
+    _write(
+        config_path,
+        """demo:codex
+
+[maintenance.heartbeat]
+enabled = true
+interval_s = 30
+min_interval_s = 60
+""",
+    )
+
+    with pytest.raises(ConfigValidationError, match='min_interval_s cannot exceed interval_s'):
+        load_project_config(project_root)
 
 
 def test_load_project_config_rejects_provider_only_list(tmp_path: Path) -> None:

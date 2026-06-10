@@ -12,6 +12,7 @@ It is the authoritative design anchor for:
 - `.ccb/ccbd/start-policy.json`
 - `.ccb/ccbd/lifecycle.jsonl`
 - `.ccb/ccbd/heartbeats/<subject-kind>/*.json`
+- `.ccb/ccbd/maintenance-heartbeat/`
 - `.ccb/ccbd/reload-drain.json`
 - `.ccb/ccbd/artifacts/text/`
 - project-scoped backend log retention under `.ccb/ccbd/`
@@ -126,6 +127,10 @@ Paths:
 - `.ccb/ccbd/start-policy.json`
 - `.ccb/ccbd/lifecycle.jsonl`
 - `.ccb/ccbd/heartbeats/<subject-kind>/*.json`
+- `.ccb/ccbd/maintenance-heartbeat/schedule.json`
+- `.ccb/ccbd/maintenance-heartbeat/status.json`
+- `.ccb/ccbd/maintenance-heartbeat/lock.json`
+- `.ccb/ccbd/maintenance-heartbeat/activations.jsonl`
 - `.ccb/ccbd/reload-drain.json`
 
 Rules:
@@ -134,6 +139,32 @@ Rules:
 - `start-policy.json` records the persisted project recovery startup policy, including inherited `auto_permission` and forced recovery-restore semantics
 - `lifecycle.jsonl` records namespace creation/destruction and later runtime lifecycle events
 - `heartbeats/<subject-kind>/*.json` records non-lease heartbeat state for long-lived supervised subjects such as running jobs; these files are diagnostics/evidence, not backend ownership authority
+- `maintenance-heartbeat/` records CCB maintenance heartbeat schedule, status,
+  lock, and activation evidence. It is a project-scoped maintenance namespace,
+  not daemon lease heartbeat authority and not subject/job heartbeat evidence.
+  - `schedule.json` records the next maintenance heartbeat time and reason
+    when a heartbeat tick or later schedule command updates cadence.
+  - `status.json` records the latest maintenance heartbeat status summary from
+    `ccb maintenance tick`, including `last_tick_status`, `last_tick_at`,
+    `last_ok_at`, `unknown_streak`, `source_kind`, `recommended_action`,
+    `next_heartbeat_after_s`, `needs_user`, last activation fields, a bounded
+    `summary`, and bounded `evidence`.
+  - `lock.json` records best-effort heartbeat operation lock metadata. The
+    lock is independent from keeper, lease, and daemon lifecycle locks.
+  - `activations.jsonl` records `ActivationIntent` dispatch outcomes such as
+    `submitted`, `suppressed`, `blocked`, or `failed`. These records are
+    diagnostics/audit evidence for CCB-originated silent asks and are not
+    mailbox, job, or daemon authority.
+  - malformed or missing files must be visible to `ccb maintenance status`
+    without crashing the read path.
+  - status readers may report `missing` or `corrupt`; they must not repair,
+    rewrite, or migrate these files as a side effect.
+  - `ccb maintenance tick` may write only `status.json`, `schedule.json`,
+    `lock.json`, and `activations.jsonl` in this namespace. When non-healthy
+    evidence requires semantic supervision, it may submit one silent ask to the
+    configured assessor through the mounted daemon dispatcher, then exit.
+    It must not write provider state, run repairs, or mutate daemon lifecycle
+    authority.
 - `reload-drain.json` records bounded pending unload/replace drain state when
   explicit reload state machinery is invoked; it is not lifecycle, lease,
   runtime authority, or a config-watch trigger
@@ -146,7 +177,9 @@ Rules:
   config-watch trigger, and stale or mismatched records fail closed.
 - `artifacts/text/` stores oversized CCB agent-to-agent message and reply text. Request bodies, terminal replies, notices, and callback continuations larger than 4 KiB are written there as UTF-8 text artifacts; ledgers store only the short preview plus artifact path, byte count, and sha256 metadata. These artifacts are diagnostics/evidence and transport support, not scheduling authority.
 - running-job heartbeat observations stay in diagnostics/events and must not be emitted as caller-visible mailbox replies; after three consecutive no-progress observations, the terminal `heartbeat_timeout` reply is the caller-visible outcome
-- daemon lease heartbeat and subject heartbeat must remain separate concepts and separate files
+- daemon lease heartbeat, subject/job heartbeat, and maintenance heartbeat
+  schedule/status/activation state must remain separate concepts and separate
+  files
 - `doctor` and bundle export must include these records when present
 - `ping('ccbd')` and `doctor` should surface start-policy summary fields when available
 - `ping('ccbd')` and `doctor` must surface namespace summary fields such as epoch, tmux socket path, session name, and latest lifecycle event when available
@@ -220,6 +253,8 @@ The support bundle must include:
 - backend authority files such as lease, keeper, shutdown intent, and namespace state when present
 - backend recovery policy authority such as `start-policy.json` when present
 - persisted non-lease heartbeat state under `.ccb/ccbd/heartbeats/` when present
+- maintenance heartbeat schedule/status/lock/activation files under
+  `.ccb/ccbd/maintenance-heartbeat/` when present
 - oversized CCB text artifacts under `.ccb/ccbd/artifacts/text/` when referenced by recent message/reply records
 - recent backend event streams such as supervision, namespace lifecycle, and cleanup history
 - backend stdout/stderr logs

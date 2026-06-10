@@ -27,6 +27,12 @@ def handle_logs(context, command, out, services) -> int:
     return 0
 
 
+def handle_maintenance(context, command, out, services) -> int:
+    payload = services.maintenance_status(context, command)
+    services.write_lines(out, services.render_maintenance(payload))
+    return 0 if str(payload.get('maintenance_status') or '') in {'ok', 'degraded'} else 2
+
+
 def handle_ps(context, command, out, services) -> int:
     payload = services.ps_summary(context, command)
     services.write_lines(out, services.render_ps(payload))
@@ -90,6 +96,7 @@ __all__ = [
     'handle_fault_list',
     'handle_kill',
     'handle_logs',
+    'handle_maintenance',
     'handle_ps',
     'handle_reload',
     'handle_restart',

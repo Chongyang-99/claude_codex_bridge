@@ -92,6 +92,7 @@ def test_run_cli_entrypoint_prints_start_help_without_phase2() -> None:
     assert "Primary workflow:" in stdout.getvalue()
     assert "ccb -s" in stdout.getvalue()
     assert "ccb clear [agent...]" in stdout.getvalue()
+    assert "ccb maintenance status Show maintenance heartbeat config and stored status." in stdout.getvalue()
     assert "Core commands:" in stdout.getvalue()
     assert "ccb ask <agent> [from <sender>] <message>" in stdout.getvalue()
     assert "ccb doctor" in stdout.getvalue()
@@ -592,6 +593,26 @@ def test_run_cli_entrypoint_prints_queue_help_with_plain_help_token() -> None:
 
     assert result == 0
     assert "usage: ccb queue [--detail] <agent_name|all>" in stdout.getvalue()
+    assert stderr.getvalue() == ""
+
+
+def test_run_cli_entrypoint_prints_maintenance_help() -> None:
+    stdout = StringIO()
+    stderr = StringIO()
+
+    result = run_cli_entrypoint(
+        ["maintenance", "--help"],
+        version="5.2.8",
+        script_root=Path("/tmp/ccb"),
+        cwd=Path("/tmp/project"),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert result == 0
+    assert "usage: ccb maintenance <status|tick|schedule>" in stdout.getvalue()
+    assert "non-healthy tick may submit one silent ask to the configured assessor" in stdout.getvalue()
+    assert "enable and disable are config-authority in v1" in stdout.getvalue()
     assert stderr.getvalue() == ""
 
 

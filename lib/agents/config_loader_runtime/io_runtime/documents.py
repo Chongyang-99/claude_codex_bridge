@@ -17,7 +17,7 @@ from ..defaults import build_default_project_config
 from ..parsing import validate_project_config
 from ..paths import project_config_path, user_default_config_path
 
-_ALLOWED_HYBRID_TOP_LEVEL_KEYS = {'agents'}
+_ALLOWED_HYBRID_TOP_LEVEL_KEYS = {'agents', 'maintenance'}
 _HYBRID_HEADER_OWNED_AGENT_KEYS = {'provider', 'workspace_mode'}
 
 
@@ -268,10 +268,13 @@ def _merge_hybrid_overlay(
             )
         merged_agents[normalized_name] = _deep_merge_dicts(merged_agents[normalized_name], dict(raw_spec))
 
-    return {
+    merged = {
         **dict(base_document),
         'agents': merged_agents,
     }
+    if 'maintenance' in overlay_document:
+        merged['maintenance'] = overlay_document['maintenance']
+    return merged
 
 
 def _deep_merge_dicts(base: dict[str, object], overlay: dict[str, object]) -> dict[str, object]:

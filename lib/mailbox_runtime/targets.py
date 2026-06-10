@@ -5,7 +5,8 @@ from agents.models import AgentValidationError, normalize_agent_name
 
 CMD_ACTOR = 'cmd'
 USER_ACTOR = 'user'
-NON_MAILBOX_ACTORS = frozenset({USER_ACTOR, 'system', 'manual', 'email'})
+MAINTENANCE_HEARTBEAT_ACTOR = 'maintenance-heartbeat'
+NON_MAILBOX_ACTORS = frozenset({USER_ACTOR, 'system', 'manual', 'email', MAINTENANCE_HEARTBEAT_ACTOR})
 NON_AGENT_ACTORS = frozenset({CMD_ACTOR, *NON_MAILBOX_ACTORS})
 
 
@@ -46,6 +47,7 @@ def normalize_mailbox_target(actor: str | None, *, known_targets: frozenset[str]
 __all__ = [
     'NON_AGENT_ACTORS',
     'NON_MAILBOX_ACTORS',
+    'MAINTENANCE_HEARTBEAT_ACTOR',
     'USER_ACTOR',
     'known_mailbox_targets',
     'normalize_actor_name',

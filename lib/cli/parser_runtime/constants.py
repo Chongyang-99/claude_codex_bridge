@@ -20,6 +20,7 @@ SUBCOMMANDS = {
     'inbox',
     'ack',
     'logs',
+    'maintenance',
     'doctor',
     'repair',
     'config',

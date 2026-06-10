@@ -31,6 +31,7 @@ from cli.services.inbox import inbox_target
 from cli.services.daemon import KillSummary
 from cli.services.kill import kill_project
 from cli.services.logs import agent_logs
+from cli.services.maintenance import maintenance_status
 from cli.services.pend import pend_target
 from cli.services.ping import ping_target
 from cli.services.ps import ps_summary
@@ -144,6 +145,7 @@ def _dispatch_services():
         inbox_target=inbox_target,
         kill_project=kill_project,
         list_fault_rules=list_fault_rules,
+        maintenance_status=maintenance_status,
         pend_target=pend_target,
         ping_target=ping_target,
         ps_summary=ps_summary,

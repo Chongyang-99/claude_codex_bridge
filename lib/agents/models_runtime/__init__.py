@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .config import AgentApiSpec, AgentSpec, ProjectConfig
+from .config import AgentApiSpec, AgentSpec, MaintenanceHeartbeatConfig, ProjectConfig
 from .config_runtime.topology import SidebarSpec, SidebarViewSpec, ToolWindowSpec, WindowSpec
 from provider_profiles.models import ProviderProfileSpec
 
@@ -40,6 +40,7 @@ __all__ = [
     'LayoutNode',
     'ProjectLayoutPlan',
     'LayoutParseError',
+    'MaintenanceHeartbeatConfig',
     'PermissionMode',
     'ProjectConfig',
     'ProviderProfileSpec',

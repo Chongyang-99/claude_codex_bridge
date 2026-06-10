@@ -134,6 +134,32 @@ Out of scope:
 - `default_agents` and CLI `requested_agents` do not redefine long-lived backend ownership.
 - `requested_agents` may affect foreground behavior or warm-start order only.
 
+Maintenance heartbeat startup boundary:
+
+- `[maintenance.heartbeat]` in effective config may request maintenance
+  heartbeat startup ensure when `enabled = true` and `startup_ensure = true`.
+- v1 startup ensure is optional and non-fatal: ordinary `ccb` startup must not
+  fail only because maintenance heartbeat schedule/status files are missing,
+  corrupt, or because a future one-shot maintenance runner cannot be arranged.
+- v1 must not introduce a long-lived supervised maintenance runner under
+  `ccbd`, keeper, or provider context without a separate lifecycle contract.
+- v1 startup may run the same bounded one-shot due tick used by
+  `ccb maintenance tick` after normal daemon startup when heartbeat is enabled,
+  `startup_ensure = true`, and the configured assessor is present. It must
+  respect persisted `schedule.json`; a future `next_run_at` exits as
+  `too_early` without status, schedule, or activation writes.
+- Startup ensure failures are reported in the start summary and heartbeat
+  diagnostics when possible, not raised as hard startup failures.
+- Startup ensure may submit at most one silent ask to the configured assessor
+  through the mounted daemon dispatcher for non-healthy evidence, then return.
+- Maintenance heartbeat status belongs under
+  `.ccb/ccbd/maintenance-heartbeat/` and must not be stored under
+  `.ccb/ccbd/heartbeats/<subject-kind>/`.
+- `ccb kill` and shutdown must not be blocked by maintenance heartbeat
+  schedule/status residue. Future heartbeat locks must use their own stale-lock
+  rules and must not reuse keeper, lease, or startup locks as schedule
+  authority.
+
 ### 5.4 Authority Hierarchy
 
 Authority order must be enforced exactly as follows:

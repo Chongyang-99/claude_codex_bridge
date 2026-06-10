@@ -18,6 +18,7 @@ from cli.render import (
     render_inbox,
     render_kill,
     render_logs,
+    render_maintenance,
     render_mapping,
     render_observer_notice,
     render_pend,
@@ -46,6 +47,7 @@ from cli.services.fault import arm_fault_rule, clear_fault_rule, list_fault_rule
 from cli.services.inbox import inbox_target
 from cli.services.kill import kill_project
 from cli.services.logs import agent_logs
+from cli.services.maintenance import maintenance_status
 from cli.services.pend import pend_target
 from cli.services.ping import ping_target
 from cli.services.ps import ps_summary
@@ -76,6 +78,7 @@ def build_phase2_dispatch_services(**overrides):
         inbox_target=inbox_target,
         kill_project=kill_project,
         list_fault_rules=list_fault_rules,
+        maintenance_status=maintenance_status,
         pend_target=pend_target,
         ping_target=ping_target,
         ps_summary=ps_summary,
@@ -97,6 +100,7 @@ def build_phase2_dispatch_services(**overrides):
         render_inbox=render_inbox,
         render_kill=render_kill,
         render_logs=render_logs,
+        render_maintenance=render_maintenance,
         render_mapping=render_mapping,
         render_observer_notice=render_observer_notice,
         render_pend=render_pend,

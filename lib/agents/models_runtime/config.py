@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .config_runtime import AgentApiSpec, AgentSpec, ProjectConfig
+from .config_runtime import AgentApiSpec, AgentSpec, MaintenanceHeartbeatConfig, ProjectConfig
 
 
-__all__ = ['AgentApiSpec', 'AgentSpec', 'ProjectConfig']
+__all__ = ['AgentApiSpec', 'AgentSpec', 'MaintenanceHeartbeatConfig', 'ProjectConfig']

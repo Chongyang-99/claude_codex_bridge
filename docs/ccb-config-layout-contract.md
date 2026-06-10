@@ -123,7 +123,8 @@ Contract:
   - `cmd_enabled`
   - agent `provider`
   - agent `workspace_mode`
-- The trailing TOML overlay may define only `agents.<name>...` tables.
+- The trailing TOML overlay may define only `agents.<name>...` tables and the
+  project-level `[maintenance.heartbeat]` table.
 - Hybrid overlays must not redefine compact-header-owned agent fields such as:
   - `provider`
   - `workspace_mode`
@@ -135,7 +136,52 @@ Contract:
   - expanding simple overlay cases into full-document TOML is not the preferred
     canonical output
 
-### 4.1.1 Explicit Windows Topology
+### 4.1.1 Maintenance Heartbeat Config
+
+Rich or hybrid `ccb.config` may define project-scoped maintenance heartbeat
+policy:
+
+```toml
+[maintenance.heartbeat]
+enabled = true
+assessor = "ccb_self"
+interval_s = 3600
+min_interval_s = 300
+unknown_streak_cap = 3
+escalation_policy = "report_only"
+startup_ensure = true
+```
+
+Contract:
+
+- `[maintenance.heartbeat]` is CCB runtime policy, not agent layout authority.
+- The table is optional. Defaults are:
+  - `enabled = false`
+  - `assessor = "ccb_self"`
+  - `interval_s = 3600`
+  - `min_interval_s = 300`
+  - `unknown_streak_cap = 3`
+  - `escalation_policy = "report_only"`
+  - `startup_ensure = true`
+- `enabled` and `startup_ensure` are booleans.
+- `assessor` is normalized with the configured-agent name grammar, but config
+  loading does not require that the assessor is currently configured. Missing
+  assessor state is surfaced by heartbeat status/diagnostics.
+- `interval_s`, `min_interval_s`, and `unknown_streak_cap` are positive
+  integers. `min_interval_s` must not exceed `interval_s`.
+- v1 accepted escalation policies are `report_only` and `ask_user`.
+- `ccb maintenance status` may read and report this policy.
+- `ccb maintenance tick` may use this policy to run a bounded one-shot
+  diagnosis, write maintenance heartbeat status/schedule/activation state when
+  enabled, and submit at most one silent ask to the configured assessor for
+  non-healthy evidence.
+- `ccb maintenance schedule --after <duration> [--reason <text>]` may write
+  only the CCB-owned next heartbeat schedule. Requested delays shorter than
+  `min_interval_s` are raised to `min_interval_s`.
+- `ccb maintenance enable` and `disable` must not edit `.ccb/ccb.config` until
+  config editing policy is defined before those commands mutate behavior.
+
+### 4.1.2 Explicit Windows Topology
 
 Rich TOML may declare named project windows through `[windows]`:
 

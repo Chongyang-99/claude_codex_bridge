@@ -7,6 +7,7 @@ from ccbd.lifecycle_report_store import CcbdStartupReportStore
 
 from .daemon import ensure_daemon_started
 from .daemon_runtime.policy import STARTUP_TRANSACTION_TIMEOUT_S
+from .maintenance import startup_ensure_maintenance_heartbeat
 from .start_runtime import StartSummary, start_agents as _start_agents_impl
 from .tmux_project_cleanup import ProjectTmuxCleanupSummary
 from workspace.reconcile import format_workspace_blockers, reconcile_start_workspaces
@@ -18,7 +19,7 @@ def start_agents(
     *,
     terminal_size: tuple[int, int] | None = None,
 ) -> StartSummary:
-    return _start_agents_impl(
+    summary = _start_agents_impl(
         context,
         command,
         terminal_size=terminal_size,
@@ -29,6 +30,10 @@ def start_agents(
         enrich_summary_fn=_merge_workspace_guard_summary,
         start_rpc_timeout_s=STARTUP_TRANSACTION_TIMEOUT_S,
     )
+    heartbeat_summary = startup_ensure_maintenance_heartbeat(context)
+    if heartbeat_summary is None:
+        return summary
+    return replace(summary, maintenance_heartbeat=heartbeat_summary)
 
 
 def _reconcile_start_workspaces(context):

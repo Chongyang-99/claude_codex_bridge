@@ -22,6 +22,7 @@ ALLOWED_TOP_LEVEL_KEYS = {
     'windows',
     'tool_windows',
     'entry_window',
+    'maintenance',
 }
 ALLOWED_PROVIDER_PROFILE_KEYS = {
     'mode',

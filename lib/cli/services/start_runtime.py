@@ -13,6 +13,7 @@ class StartSummary:
     cleanup_summaries: tuple[object, ...] = ()
     worktree_warnings: tuple[object, ...] = ()
     worktree_retired: tuple[object, ...] = ()
+    maintenance_heartbeat: dict | None = None
 
 
 def start_agents(

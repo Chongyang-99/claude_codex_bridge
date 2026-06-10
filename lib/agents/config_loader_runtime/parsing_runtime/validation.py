@@ -5,12 +5,31 @@ from pathlib import Path
 from typing import Any
 
 from agents.config_loader_runtime.role_lookup import RoleLookupError, installed_role_default_agent_name, looks_like_role_id, normalize_role_id
-from agents.models import AgentValidationError, LayoutLeaf, LayoutNode, ProjectConfig, normalize_agent_name, parse_layout_spec
+from agents.models import (
+    AgentValidationError,
+    LayoutLeaf,
+    LayoutNode,
+    MaintenanceHeartbeatConfig,
+    ProjectConfig,
+    normalize_agent_name,
+    parse_layout_spec,
+)
 
 from ..common import ALLOWED_TOP_LEVEL_KEYS, CONFIG_FILENAME, ConfigValidationError
 from .agent_specs import parse_agents
-from .expectations import expect_bool, expect_string, expect_string_list
+from .expectations import expect_bool, expect_mapping, expect_string, expect_string_list
 from .topology import agents_from_topology_windows, parse_sidebar, parse_sidebar_view, parse_tool_windows, parse_topology_windows
+
+_MAINTENANCE_TOP_LEVEL_KEYS = {'heartbeat'}
+_MAINTENANCE_HEARTBEAT_KEYS = {
+    'enabled',
+    'assessor',
+    'interval_s',
+    'min_interval_s',
+    'unknown_streak_cap',
+    'escalation_policy',
+    'startup_ensure',
+}
 
 
 def validate_project_config(
@@ -37,6 +56,7 @@ def validate_project_config(
     layout_spec = _parse_layout_spec(document)
     sidebar = parse_sidebar(document.get('ui'))
     sidebar_view = parse_sidebar_view(document.get('ui'))
+    maintenance_heartbeat = _parse_maintenance_heartbeat(document)
     entry_window = _parse_entry_window(document)
     _validate_legacy_and_windows_fields(document, windows=windows, tool_windows=tool_windows)
     return _build_project_config(
@@ -49,6 +69,7 @@ def validate_project_config(
         entry_window=entry_window,
         sidebar=sidebar,
         sidebar_view=sidebar_view,
+        maintenance_heartbeat=maintenance_heartbeat,
         source_path=source_path,
     )
 
@@ -101,6 +122,65 @@ def _parse_entry_window(document: dict[str, Any]) -> str | None:
     return expect_string(document['entry_window'], field_name='entry_window')
 
 
+def _parse_maintenance_heartbeat(document: dict[str, Any]) -> MaintenanceHeartbeatConfig:
+    raw_maintenance = document.get('maintenance')
+    if raw_maintenance is None:
+        return MaintenanceHeartbeatConfig()
+    maintenance = expect_mapping(raw_maintenance, field_name='maintenance')
+    unknown_top = sorted(set(maintenance) - _MAINTENANCE_TOP_LEVEL_KEYS)
+    if unknown_top:
+        raise ConfigValidationError(
+            f'maintenance contains unknown fields: {", ".join(unknown_top)}'
+        )
+    raw_heartbeat = maintenance.get('heartbeat')
+    if raw_heartbeat is None:
+        return MaintenanceHeartbeatConfig()
+    heartbeat = expect_mapping(raw_heartbeat, field_name='maintenance.heartbeat')
+    unknown_heartbeat = sorted(set(heartbeat) - _MAINTENANCE_HEARTBEAT_KEYS)
+    if unknown_heartbeat:
+        raise ConfigValidationError(
+            'maintenance.heartbeat contains unknown fields: '
+            + ', '.join(unknown_heartbeat)
+        )
+    try:
+        return MaintenanceHeartbeatConfig(
+            enabled=_optional_bool(heartbeat, 'enabled', default=False),
+            assessor=_optional_string(heartbeat, 'assessor', default='ccb_self'),
+            interval_s=_optional_positive_int(heartbeat, 'interval_s', default=3600),
+            min_interval_s=_optional_positive_int(heartbeat, 'min_interval_s', default=300),
+            unknown_streak_cap=_optional_positive_int(heartbeat, 'unknown_streak_cap', default=3),
+            escalation_policy=_optional_string(heartbeat, 'escalation_policy', default='report_only'),
+            startup_ensure=_optional_bool(heartbeat, 'startup_ensure', default=True),
+        )
+    except AgentValidationError as exc:
+        raise ConfigValidationError(str(exc)) from exc
+
+
+def _optional_bool(table: dict[str, Any], key: str, *, default: bool) -> bool:
+    if key not in table:
+        return bool(default)
+    return expect_bool(table[key], field_name=f'maintenance.heartbeat.{key}')
+
+
+def _optional_string(table: dict[str, Any], key: str, *, default: str) -> str:
+    if key not in table:
+        return default
+    return expect_string(table[key], field_name=f'maintenance.heartbeat.{key}')
+
+
+def _optional_positive_int(table: dict[str, Any], key: str, *, default: int) -> int:
+    if key not in table:
+        return int(default)
+    value = table[key]
+    if isinstance(value, bool):
+        raise ConfigValidationError(f'maintenance.heartbeat.{key} must be a positive integer')
+    if not isinstance(value, int):
+        raise ConfigValidationError(f'maintenance.heartbeat.{key} must be a positive integer')
+    if value <= 0:
+        raise ConfigValidationError(f'maintenance.heartbeat.{key} must be a positive integer')
+    return int(value)
+
+
 def _validate_legacy_and_windows_fields(
     document: dict[str, Any],
     *,
@@ -137,6 +217,7 @@ def _build_project_config(
     entry_window: str | None,
     sidebar,
     sidebar_view,
+    maintenance_heartbeat: MaintenanceHeartbeatConfig,
     source_path: Path | None,
 ) -> ProjectConfig:
     try:
@@ -151,6 +232,7 @@ def _build_project_config(
             entry_window=entry_window,
             sidebar=sidebar,
             sidebar_view=sidebar_view,
+            maintenance_heartbeat=maintenance_heartbeat,
             source_path=str(source_path) if source_path else None,
             windows_explicit=windows is not None,
         )

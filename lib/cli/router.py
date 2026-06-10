@@ -66,6 +66,8 @@ def print_start_help(*, file=None) -> None:
               ccb restart <agent> Restart one idle configured agent pane through ccbd.
               ccb reload            Apply a safe additive config reload, or reject with diagnostics.
               ccb reload --dry-run  Validate and plan config reload without mutation.
+              ccb maintenance status Show maintenance heartbeat config and stored status.
+              ccb maintenance tick   Run one maintenance heartbeat diagnosis tick.
               ccb kill             Stop the current project's background runtime.
               ccb kill -f          Force cleanup project-owned runtime residue.
               ccb cleanup          Prune safe provider rebuildable caches after ccbd is stopped.
@@ -273,6 +275,22 @@ _COMMAND_HELP = {
           - Target authority comes from the current mounted daemon graph.
           - Refuses when the agent is busy, queued, delivering a reply, or waiting on callback continuation.
           - Does not support `restart all`, window-level restart, or raw tmux mutation.
+    """,
+    "maintenance": """
+        usage: ccb maintenance <status|tick|schedule>
+
+        Maintenance heartbeat diagnostics:
+          ccb maintenance status   Show configured heartbeat policy plus stored schedule/status state.
+          ccb maintenance tick     Run one diagnosis tick, update heartbeat status/schedule when enabled.
+          ccb maintenance schedule --after 5m [--reason TEXT]
+                                   Schedule the next heartbeat follow-up.
+
+        Safety:
+          - tick reads ccbd/project-view evidence and may write only maintenance-heartbeat status/schedule/activation records.
+          - non-healthy tick may submit one silent ask to the configured assessor, default ccb_self.
+          - tick does not run repairs or start providers.
+          - enable and disable are config-authority in v1; edit [maintenance.heartbeat].enabled.
+          - Status reads `.ccb/ccbd/maintenance-heartbeat/`, not `.ccb/ccbd/heartbeats/`.
     """,
     "doctor": """
         usage: ccb doctor [ps|logs <agent>|storage] [--output [PATH]]

@@ -30,6 +30,17 @@ def render_start(summary) -> tuple[str, ...]:
         f'socket_path: {summary.socket_path}',
         f'agents: {", ".join(summary.started)}',
     ]
+    heartbeat = getattr(summary, 'maintenance_heartbeat', None)
+    if isinstance(heartbeat, Mapping):
+        lines.append(
+            'maintenance_heartbeat: '
+            f'status={heartbeat.get("maintenance_status")} '
+            f'action={heartbeat.get("action")} '
+            f'tick_status={heartbeat.get("tick_status")}'
+        )
+        reason = str(heartbeat.get('reason') or '').strip()
+        if reason:
+            lines.append(f'maintenance_heartbeat_reason: {reason}')
     lines.extend(render_tmux_cleanup_summaries(getattr(summary, 'cleanup_summaries', ()) or ()))
     return tuple(lines)
 
@@ -164,6 +175,167 @@ def render_restart(summary) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def render_maintenance(payload) -> tuple[str, ...]:
+    data = payload if isinstance(payload, Mapping) else {}
+    status = str(data.get('maintenance_status') or 'unknown')
+    lines = [f'maintenance_status: {status}']
+    action = str(data.get('action') or '').strip()
+    if action:
+        lines.append(f'action: {action}')
+    reason = str(data.get('reason') or '').strip()
+    if reason:
+        lines.append(f'reason: {reason}')
+    if status == 'not_implemented':
+        return tuple(lines)
+    tick_status = str(data.get('tick_status') or '').strip()
+    if tick_status:
+        lines.extend(
+            [
+                f'tick_status: {tick_status}',
+                f'tick_source_kind: {data.get("tick_source_kind")}',
+                f'tick_recommended_action: {data.get("tick_recommended_action")}',
+                f'tick_needs_user: {_render_value(data.get("tick_needs_user"))}',
+                f'tick_next_heartbeat_after_s: {_render_optional(data.get("tick_next_heartbeat_after_s"))}',
+                f'status_written: {_render_value(data.get("status_written"))}',
+                f'schedule_written: {_render_value(data.get("schedule_written"))}',
+                f'activation_written: {_render_value(data.get("activation_written"))}',
+                f'tick_activation_status: {_render_optional(data.get("tick_activation_status"))}',
+                f'tick_activation_id: {_render_optional(data.get("tick_activation_id"))}',
+                f'tick_activation_job_id: {_render_optional(data.get("tick_activation_job_id"))}',
+            ]
+        )
+        summary = data.get('tick_summary')
+        if isinstance(summary, Mapping):
+            lines.extend(_maintenance_summary_lines('tick_summary', summary))
+        evidence = data.get('tick_evidence')
+        if isinstance(evidence, (list, tuple)):
+            lines.append(f'tick_evidence_count: {len(evidence)}')
+            for item in evidence[:5]:
+                if isinstance(item, Mapping):
+                    lines.append(_maintenance_evidence_line('tick_evidence', item))
+
+    lines.extend(
+        [
+            f'project: {data.get("project")}',
+            f'project_id: {data.get("project_id")}',
+            f'config_source_kind: {data.get("config_source_kind")}',
+            f'config_source: {data.get("config_source") or "<builtin>"}',
+            f'heartbeat_enabled: {_render_value(data.get("enabled"))}',
+            f'heartbeat_assessor: {data.get("assessor")}',
+            f'heartbeat_assessor_present: {_render_value(data.get("assessor_present"))}',
+            f'heartbeat_interval_s: {data.get("interval_s")}',
+            f'heartbeat_min_interval_s: {data.get("min_interval_s")}',
+            f'heartbeat_unknown_streak_cap: {data.get("unknown_streak_cap")}',
+            f'heartbeat_escalation_policy: {data.get("escalation_policy")}',
+            f'heartbeat_startup_ensure: {_render_value(data.get("startup_ensure"))}',
+        ]
+    )
+    schedule = data.get('schedule')
+    if isinstance(schedule, Mapping):
+        lines.extend(_maintenance_record_lines('schedule', schedule))
+    last_status = data.get('last_status')
+    if isinstance(last_status, Mapping):
+        lines.extend(_maintenance_record_lines('last_status', last_status))
+    last_activation = data.get('last_activation')
+    if isinstance(last_activation, Mapping):
+        lines.extend(_maintenance_record_lines('last_activation', last_activation))
+    return tuple(lines)
+
+
+def _maintenance_record_lines(prefix: str, payload: Mapping[str, object]) -> list[str]:
+    lines = [
+        f'{prefix}_state: {payload.get("state")}',
+        f'{prefix}_path: {payload.get("path")}',
+    ]
+    error = str(payload.get('error') or '').strip()
+    if error:
+        lines.append(f'{prefix}_error: {error}')
+    record = payload.get('record')
+    if isinstance(record, Mapping):
+        for key in (
+            'next_run_at',
+            'reason',
+            'updated_at',
+            'updated_by',
+            'last_tick_status',
+            'last_tick_at',
+            'last_ok_at',
+            'last_error',
+            'unknown_streak',
+            'source_kind',
+            'recommended_action',
+            'next_heartbeat_after_s',
+            'needs_user',
+            'last_activation_status',
+            'last_activation_id',
+            'last_activation_job_id',
+            'last_activation_target',
+            'last_activation_dedup_key',
+            'activation_id',
+            'status',
+            'condition_kind',
+            'trigger_kind',
+            'source',
+            'observed_at',
+            'target_agent',
+            'delivery_mode',
+            'payload_kind',
+            'dedup_key',
+            'job_id',
+            'submitted_at',
+            'suppressed_reason',
+            'repeat_count',
+        ):
+            if key in record:
+                lines.append(f'{prefix}_{key}: {_render_value(record.get(key))}')
+        summary = record.get('summary')
+        if isinstance(summary, Mapping):
+            lines.extend(_maintenance_summary_lines(f'{prefix}_summary', summary))
+        evidence = record.get('evidence')
+        if isinstance(evidence, (list, tuple)):
+            lines.append(f'{prefix}_evidence_count: {len(evidence)}')
+    return lines
+
+
+def _maintenance_summary_lines(prefix: str, payload: Mapping[str, object]) -> list[str]:
+    lines: list[str] = []
+    for key in (
+        'source_kind',
+        'ccbd_state',
+        'agent_count',
+        'active_agent_count',
+        'pending_agent_count',
+        'idle_agent_count',
+        'offline_agent_count',
+        'failed_agent_count',
+        'concern_agent_count',
+        'unknown_agent_count',
+        'comms_count',
+        'active_comms_count',
+        'concern_comms_count',
+        'failing_comms_count',
+        'fallback_error',
+    ):
+        if key in payload:
+            lines.append(f'{prefix}_{key}: {_render_value(payload.get(key))}')
+    return lines
+
+
+def _maintenance_evidence_line(prefix: str, payload: Mapping[str, object]) -> str:
+    parts = [f'{prefix}:']
+    for key in ('health', 'kind', 'agent', 'job_id', 'target', 'reason', 'source', 'status', 'ccbd_state'):
+        value = payload.get(key)
+        if value is not None and value != '':
+            parts.append(f'{key}={value}')
+    return ' '.join(parts)
+
+
+def _render_optional(value: object) -> str:
+    if value is None:
+        return '<none>'
+    return _render_value(value)
+
+
 def _restart_busy_gate_line(gate: Mapping[str, object]) -> str:
     fields = {
         'passed': str(bool(gate.get('passed'))).lower(),
@@ -238,6 +410,7 @@ __all__ = [
     'render_doctor_bundle',
     'render_kill',
     'render_logs',
+    'render_maintenance',
     'render_ps',
     'render_restart',
     'render_start',

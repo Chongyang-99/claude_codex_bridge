@@ -168,6 +168,26 @@ class CcbdOpsPathMixin:
         return self.ccbd_dir / 'tmux-cleanup-history.jsonl'
 
     @property
+    def ccbd_maintenance_heartbeat_dir(self):
+        return self.ccbd_dir / 'maintenance-heartbeat'
+
+    @property
+    def ccbd_maintenance_heartbeat_schedule_path(self):
+        return self.ccbd_maintenance_heartbeat_dir / 'schedule.json'
+
+    @property
+    def ccbd_maintenance_heartbeat_status_path(self):
+        return self.ccbd_maintenance_heartbeat_dir / 'status.json'
+
+    @property
+    def ccbd_maintenance_heartbeat_lock_path(self):
+        return self.ccbd_maintenance_heartbeat_dir / 'lock.json'
+
+    @property
+    def ccbd_maintenance_heartbeat_activations_path(self):
+        return self.ccbd_maintenance_heartbeat_dir / 'activations.jsonl'
+
+    @property
     def ccbd_fault_injection_path(self):
         return self.ccbd_dir / 'fault-injection.json'
 

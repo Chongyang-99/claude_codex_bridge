@@ -154,6 +154,43 @@ def test_start_agents_uses_startup_transaction_timeout_for_start_rpc(tmp_path: P
     assert summary.started == ('demo',)
 
 
+def test_start_agents_attaches_maintenance_heartbeat_startup_summary(tmp_path: Path, monkeypatch) -> None:
+    project_root = tmp_path / 'repo-start-heartbeat'
+    (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
+    (project_root / '.ccb' / 'ccb.config').write_text('demo:codex\n', encoding='utf-8')
+    bootstrap_project(project_root)
+    command = ParsedStartCommand(project=None, agent_names=('demo',), restore=False, auto_permission=False)
+    context = CliContextBuilder().build(command, cwd=project_root, bootstrap_if_missing=False)
+
+    class _FakeClient:
+        def start(self, **kwargs):
+            del kwargs
+            return {
+                'project_root': str(project_root),
+                'project_id': context.project.project_id,
+                'started': ['demo'],
+                'socket_path': str(context.paths.ccbd_socket_path),
+                'cleanup_summaries': [],
+            }
+
+    monkeypatch.setattr(
+        'cli.services.start.ensure_daemon_started',
+        lambda context: SimpleNamespace(client=_FakeClient(), started=False),
+    )
+    monkeypatch.setattr(
+        'cli.services.start.startup_ensure_maintenance_heartbeat',
+        lambda context: {'maintenance_status': 'ok', 'action': 'tick', 'tick_status': 'healthy'},
+    )
+
+    summary = start_agents(context, command)
+
+    assert summary.maintenance_heartbeat == {
+        'maintenance_status': 'ok',
+        'action': 'tick',
+        'tick_status': 'healthy',
+    }
+
+
 def test_start_agents_parses_cleanup_summaries_from_ccbd_payload(tmp_path: Path, monkeypatch) -> None:
     project_root = tmp_path / 'repo-start-cleanup'
     (project_root / '.ccb').mkdir(parents=True, exist_ok=True)
