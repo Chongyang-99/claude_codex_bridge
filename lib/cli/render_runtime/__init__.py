@@ -22,6 +22,7 @@ from .ops_views import (
     render_logs,
     render_ps,
     render_reload,
+    render_restart,
     render_start,
 )
 
@@ -46,6 +47,7 @@ __all__ = [
     'render_pend',
     'render_ps',
     'render_reload',
+    'render_restart',
     'render_queue',
     'render_resubmit',
     'render_retry',

@@ -8,6 +8,7 @@ from .ops_views_basic import (
     render_kill,
     render_logs,
     render_ps,
+    render_restart,
     render_start,
 )
 from .ops_views_doctor import render_doctor, render_doctor_storage
@@ -25,5 +26,6 @@ __all__ = [
     'render_logs',
     'render_ps',
     'render_reload',
+    'render_restart',
     'render_start',
 ]

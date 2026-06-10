@@ -36,6 +36,8 @@ to resume across agents and sessions.
 | [provider-memory-ownership](plans/provider-memory-ownership/README.md) | In progress | Replace ad hoc provider memory bundling with a source ownership manifest across Claude, Codex, and OpenCode. |
 | [agent-roles-open-source](plans/agent-roles-open-source/README.md) | Planning | Plan the public `agent-roles` GitHub project as a spec-first RolePack standard with templates, reference roles, and future host adapters. |
 | [install-update-stability](plans/install-update-stability/README.md) | Planning | Make fresh install, managed update, dependency provisioning, Role Pack refresh, and bilingual user output stable across supported environments. |
+| [source-runtime-isolation](plans/source-runtime-isolation/README.md) | Planning | Keep source editing, source-under-test validation, and installed-release work environments isolated from each other. |
+| [ccb-self-role](plans/ccb-self-role/README.md) | Planning | Design the `agentroles.ccb_self` maintenance role, its broad skills, CCB/tmux diagnostics tools, and self-contained recovery boundaries. |
 | [workspace-sharing](plans/workspace-sharing/README.md) | In progress | Add explicit external workspace paths and internal shared worktree groups without changing default per-agent worktree behavior. |
 | [ask-parameter-policy](plans/ask-parameter-policy/README.md) | Planning | Clarify how ask skills choose silence, compact, callback, and artifact flags from result intent, dependency, and content-preservation needs. |
 

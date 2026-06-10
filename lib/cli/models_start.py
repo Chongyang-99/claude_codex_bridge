@@ -28,6 +28,13 @@ class ParsedClearCommand:
 
 
 @dataclass(frozen=True)
+class ParsedRestartCommand:
+    project: str | None
+    agent_name: str
+    kind: str = 'restart'
+
+
+@dataclass(frozen=True)
 class ParsedCleanupCommand:
     project: str | None
     kind: str = 'cleanup'
@@ -87,5 +94,6 @@ __all__ = [
     'ParsedPingCommand',
     'ParsedPsCommand',
     'ParsedReloadCommand',
+    'ParsedRestartCommand',
     'ParsedStartCommand',
 ]

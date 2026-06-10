@@ -209,8 +209,8 @@ Unit tests:
   - Assert each provider's rendered bundle has one runtime coordination section
     and the expected source ownership composition.
 - `test/test_provider_memory_external_context.py`
-  - Opt-in final inspection for a real external test project such as
-    `/home/bfly/yunwei/test_ccb2`.
+  - Opt-in final inspection for the dedicated real external source-test
+    project `/home/bfly/yunwei/test_ccb2`.
   - Default skip unless `CCB_REAL_PROJECT_MEMORY_CHECK=1` is set.
 - `test/test_provider_core_memory_projection.py`
   - Provider-user-memory filtering metadata in projection results/events.
@@ -227,8 +227,10 @@ Unit tests:
 
 External runtime validation:
 
-- Use `ccb_test` only from an external test project such as
-  `/home/bfly/yunwei/test_ccb2`.
+- Use `/home/bfly/yunwei/ccb_source/ccb_test` only from the dedicated external
+  source-test project `/home/bfly/yunwei/test_ccb2`, unless another external
+  project is explicitly allowed with `CCB_TEST_ROOTS` or
+  `CCB_SOURCE_ALLOWED_ROOTS`.
 - Validate managed Claude, Codex, and OpenCode startup bundles after the unit
   tests pass.
 - After generated files exist, run the opt-in external context check:

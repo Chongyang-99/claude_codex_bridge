@@ -23,6 +23,7 @@ from cli.render import (
     render_pend,
     render_ps,
     render_reload,
+    render_restart,
     render_queue,
     render_resubmit,
     render_retry,
@@ -50,6 +51,7 @@ from cli.services.ping import ping_target
 from cli.services.ps import ps_summary
 from cli.services.queue import queue_target
 from cli.services.reload import reload_config
+from cli.services.restart import restart_agent
 from cli.services.resubmit import resubmit_message
 from cli.services.retry import retry_attempt
 from cli.services.start import start_agents
@@ -79,6 +81,7 @@ def build_phase2_dispatch_services(**overrides):
         ps_summary=ps_summary,
         queue_target=queue_target,
         reload_config=reload_config,
+        restart_agent=restart_agent,
         render_ack=render_ack,
         render_ask=render_ask,
         render_cancel=render_cancel,
@@ -99,6 +102,7 @@ def build_phase2_dispatch_services(**overrides):
         render_pend=render_pend,
         render_ps=render_ps,
         render_reload=render_reload,
+        render_restart=render_restart,
         render_queue=render_queue,
         render_resubmit=render_resubmit,
         render_retry=render_retry,

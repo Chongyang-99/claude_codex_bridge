@@ -16,6 +16,10 @@ SCRIPT_ROOT = Path(__file__).resolve().parent
 SOURCE_CCB = SCRIPT_ROOT / "ccb"
 
 
+def _is_diagnose(argv: list[str]) -> bool:
+    return bool(argv) and argv[0] in {"--diagnose", "diagnose"}
+
+
 def _is_safe_introspection(argv: list[str]) -> bool:
     if not argv:
         return False
@@ -64,20 +68,14 @@ def _split_roots(value: str) -> list[Path]:
 
 def _default_test_roots() -> list[Path]:
     parent = SCRIPT_ROOT.parent
-    return [
-        parent / "test_ccb2",
-        parent / "test_ccb",
-        parent / "ccb_test2",
-    ]
+    return [parent / "test_ccb2"]
 
 
-def _allowed_roots(cwd: Path, project_paths: list[Path]) -> list[Path]:
+def _allowed_roots() -> list[Path]:
     roots: list[Path] = []
     roots.extend(_split_roots(os.environ.get("CCB_TEST_ROOTS", "")))
     roots.extend(_split_roots(os.environ.get("CCB_SOURCE_ALLOWED_ROOTS", "")))
     roots.extend(_default_test_roots())
-    roots.append(cwd)
-    roots.extend(project_paths)
 
     unique: list[Path] = []
     seen: set[str] = set()
@@ -92,6 +90,41 @@ def _allowed_roots(cwd: Path, project_paths: list[Path]) -> list[Path]:
     return unique
 
 
+def _render_paths(paths: list[Path]) -> str:
+    return os.pathsep.join(str(path) for path in paths) if paths else "<none>"
+
+
+def _diagnose(argv: list[str], cwd: Path) -> int:
+    diagnose_args = argv[1:] if _is_diagnose(argv) else argv
+    project_paths = _project_arg_paths(diagnose_args, cwd)
+    default_roots = _default_test_roots()
+    explicit_test_roots = _split_roots(os.environ.get("CCB_TEST_ROOTS", ""))
+    explicit_source_roots = _split_roots(os.environ.get("CCB_SOURCE_ALLOWED_ROOTS", ""))
+    effective_roots = _allowed_roots()
+    check_paths = project_paths if project_paths else [cwd]
+    source_checkout_cwd = _path_is_under(cwd, SCRIPT_ROOT)
+    project_inside_source = any(_path_is_under(path, SCRIPT_ROOT) for path in project_paths)
+    paths_allowed = all(
+        any(_path_is_under(path, root) for root in effective_roots)
+        for path in check_paths
+    )
+    allowed = paths_allowed and not source_checkout_cwd and not project_inside_source
+
+    print(f"wrapper: {Path(__file__).resolve()}")
+    print(f"source_ccb: {SOURCE_CCB}")
+    print(f"cwd: {cwd}")
+    print(f"project_paths: {_render_paths(project_paths)}")
+    print(f"default_roots: {_render_paths(default_roots)}")
+    print(f"env_CCB_TEST_ROOTS: {_render_paths(explicit_test_roots)}")
+    print(f"env_CCB_SOURCE_ALLOWED_ROOTS: {_render_paths(explicit_source_roots)}")
+    print(f"effective_roots: {_render_paths(effective_roots)}")
+    print(f"checked_paths: {_render_paths(check_paths)}")
+    print(f"source_checkout_cwd: {'yes' if source_checkout_cwd else 'no'}")
+    print(f"project_inside_source: {'yes' if project_inside_source else 'no'}")
+    print(f"allowed_source_test_project: {'yes' if allowed else 'no'}")
+    return 0
+
+
 def _reject(message: str) -> int:
     print(message, file=sys.stderr)
     return 1
@@ -102,12 +135,13 @@ def _preflight(argv: list[str], cwd: Path) -> tuple[bool, str, list[Path]]:
         return True, "", []
 
     project_paths = _project_arg_paths(argv, cwd)
+    allowed_roots = _allowed_roots()
     if _path_is_under(cwd, SCRIPT_ROOT):
         return (
             False,
             "Refusing to run `ccb_test` from the CCB source checkout.\n"
             "Run source validation from an external test project, for example:\n"
-            "  cd /home/bfly/yunwei/test_ccb2 && ccb_test config validate",
+            "  cd /home/bfly/yunwei/test_ccb2 && /home/bfly/yunwei/ccb_source/ccb_test config validate",
             project_paths,
         )
     for project_path in project_paths:
@@ -115,7 +149,23 @@ def _preflight(argv: list[str], cwd: Path) -> tuple[bool, str, list[Path]]:
             return (
                 False,
                 "Refusing to run `ccb_test` against a project inside the CCB source checkout.\n"
-                "Use an external test project such as /home/bfly/yunwei/test_ccb2.",
+                "Use the dedicated external test project /home/bfly/yunwei/test_ccb2, "
+                "or set CCB_TEST_ROOTS/CCB_SOURCE_ALLOWED_ROOTS for an explicit external test project.",
+                project_paths,
+            )
+    check_paths = project_paths if project_paths else [cwd]
+    for path in check_paths:
+        if not any(_path_is_under(path, root) for root in allowed_roots):
+            rendered = ", ".join(str(root) for root in allowed_roots)
+            return (
+                False,
+                "Refusing to run `ccb_test` outside an allowed source-test project.\n"
+                "Run source validation from the dedicated test project, for example:\n"
+                "  cd /home/bfly/yunwei/test_ccb2 && /home/bfly/yunwei/ccb_source/ccb_test config validate\n"
+                f"Current directory: {cwd}\n"
+                f"Checked project path: {path}\n"
+                f"Allowed source-test roots: {rendered}\n"
+                "Set CCB_TEST_ROOTS or CCB_SOURCE_ALLOWED_ROOTS only for explicit external test projects.",
                 project_paths,
             )
     return True, "", project_paths
@@ -124,12 +174,15 @@ def _preflight(argv: list[str], cwd: Path) -> tuple[bool, str, list[Path]]:
 def main() -> int:
     argv = sys.argv[1:]
     cwd = Path.cwd()
+    if _is_diagnose(argv):
+        return _diagnose(argv, cwd)
+
     ok, reason, project_paths = _preflight(argv, cwd)
     if not ok:
         return _reject(reason)
 
     env = dict(os.environ)
-    roots = _allowed_roots(cwd, project_paths)
+    roots = _allowed_roots()
     env["CCB_SOURCE_ALLOWED_ROOTS"] = os.pathsep.join(str(root) for root in roots)
     env["CCB_TEST_ENTRYPOINT"] = "1"
     env.setdefault("CCB_SKIP_STARTUP_UPDATE_CHECK", "1")

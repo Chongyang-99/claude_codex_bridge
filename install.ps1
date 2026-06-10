@@ -628,7 +628,7 @@ function Install-CodexSkills {
 
   Remove-Item -Recurse -Force (Join-Path $skillsDst "ccb_config") -ErrorAction SilentlyContinue
 
-  $legacySkills = @("ping", "pend", "autonew", "all-plan", "file-op")
+  $legacySkills = @("ccb-config", "ping", "pend", "autonew", "all-plan", "file-op")
   foreach ($skill in $legacySkills) {
     Remove-Item -Recurse -Force (Join-Path $skillsDst $skill) -ErrorAction SilentlyContinue
   }
@@ -778,7 +778,7 @@ function Install-ClaudeConfig {
 
     Remove-Item -Recurse -Force (Join-Path $skillsDir "ccb_config") -ErrorAction SilentlyContinue
 
-    $legacySkills = @("ping", "pend", "autonew", "all-plan", "docs", "tp", "tr", "file-op", "review", "continue")
+    $legacySkills = @("ccb-config", "ping", "pend", "autonew", "all-plan", "docs", "tp", "tr", "file-op", "review", "continue")
     foreach ($skill in $legacySkills) {
       Remove-Item -Recurse -Force (Join-Path $skillsDir $skill) -ErrorAction SilentlyContinue
     }

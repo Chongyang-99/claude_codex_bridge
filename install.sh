@@ -2011,7 +2011,7 @@ install_claude_skills() {
 
   # Clean up legacy wrapper/provider skills silently; only current inherited
   # skills should appear in install output.
-  local legacy_skills="bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping auto ping pend autonew all-plan docs tp tr file-op review continue"
+  local legacy_skills="ccb-config bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping auto ping pend autonew all-plan docs tp tr file-op review continue"
   for legacy_skill in $legacy_skills; do
     rm -rf "$skills_dst/$legacy_skill"
   done
@@ -2052,7 +2052,7 @@ install_codex_skills() {
 
   # Clean up legacy wrapper/provider skills silently; only current inherited
   # skills should appear in install output.
-  local legacy_skills="bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping ping pend autonew all-plan file-op"
+  local legacy_skills="ccb-config bask bpend bping cask cpend cping dask dpend dping gask gpend gping hask hpend hping lask lpend lping mounted oask opend oping qask qpend qping ping pend autonew all-plan file-op"
   for legacy_skill in $legacy_skills; do
     rm -rf "$skills_dst/$legacy_skill"
   done

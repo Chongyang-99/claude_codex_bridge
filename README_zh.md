@@ -156,7 +156,7 @@ tips_height = "35%"
 comms_limit = 3
 ```
 
-如果你不确定应该如何分组、要几个 worker、哪些 agent 用 worktree、哪些 agent 需要独立模型或 API，可以先让支持 skill 的 agent 使用 `ccb-config` 和你讨论并生成配置方案。
+如果你不确定应该如何分组、要几个 worker、哪些 agent 用 worktree、哪些 agent 需要独立模型或 API，可以先添加 `agentroles.ccb_self`，再让 `ccb_self` 使用它内置的 `ccb-config` 和你讨论并生成配置方案。
 
 验证配置：
 
@@ -260,7 +260,7 @@ CCB 配置有三层，优先级从低到高：
 
 在已启动的项目里修改 `.ccb/ccb.config` 后，先运行 `ccb reload --dry-run` 预览计划，再运行 `ccb reload` 应用。显式 reload 可以动态新增 agent、新增 window、新增/删除托管工具 window、卸载 idle agent、删除 idle window，同时保持无关 agent 和 pane 继续运行。它不是后台文件监听；busy agent 卸载、provider 替换、agent 移动、工具命令替换和任意布局重排会被拒绝，不会 kill 现有 pane。
 
-如果你想先讨论配置而不是手写，可以直接用 `ccb-config` skill 描述目标团队。它会先提出完整方案，确认后再修改 `.ccb/ccb.config`。
+如果你想先讨论配置而不是手写，可以添加 `agentroles.ccb_self`，再让 `ccb_self` 描述目标团队。它的内置 `ccb-config` skill 会先提出完整方案，确认后再修改 `.ccb/ccb.config`。
 
 ### Role Packs
 
@@ -376,26 +376,31 @@ model = "sonnet"
 
 </details>
 
-## 使用 ccb-config skill 配置
+## 使用 ccb_self 配置 CCB
 
-如果你不想手写 `.ccb/ccb.config`，可以让支持 skill 的 agent 使用 `ccb-config` 帮你设计。推荐先用自然语言描述项目目标、并行程度、窗口分组、worktree 隔离、provider/model/API 偏好，让它和你讨论后提出完整配置方案。
+完整的 `ccb-config` skill 属于 `agentroles.ccb_self` 角色，不再作为所有 agent 都继承的公共 skill。
+
+如果你不想手写 `.ccb/ccb.config`，可以添加 `ccb_self`，再用自然语言描述项目目标、并行程度、窗口分组、worktree 隔离、provider/model/API 偏好。`ccb_self` 会使用它内置的 `ccb-config` 和你讨论后提出完整配置方案。
 
 示例：
 
-```text
-$ccb-config 为一个 Python library 设计团队：main 负责任务拆分，三个 worker 使用 worktree 并行实现，一个 reviewer 做回归和风险审查。保留单窗口还是拆成 main/work/review 三个 window 由你建议。
+```bash
+ccb roles install agentroles.ccb_self
+ccb roles add agentroles.ccb_self:codex
+ccb reload
+ccb ask ccb_self "为一个 Python library 设计团队：main 负责任务拆分，三个 worker 使用 worktree 并行实现，一个 reviewer 做回归和风险审查。保留单窗口还是拆成 main/work/review 三个 window 由你建议。"
 ```
 
 <details>
 <summary><b>ccb-config 的写入流程和边界</b></summary>
 
 1. 你用自然语言描述项目和团队目标。
-2. `ccb-config` 读取当前配置权威层，判断是新建、修改还是迁移。
+2. `ccb_self` 内置的 `ccb-config` 读取当前配置权威层，判断是新建、修改还是迁移。
 3. 它先提出完整配置方案，不应直接改文件。
 4. 你确认后，它只修改 `.ccb/ccb.config`。
 5. 它运行配置校验，并在可动态应用时提醒你使用 `ccb reload --dry-run` / `ccb reload` 生效。
 
-默认情况下，`ccb-config` 不会修改 `.ccb/ccb_memory.md` 或 `.ccb/agents/<agent>/memory.md`。只有当你明确要求“设计工作流记忆”或“写入角色记忆”时，才应该修改这些 memory 文件。
+默认情况下，`ccb-config` 不会修改 `.ccb/ccb_memory.md` 或 `.ccb/agents/<agent>/memory.md`。只有当你明确要求 `ccb_self` “设计工作流记忆”或“写入角色记忆”时，才应该修改这些 memory 文件。
 
 </details>
 
@@ -490,7 +495,7 @@ ccb reinstall
 <details>
 <summary><b>想把旧 compact 配置迁移到多 window</b></summary>
 
-使用 `ccb-config` 描述你想要的窗口分组，例如 main/work/review。迁移时应保留旧 agent 名称、provider、worktree 标记、model/key/url 等字段，确认后再写入 `[windows]`。
+让 `ccb_self` 使用它内置的 `ccb-config`，描述你想要的窗口分组，例如 main/work/review。迁移时应保留旧 agent 名称、provider、worktree 标记、model/key/url 等字段，确认后再写入 `[windows]`。
 
 </details>
 

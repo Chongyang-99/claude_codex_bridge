@@ -425,8 +425,6 @@ def test_materialize_codex_home_config_repairs_owned_skills_in_user_asset_dir(tm
     target_home = tmp_path / 'managed-codex-home'
     (source_home / 'skills' / 'ask').mkdir(parents=True, exist_ok=True)
     (source_home / 'skills' / 'ask' / 'SKILL.md').write_text('name: ask\n', encoding='utf-8')
-    (source_home / 'skills' / 'ccb-config').mkdir(parents=True, exist_ok=True)
-    (source_home / 'skills' / 'ccb-config' / 'SKILL.md').write_text('name: ccb-config\n', encoding='utf-8')
     (target_home / 'skills').mkdir(parents=True, exist_ok=True)
     (target_home / 'skills' / 'custom.md').write_text('user skill\n', encoding='utf-8')
     (target_home / 'skills' / 'ccb_config').mkdir(parents=True, exist_ok=True)
@@ -447,9 +445,9 @@ def test_materialize_codex_home_config_repairs_owned_skills_in_user_asset_dir(tm
     )
 
     assert (target_home / 'skills' / 'custom.md').read_text(encoding='utf-8') == 'user skill\n'
+    assert (target_home / 'skills' / 'ask' / 'SKILL.md').read_text(encoding='utf-8') == 'name: ask\n'
     assert not (target_home / 'skills' / 'ccb_config').exists()
-    assert not (target_home / 'skills' / 'ccb-config' / 'SKILL.md').is_symlink()
-    assert (target_home / 'skills' / 'ccb-config' / 'SKILL.md').read_text(encoding='utf-8') == 'name: ccb-config\n'
+    assert not (target_home / 'skills' / 'ccb-config').exists()
     assert not (target_home / 'skills.ccb-projection.json').exists()
 
 

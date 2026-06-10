@@ -182,6 +182,10 @@ def _payload_project_restart_panes() -> dict:
     return {}
 
 
+def _payload_project_restart_agent(agent_name: str) -> dict:
+    return {'agent_name': str(agent_name)}
+
+
 def _payload_project_clear_context(agent_names: tuple[str, ...] = ()) -> dict:
     return {'agent_names': [str(item) for item in tuple(agent_names or ()) if str(item).strip()]}
 
@@ -226,6 +230,7 @@ client_endpoints = {
     'project_view': ('project_view', _payload_project_view),
     'project_view_dismiss_comms': ('project_view_dismiss_comms', _payload_project_view_dismiss_comms),
     'project_restart_panes': ('project_restart_panes', _payload_project_restart_panes),
+    'project_restart_agent': ('project_restart_agent', _payload_project_restart_agent),
     'project_clear_context': ('project_clear_context', _payload_project_clear_context),
     'project_reload_config': ('project_reload_config', _payload_project_reload_config),
     'project_focus_window': ('project_focus_window', _payload_project_focus_window),

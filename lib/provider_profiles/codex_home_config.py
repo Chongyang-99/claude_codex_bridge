@@ -37,8 +37,8 @@ _CODEX_PLUGIN_SHA_RELATIVE = Path('.tmp') / 'plugins.sha'
 _CODEX_SKILLS_PROJECTION_LABEL = 'codex-inherited-skills'
 _CODEX_COMMANDS_PROJECTION_LABEL = 'codex-inherited-commands'
 _CODEX_PLUGIN_PROJECTION_LABEL = 'codex-plugin-bundle'
-_CODEX_OWNED_SKILL_NAMES = ('ask', 'ccb-config')
-_CODEX_LEGACY_OWNED_SKILL_NAMES = ('ccb_config',)
+_CODEX_OWNED_SKILL_NAMES = ('ask',)
+_CODEX_LEGACY_OWNED_SKILL_NAMES = ('ccb_config', 'ccb-config')
 _CODEX_PLUGIN_REQUIRED_RELATIVE_PATHS = (
     Path('.agents') / 'plugins' / 'marketplace.json',
     Path('.agents') / 'skills',

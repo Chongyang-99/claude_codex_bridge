@@ -36,6 +36,7 @@ from cli.services.ping import ping_target
 from cli.services.ps import ps_summary
 from cli.services.queue import queue_target
 from cli.services.reload import reload_config
+from cli.services.restart import restart_agent
 from cli.services.reset_project import reset_project_state
 from cli.services.resubmit import resubmit_message
 from cli.services.retry import retry_attempt
@@ -148,6 +149,7 @@ def _dispatch_services():
         ps_summary=ps_summary,
         queue_target=queue_target,
         reload_config=reload_config,
+        restart_agent=restart_agent,
         resubmit_message=resubmit_message,
         retry_attempt=retry_attempt,
         start_agents=start_agents,

@@ -15,6 +15,7 @@ from ccbd.handlers import (
     build_project_focus_window_handler,
     build_project_clear_context_handler,
     build_project_reload_config_handler,
+    build_project_restart_agent_handler,
     build_project_restart_panes_handler,
     build_project_view_dismiss_comms_handler,
     build_project_view_handler,
@@ -83,6 +84,10 @@ def register_handlers(app) -> None:
     app.socket_server.register_handler(
         'project_restart_panes',
         _graph_request(graph_source, build_project_restart_panes_handler(_GraphAppProxy(app, graph_source))),
+    )
+    app.socket_server.register_handler(
+        'project_restart_agent',
+        _graph_request(graph_source, build_project_restart_agent_handler(_GraphAppProxy(app, graph_source))),
     )
     app.socket_server.register_handler(
         'project_clear_context',

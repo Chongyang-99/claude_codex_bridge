@@ -17,6 +17,7 @@ from cli.models import (
     ParsedPsCommand,
     ParsedQueueCommand,
     ParsedReloadCommand,
+    ParsedRestartCommand,
     ParsedResubmitCommand,
     ParsedRetryCommand,
     ParsedTraceCommand,
@@ -44,6 +45,17 @@ def parse_clear(tokens: list[str], *, project: str | None, error_type) -> Parsed
     if tuple(item.lower() for item in agent_names) == ('all',):
         agent_names = ()
     return ParsedClearCommand(project=project, agent_names=agent_names)
+
+
+def parse_restart(tokens: list[str], *, project: str | None, error_type) -> ParsedRestartCommand:
+    if len(tokens) != 1:
+        raise error_type('restart requires exactly one <agent_name>')
+    agent_name = str(tokens[0]).strip()
+    if not agent_name:
+        raise error_type('restart requires exactly one <agent_name>')
+    if agent_name.lower() == 'all':
+        raise error_type('restart all is not supported; restart exactly one configured agent')
+    return ParsedRestartCommand(project=project, agent_name=agent_name)
 
 
 def parse_kill(tokens: list[str], *, project: str | None, error_type) -> ParsedKillCommand:
@@ -252,6 +264,7 @@ __all__ = [
     'parse_queue',
     'parse_repair',
     'parse_reload',
+    'parse_restart',
     'parse_resubmit',
     'parse_retry',
     'parse_trace',

@@ -75,6 +75,12 @@ def handle_reload(context, command, out, services) -> int:
     return 0 if str(payload.get('status') or '') in {'ok', 'published', 'noop'} else 1
 
 
+def handle_restart(context, command, out, services) -> int:
+    payload = services.restart_agent(context, command)
+    services.write_lines(out, services.render_restart(payload))
+    return 0 if str(payload.get('restart_status') or payload.get('status') or '') == 'ok' else 1
+
+
 __all__ = [
     'handle_cleanup',
     'handle_clear',
@@ -86,4 +92,5 @@ __all__ = [
     'handle_logs',
     'handle_ps',
     'handle_reload',
+    'handle_restart',
 ]

@@ -122,6 +122,90 @@ def render_clear(summary) -> tuple[str, ...]:
     return tuple(lines)
 
 
+def render_restart(summary) -> tuple[str, ...]:
+    payload = summary if isinstance(summary, Mapping) else {}
+    status = str(payload.get('restart_status') or payload.get('status') or 'unknown')
+    lines = [
+        f'restart_status: {status}',
+        f'agent_name: {payload.get("agent_name", "")}',
+    ]
+    restartable = tuple(str(item) for item in (payload.get('restartable_agents') or ()) if str(item))
+    if restartable:
+        lines.append(f'restartable_agents: {", ".join(restartable)}')
+    reason = str(payload.get('reason') or '').strip()
+    if reason:
+        lines.append(f'reason: {reason}')
+    busy_gate = payload.get('busy_gate')
+    if isinstance(busy_gate, Mapping):
+        lines.append(_restart_busy_gate_line(busy_gate))
+    blockers = tuple(payload.get('blockers') or ())
+    for blocker in blockers:
+        if isinstance(blocker, Mapping):
+            reason_text = str(blocker.get('reason') or '').strip()
+            detail = str(blocker.get('detail') or '').strip()
+            line = f'blocker: reason={reason_text}'
+            if detail:
+                line += f' detail={detail}'
+            lines.append(line)
+        else:
+            lines.append(f'blocker: {blocker}')
+    old_runtime = payload.get('old_runtime')
+    if isinstance(old_runtime, Mapping):
+        lines.append(f'old_runtime: {_runtime_evidence_text(old_runtime)}')
+    new_runtime = payload.get('new_runtime')
+    if isinstance(new_runtime, Mapping):
+        lines.append(f'new_runtime: {_runtime_evidence_text(new_runtime)}')
+    result = payload.get('result')
+    if isinstance(result, Mapping):
+        lines.append(f'restart_result: {_flat_mapping_text(result)}')
+    error = str(payload.get('error') or '').strip()
+    if error:
+        lines.append(f'error: {error}')
+    return tuple(lines)
+
+
+def _restart_busy_gate_line(gate: Mapping[str, object]) -> str:
+    fields = {
+        'passed': str(bool(gate.get('passed'))).lower(),
+        'runtime_state': gate.get('runtime_state'),
+        'runtime_queue_depth': gate.get('runtime_queue_depth'),
+        'queue_depth': gate.get('queue_depth'),
+        'pending_reply_count': gate.get('pending_reply_count'),
+        'active_job_id': gate.get('active_job_id'),
+        'active_inbound_event_id': gate.get('active_inbound_event_id'),
+        'pending_callback_count': gate.get('pending_callback_count'),
+    }
+    return 'restart_busy_gate: ' + _flat_mapping_text(fields)
+
+
+def _runtime_evidence_text(evidence: Mapping[str, object]) -> str:
+    fields = {
+        'state': evidence.get('state'),
+        'health': evidence.get('health'),
+        'pane_id': evidence.get('pane_id'),
+        'active_pane_id': evidence.get('active_pane_id'),
+        'runtime_ref': evidence.get('runtime_ref'),
+        'session_ref': evidence.get('session_ref'),
+        'runtime_pid': evidence.get('runtime_pid'),
+        'restart_count': evidence.get('restart_count'),
+    }
+    return _flat_mapping_text(fields)
+
+
+def _flat_mapping_text(payload: Mapping[str, object]) -> str:
+    return ' '.join(f'{key}={_render_value(value)}' for key, value in payload.items())
+
+
+def _render_value(value: object) -> str:
+    if value is None:
+        return 'None'
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (list, tuple)):
+        return ','.join(str(item) for item in value)
+    return str(value).replace('\n', '\\n')
+
+
 def render_kill(summary) -> tuple[str, ...]:
     lines = [
         'kill_status: ok',
@@ -155,5 +239,6 @@ __all__ = [
     'render_kill',
     'render_logs',
     'render_ps',
+    'render_restart',
     'render_start',
 ]

@@ -70,23 +70,29 @@ Scenarios:
 
 ## Real Project Smoke
 
-Use a disposable project outside `ccb_source`, for example under
+Use the dedicated disposable project outside `ccb_source` at
 `/home/bfly/yunwei/test_ccb2`. When validating current source changes from this
-checkout, use `ccb_test`, not the installed `ccb`.
+checkout, use the absolute source wrapper
+`/home/bfly/yunwei/ccb_source/ccb_test`, not the installed `ccb`. Do not rely
+on a bare `ccb_test` until `command -v ccb_test` and `readlink -f` prove it is
+the source wrapper.
 
 Commands:
 
 ```bash
 cd /home/bfly/yunwei/test_ccb2
-ccb_test doctor
-ccb_test roles list
-ccb_test roles install agentroles.archi
-ccb_test roles doctor agentroles.archi
-ccb_test roles add agentroles.archi:codex --window main
-ccb_test
-ccb_test reload
-ccb_test doctor
-ccb_test kill
+export HOME=/home/bfly/yunwei/test_ccb2/source_home
+export CCB_SOURCE_HOME=/home/bfly/yunwei/test_ccb2/source_home
+/home/bfly/yunwei/ccb_source/ccb_test --diagnose
+/home/bfly/yunwei/ccb_source/ccb_test doctor
+/home/bfly/yunwei/ccb_source/ccb_test roles list
+/home/bfly/yunwei/ccb_source/ccb_test roles install agentroles.archi
+/home/bfly/yunwei/ccb_source/ccb_test roles doctor agentroles.archi
+/home/bfly/yunwei/ccb_source/ccb_test roles add agentroles.archi:codex --window main
+/home/bfly/yunwei/ccb_source/ccb_test
+/home/bfly/yunwei/ccb_source/ccb_test reload
+/home/bfly/yunwei/ccb_source/ccb_test doctor
+/home/bfly/yunwei/ccb_source/ccb_test kill
 ```
 
 Expected:

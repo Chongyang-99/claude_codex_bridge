@@ -25,6 +25,7 @@ from .handlers_ops import (
     handle_logs,
     handle_ps,
     handle_reload,
+    handle_restart,
 )
 from .handlers_start import handle_config_validate, handle_start
 
@@ -48,6 +49,7 @@ _HANDLERS = {
     'ps': handle_ps,
     'queue': handle_queue,
     'reload': handle_reload,
+    'restart': handle_restart,
     'resubmit': handle_resubmit,
     'retry': handle_retry,
     'start': handle_start,

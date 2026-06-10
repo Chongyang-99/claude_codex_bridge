@@ -48,11 +48,7 @@ def _split_roots(value: str) -> list[Path]:
 
 def _default_source_allowed_roots(root: Path) -> list[Path]:
     parent = root.parent
-    return [
-        parent / "test_ccb2",
-        parent / "test_ccb",
-        parent / "ccb_test2",
-    ]
+    return [parent / "test_ccb2"]
 
 
 def _path_is_under(path: Path, root: Path) -> bool:
@@ -110,7 +106,8 @@ def _source_runtime_allowed(root: Path, cwd: Path, argv: list[str]) -> tuple[boo
         False,
         "Refusing to run the CCB source checkout outside an allowed test project.\n"
         "Use the installed release `ccb` for normal project/work-environment commands.\n"
-        "Use `ccb_test` from an external test project for source-change validation.\n"
+        "Use `/home/bfly/yunwei/ccb_source/ccb_test` from "
+        "`/home/bfly/yunwei/test_ccb2` for source-change validation.\n"
         f"Current directory: {cwd}\n"
         f"Allowed source roots: {rendered}\n"
         "Override only for explicit diagnostics with CCB_SOURCE_RUNTIME_OK=1.",

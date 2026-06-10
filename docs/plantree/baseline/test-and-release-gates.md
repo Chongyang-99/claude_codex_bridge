@@ -41,3 +41,29 @@ should be confirmed before use:
 - A smoke start against a temporary project when producing real screenshots or
   videos.
 
+## Source Runtime Isolation Gates
+
+- Source changes are validated with
+  `/home/bfly/yunwei/ccb_source/ccb_test` from the dedicated default external
+  project `/home/bfly/yunwei/test_ccb2`.
+- Any other external source-test project must be explicitly allowed with
+  `CCB_TEST_ROOTS` or `CCB_SOURCE_ALLOWED_ROOTS`; legacy sibling directories
+  such as `test_ccb` and `ccb_test2` are not default roots.
+- Stateful source validation does not run from
+  `/home/bfly/yunwei/ccb_source`, and `ccb_test --project` does not point at a
+  path inside that checkout.
+- Runbooks use the absolute source `ccb_test` wrapper or first record
+  `command -v ccb_test` plus `readlink -f` so stale release/smoke wrappers on
+  `PATH` cannot be mistaken for current source validation.
+- `ccb_test --diagnose` reports the wrapper path, source `ccb`, effective
+  roots, checked paths, and source-test allowance before stateful validation
+  when wrapper or root selection is uncertain.
+- Provider/account state for source runtime validation is isolated with
+  `HOME=/home/bfly/yunwei/test_ccb2/source_home` and
+  `CCB_SOURCE_HOME=/home/bfly/yunwei/test_ccb2/source_home`, unless the test
+  intentionally covers inherited real provider configuration.
+- `.ccb/agents/*` and `.ccb/ccbd/*` under the source checkout are treated as
+  installed-release work-environment runtime state, not disposable source-test
+  artifacts.
+- `CCB_SOURCE_RUNTIME_OK=1` is a diagnostics-only override and must not be used
+  for ordinary source validation.
