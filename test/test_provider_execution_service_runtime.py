@@ -14,6 +14,7 @@ from completion.models import (
 )
 from provider_execution.base import ProviderPollResult, ProviderRuntimeContext, ProviderSubmission
 from provider_execution.reliability import CompletionReliabilityPolicy
+from provider_execution.service import ExecutionService
 from provider_execution.service_runtime.persistence import persist_submission
 from provider_execution.service_runtime.polling import poll_updates
 from provider_execution.service_runtime.restore import restore_submission
@@ -358,6 +359,58 @@ def test_persist_submission_preserves_reliability_progress_state() -> None:
     assert runtime_state["state"] == {"offset": 42}
     assert runtime_state["reliability_last_progress_at"] == "2026-04-06T00:02:00Z"
     assert runtime_state["reliability_timeout_deadline_at"] == "2026-04-06T00:17:00Z"
+
+
+def test_active_runtime_snapshots_expose_bounded_safe_state() -> None:
+    adapter = SimpleNamespace(
+        completion_reliability_policy=CompletionReliabilityPolicy(
+            provider='codex',
+            primary_authority='protocol_log',
+            no_terminal_timeout_s=900.0,
+        )
+    )
+    service = ExecutionService(
+        SimpleNamespace(get=lambda provider: adapter if provider == 'codex' else None),
+        clock=lambda: '2026-04-06T00:00:45Z',
+    )
+    service._active = {
+        'job_1': replace(
+            _submission(provider='codex'),
+            runtime_state={
+                'backend': object(),
+                'reader': object(),
+                'prompt_text': 'large private prompt',
+                'reply_buffer': 'partial private reply',
+                'request_anchor': 'CCB_REQ_ID: job_1',
+                'anchor_seen': False,
+                'session_path': '/tmp/codex/session.jsonl',
+                'delivery_state': 'pending_anchor',
+                'delivery_started_at': '2026-04-06T00:00:00Z',
+                'delivery_timeout_s': 120.0,
+                'delivery_target_pane_id': '%1',
+            },
+        )
+    }
+    service._runtime_contexts = {'job_1': _runtime_context()}
+
+    snapshots = service.active_runtime_snapshots()
+
+    assert len(snapshots) == 1
+    snapshot = snapshots[0]
+    runtime_state = snapshot['runtime_state']
+    assert snapshot['job_id'] == 'job_1'
+    assert snapshot['provider'] == 'codex'
+    assert snapshot['source_kind'] == 'protocol_event_stream'
+    assert snapshot['primary_authority'] == 'protocol_log'
+    assert snapshot['no_terminal_timeout_s'] == 900.0
+    assert snapshot['no_terminal_deadline_at'] == '2026-04-06T00:15:00Z'
+    assert runtime_state['request_anchor'] == 'CCB_REQ_ID: job_1'
+    assert runtime_state['delivery_state'] == 'pending_anchor'
+    assert runtime_state['delivery_timeout_deadline_at'] == '2026-04-06T00:02:00Z'
+    assert 'backend' not in runtime_state
+    assert 'reader' not in runtime_state
+    assert 'prompt_text' not in runtime_state
+    assert 'reply_buffer' not in runtime_state
 
 
 def test_restore_submission_returns_terminal_pending_without_resume() -> None:

@@ -62,6 +62,32 @@ def test_protocol_turn_detector_waits_for_turn_boundary() -> None:
     assert decision.reply == 'done'
 
 
+def test_protocol_turn_detector_marks_empty_task_complete_incomplete() -> None:
+    detector = ProtocolTurnDetector()
+    detector.bind(_ctx(), _cursor(0))
+    detector.ingest(_item(CompletionItemKind.ANCHOR_SEEN, 1, '2026-03-18T00:00:01Z'))
+    detector.ingest(
+        _item(
+            CompletionItemKind.TURN_BOUNDARY,
+            2,
+            '2026-03-18T00:00:02Z',
+            {'reason': 'task_complete', 'turn_id': 'turn-empty'},
+        )
+    )
+
+    decision = detector.decision()
+    assert decision.terminal is True
+    assert decision.status is CompletionStatus.INCOMPLETE
+    assert decision.reason == 'task_complete_empty_reply'
+    assert decision.confidence is CompletionConfidence.EXACT
+    assert decision.reply == ''
+    assert decision.provider_turn_ref == 'turn-empty'
+    assert decision.diagnostics['provider_terminal_reason'] == 'task_complete'
+    assert decision.diagnostics['empty_reply'] is True
+    assert decision.diagnostics['error_type'] == 'empty_provider_reply'
+    assert 'without assistant reply text' in decision.diagnostics['diagnosis']
+
+
 def test_protocol_turn_detector_preserves_abort_diagnostics() -> None:
     detector = ProtocolTurnDetector()
     detector.bind(_ctx(), _cursor(0))

@@ -348,6 +348,7 @@ def _maintenance_summary_lines(prefix: str, payload: Mapping[str, object]) -> li
         'active_comms_count',
         'concern_comms_count',
         'failing_comms_count',
+        'suspicion_count',
         'fallback_error',
     ):
         if key in payload:
@@ -357,7 +358,19 @@ def _maintenance_summary_lines(prefix: str, payload: Mapping[str, object]) -> li
 
 def _maintenance_evidence_line(prefix: str, payload: Mapping[str, object]) -> str:
     parts = [f'{prefix}:']
-    for key in ('health', 'kind', 'agent', 'job_id', 'target', 'reason', 'source', 'status', 'ccbd_state'):
+    for key in (
+        'health',
+        'kind',
+        'condition_kind',
+        'agent',
+        'job_id',
+        'target',
+        'reason',
+        'source',
+        'status',
+        'ccbd_state',
+        'confidence',
+    ):
         value = payload.get(key)
         if value is not None and value != '':
             parts.append(f'{key}={value}')

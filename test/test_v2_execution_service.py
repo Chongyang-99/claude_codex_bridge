@@ -1363,6 +1363,77 @@ def test_execution_service_codex_adapter_emits_protocol_items_from_log(monkeypat
     assert update.decision is None
 
 
+def test_execution_service_codex_adapter_emits_empty_task_complete_boundary(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from provider_execution import codex as codex_adapter_module
+
+    fixed_req_id = '20260318-000000-000-1-empty-codex'
+
+    class FakeBackend:
+        def send_text(self, pane_id: str, text: str) -> None:
+            del pane_id, text
+
+        def is_alive(self, pane_id: str) -> bool:
+            return pane_id == '%1'
+
+    class FakeSession:
+        data = {}
+        codex_session_path = ''
+        codex_session_id = ''
+        work_dir = str(tmp_path)
+
+        def ensure_pane(self):
+            return True, '%1'
+
+    class FakeReader:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+            self._events = [
+                {
+                    'role': 'user',
+                    'text': f'CCB_REQ_ID: {fixed_req_id}\n\nprompt',
+                    'entry_type': 'response_item',
+                    'payload_type': 'message',
+                    'timestamp': '2026-03-18T00:00:00Z',
+                },
+                {
+                    'role': 'system',
+                    'text': '',
+                    'entry_type': 'event_msg',
+                    'payload_type': 'task_complete',
+                    'turn_id': 'turn-codex-empty',
+                    'last_agent_message': '',
+                    'timestamp': '2026-03-18T00:00:01Z',
+                },
+            ]
+
+        def capture_state(self):
+            return {'index': 0}
+
+        def try_get_entries(self, state):
+            index = int(state.get('index', 0))
+            if index >= len(self._events):
+                return [], state
+            return [self._events[index]], {'index': index + 1}
+
+    monkeypatch.setattr(codex_adapter_module, 'load_project_session', lambda work_dir, instance=None: FakeSession())
+    monkeypatch.setattr(codex_adapter_module, 'get_backend_for_session', lambda data: FakeBackend())
+    monkeypatch.setattr(codex_adapter_module, 'CodexLogReader', FakeReader)
+    service = ExecutionService(build_default_execution_registry(), clock=lambda: '2026-03-18T00:00:00Z')
+    service.start(_anchored_job_for_provider('codex', fixed_req_id, body='real codex'), runtime_context=_runtime_context(tmp_path))
+    update = service.poll()[0]
+
+    assert [item.kind for item in update.items] == [
+        CompletionItemKind.ANCHOR_SEEN,
+        CompletionItemKind.TURN_BOUNDARY,
+    ]
+    assert update.items[-1].payload['reason'] == 'task_complete'
+    assert update.items[-1].payload['last_agent_message'] == ''
+    assert update.items[-1].payload['turn_id'] == 'turn-codex-empty'
+    assert update.decision is None
+
+
 def test_execution_service_codex_adapter_respects_no_wrap_provider_option(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2727,7 +2798,7 @@ def test_execution_service_gemini_adapter_maps_exact_hook_failures_to_api_error(
     assert update.decision.diagnostics['error_message'] == failure_text
 
 
-def test_execution_service_gemini_adapter_ignores_empty_completed_hook_artifact(
+def test_execution_service_gemini_adapter_marks_empty_completed_hook_artifact_incomplete(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from provider_execution import gemini as gemini_adapter_module
@@ -2787,8 +2858,14 @@ def test_execution_service_gemini_adapter_ignores_empty_completed_hook_artifact(
     service.start(_anchored_job_for_provider('gemini', fixed_req_id, body='real gemini'), runtime_context=_runtime_context(tmp_path))
     update = service.poll()[0]
 
-    assert update.decision is None
-    assert all(item.kind is not CompletionItemKind.ASSISTANT_FINAL for item in update.items)
+    assert update.decision is not None
+    assert update.decision.status is CompletionStatus.INCOMPLETE
+    assert update.decision.reason == 'hook_after_agent_incomplete'
+    assert update.decision.diagnostics['empty_reply'] is True
+    assert update.decision.diagnostics['error_type'] == 'empty_provider_reply'
+    assert update.items[0].kind is CompletionItemKind.ASSISTANT_FINAL
+    assert update.items[0].payload['status'] == 'incomplete'
+    assert 'without assistant reply text' in update.items[0].payload['text']
 
 
 def test_execution_service_gemini_exact_hook_submission_uses_strict_tmux_sender(

@@ -41,6 +41,16 @@ class ProtocolTurnDetector(BaseCompletionDetector):
         reply = first_non_empty(item.payload, 'last_agent_message', 'final_answer', 'reply', 'text') or ''
         if reply:
             self._record_reply(item, reply, stable=True)
+        elif not self._state.reply_started:
+            self._set_terminal(
+                status=CompletionStatus.INCOMPLETE,
+                reason='task_complete_empty_reply',
+                confidence=CompletionConfidence.EXACT,
+                finished_at=item.timestamp,
+                reply='',
+                diagnostics=self._empty_boundary_diagnostics(item),
+            )
+            return
         self._set_terminal(
             status=CompletionStatus.COMPLETED,
             reason=first_non_empty(item.payload, 'reason', 'completion_reason') or 'task_complete',
@@ -48,6 +58,19 @@ class ProtocolTurnDetector(BaseCompletionDetector):
             finished_at=item.timestamp,
             reply=reply,
         )
+
+    def _empty_boundary_diagnostics(self, item: CompletionItem) -> dict:
+        diagnostics = self._terminal_diagnostics_from_item(item)
+        diagnosis = (
+            'Provider protocol reported task_complete without assistant reply text; '
+            'inspect the protocol session log, pane state, and authentication/API output.'
+        )
+        diagnostics.setdefault('provider_terminal_reason', first_non_empty(item.payload, 'reason', 'completion_reason') or 'task_complete')
+        diagnostics.setdefault('empty_reply', True)
+        diagnostics.setdefault('error_type', 'empty_provider_reply')
+        diagnostics.setdefault('message', diagnosis)
+        diagnostics.setdefault('diagnosis', diagnosis)
+        return diagnostics
 
     def _complete_from_abort(self, item: CompletionItem) -> None:
         reply = first_non_empty(item.payload, 'last_agent_message', 'reply', 'text') or ''

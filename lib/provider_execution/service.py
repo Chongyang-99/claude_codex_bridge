@@ -16,6 +16,7 @@ from .service_runtime import (
     persist_submission,
     poll_updates,
     restore_submission,
+    active_runtime_snapshots,
 )
 from .common import interrupt_and_clear_runtime_target
 
@@ -84,6 +85,9 @@ class ExecutionService(ExecutionServiceStateMixin):
 
     def poll(self) -> tuple[ExecutionUpdate, ...]:
         return poll_updates(self)
+
+    def active_runtime_snapshots(self) -> tuple[dict[str, object], ...]:
+        return active_runtime_snapshots(self)
 
     def _persist(
         self,

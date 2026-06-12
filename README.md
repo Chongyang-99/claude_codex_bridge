@@ -278,13 +278,19 @@ The recommended default catalog roles are `agentroles.ccb_self`, the CCB
 self-maintenance role, and `agentroles.archi`, an architecture reviewer role
 from `agent-roles-spec` backed by Architec. `install.sh install` automatically
 attempts to install or refresh these recommended roles by default; `ccb update`
-refreshes installed roles and installs missing recommended roles when Role Pack
-provisioning is accepted. You can also refresh manually:
+refreshes installed roles and installs missing recommended roles in the user
+environment. You can also refresh manually:
 
 ```bash
 ccb roles update agentroles.ccb_self
 ccb roles update agentroles.archi
 ```
+
+Project role bindings stay pinned by `.ccb/role-lock.json`. `ccb update` does
+not rewrite project locks. When you run `ccb` inside a project, CCB checks
+bound role locks against the current installed roles; interactive starts ask
+whether to refresh stale project locks in place, and non-interactive starts
+print a warning only.
 
 `ccb_self` is strongly recommended for CCB projects because it owns CCB config
 maintenance, runtime diagnostics, guarded recovery, and single-agent restart
@@ -369,7 +375,7 @@ command = "ccb-nvim"
 label = "neovim"
 ```
 
-`ccb tools install neovim` prepares an isolated `ccb-nvim` wrapper and LazyVim profile under CCB-owned XDG paths. `install.sh install` automatically attempts this provisioning by default and keeps failures non-blocking; `ccb update` asks in interactive terminals whether to refresh it. Set `CCB_INSTALL_NEOVIM=1` to make install provisioning required or `CCB_INSTALL_NEOVIM=0` to skip it.
+`ccb tools install neovim` prepares an isolated `ccb-nvim` wrapper and LazyVim profile under CCB-owned XDG paths. `install.sh install` and `ccb update` automatically attempt this provisioning by default and keep failures non-blocking. Set `CCB_INSTALL_NEOVIM=1` to make install provisioning required or `CCB_INSTALL_NEOVIM=0` to skip it.
 If `nvim` is not already on `PATH`, provisioning attempts to download the official Neovim release tarball for Linux/macOS and verifies the release sha256 before activating it. It does not write `~/.config/nvim`.
 The managed profile defaults to ASCII icons so terminals without Nerd Font support do not show unreadable boxes. To opt back into LazyVim glyph icons, launch with `CCB_LAZYVIM_ICON_STYLE=glyph ccb-nvim`.
 Use `ccb tools doctor neovim` to verify the managed profile. A working LazyVim setup reports `neovim_status: ok` and `lazyvim_health_status: ok`; damaged or partially downloaded plugin trees report `degraded` and can be repaired by rerunning `ccb tools install neovim`.
@@ -563,6 +569,8 @@ v7 highlights:
 - Adds `ccb_self:codex` bound to canonical `agentroles.ccb_self` in the
   built-in blank-project default and refreshes the recommended role during
   install/update provisioning without rewriting existing custom configs.
+- Makes `ccb update` refresh default Role Packs and Neovim without repeated
+  interactive confirmations, while keeping project role locks explicit.
 - Aligns CCB source with the `agent-roles-spec` role id
   `agentroles.ccb_self`; `agentrole.ccb_self` is accepted only as legacy input
   compatibility.

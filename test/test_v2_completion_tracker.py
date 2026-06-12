@@ -103,6 +103,23 @@ def test_completion_tracker_projects_reply_preview_and_terminal_reply() -> None:
     assert terminal.decision.reply == 'partial'
 
 
+def test_completion_tracker_marks_empty_protocol_boundary_incomplete() -> None:
+    tracker = CompletionTrackerService(_provider_config('codex', 'claude', 'gemini'), build_default_provider_catalog())
+    tracker.start(_job(), started_at='2026-03-18T00:00:00Z')
+
+    terminal = tracker.ingest(
+        'job_1',
+        _item(CompletionItemKind.TURN_BOUNDARY, 1, '2026-03-18T00:00:01Z', {'reason': 'task_complete'}),
+    )
+
+    assert terminal.decision.terminal is True
+    assert terminal.decision.status is CompletionStatus.INCOMPLETE
+    assert terminal.decision.reason == 'task_complete_empty_reply'
+    assert terminal.decision.reply == ''
+    assert terminal.decision.diagnostics['empty_reply'] is True
+    assert terminal.decision.diagnostics['error_type'] == 'empty_provider_reply'
+
+
 def test_completion_tracker_clears_session_reply_preview_after_rotate() -> None:
     tracker = CompletionTrackerService(_provider_config('codex', 'claude', 'gemini'), build_default_provider_catalog())
     tracker.start(_job(provider='gemini', agent_name='gemini'), started_at='2026-03-18T00:00:00Z')

@@ -868,6 +868,162 @@ def test_project_view_returns_minimal_windows_agents_and_comms(tmp_path: Path) -
     assert view['comms'][0]['target'] == 'agent1'
 
 
+def test_project_view_includes_provider_runtime_for_active_execution(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-provider-runtime'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(
+        project_id=project_id,
+        pid=123,
+        socket_path=layout.ccbd_socket_path,
+        generation=7,
+        started_at=NOW,
+    )
+    execution_service = SimpleNamespace(
+        active_runtime_snapshots=lambda: (
+            {
+                'job_id': 'job_running_1234',
+                'agent_name': 'agent1',
+                'provider': 'codex',
+                'source_kind': 'protocol_event_stream',
+                'primary_authority': 'protocol_log',
+                'runtime_state': {
+                    'delivery_state': 'pending_anchor',
+                    'anchor_seen': False,
+                    'delivery_started_at': '2026-05-20T11:59:40Z',
+                    'delivery_timeout_s': 120.0,
+                },
+            },
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, execution_service=execution_service, clock=lambda: NOW)
+    running = _job(project_id, job_id='job_running_1234', sender='agent2', target='agent1', status=JobStatus.RUNNING)
+    dispatcher._append_job(running)
+    dispatcher._state.mark_active_for(TargetKind.AGENT, 'agent1', running.job_id)
+
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            clock=lambda: NOW,
+        )
+    )
+
+    agent1 = service.build_response()['view']['agents'][0]
+
+    assert agent1['current_job_id'] == 'job_running_1234'
+    assert agent1['provider_runtime']['job_id'] == 'job_running_1234'
+    assert agent1['provider_runtime']['primary_authority'] == 'protocol_log'
+    assert agent1['provider_runtime']['runtime_state']['delivery_state'] == 'pending_anchor'
+
+
+def test_project_view_does_not_attach_mismatched_provider_runtime_to_current_job(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-provider-runtime-mismatch'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(
+        project_id=project_id,
+        pid=123,
+        socket_path=layout.ccbd_socket_path,
+        generation=7,
+        started_at=NOW,
+    )
+    execution_service = SimpleNamespace(
+        active_runtime_snapshots=lambda: (
+            {
+                'job_id': 'job_other_9999',
+                'agent_name': 'agent1',
+                'provider': 'codex',
+                'runtime_state': {'delivery_state': 'accepted'},
+            },
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, execution_service=execution_service, clock=lambda: NOW)
+    running = _job(project_id, job_id='job_running_1234', sender='agent2', target='agent1', status=JobStatus.RUNNING)
+    dispatcher._append_job(running)
+    dispatcher._state.mark_active_for(TargetKind.AGENT, 'agent1', running.job_id)
+
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            clock=lambda: NOW,
+        )
+    )
+
+    agent1 = service.build_response()['view']['agents'][0]
+
+    assert agent1['current_job_id'] == 'job_running_1234'
+    assert 'provider_runtime' not in agent1
+
+
+def test_project_view_marks_multiple_orphan_provider_runtimes_as_conflict(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-provider-runtime-conflict'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    for agent_name in config.agents:
+        registry.upsert(_runtime(agent_name, project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(
+        project_id=project_id,
+        pid=123,
+        socket_path=layout.ccbd_socket_path,
+        generation=7,
+        started_at=NOW,
+    )
+    execution_service = SimpleNamespace(
+        active_runtime_snapshots=lambda: (
+            {'job_id': 'job_orphan_a', 'agent_name': 'agent1', 'provider': 'codex'},
+            {'job_id': 'job_orphan_b', 'agent_name': 'agent1', 'provider': 'codex'},
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, execution_service=execution_service, clock=lambda: NOW)
+
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            clock=lambda: NOW,
+        )
+    )
+
+    agent1 = service.build_response()['view']['agents'][0]
+
+    assert agent1['provider_runtime']['conflict'] == 'multiple_provider_runtimes_without_control_job'
+    assert agent1['provider_runtime']['runtime_count'] == 2
+    assert agent1['provider_runtime']['job_ids'] == ['job_orphan_a', 'job_orphan_b']
+
+
 def test_project_view_includes_tool_window_without_agent_row(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-tool-view'
     project_root.mkdir()
@@ -2846,6 +3002,36 @@ def test_activity_resolver_provider_background_terminal_running_after_prompt() -
                 '› Use /skills to list available skills\n'
                 '\n'
                 '  gpt-5.5 medium · ~/yunwei/test_ccb2\n'
+            ),
+        ),
+        now=NOW,
+    )
+
+    assert activity.state == 'active'
+    assert activity.source == 'provider_pane'
+    assert activity.reason == 'provider_working'
+
+
+def test_activity_resolver_claude_scheduled_task_shell_running_after_prompt() -> None:
+    activity = resolve_agent_activity(
+        AgentActivityFacts(
+            namespace_mounted=True,
+            runtime_state='idle',
+            pane_id='%1',
+            pane_state='alive',
+            pane_text=(
+                '✻ Running scheduled task (Jun 11 9:33pm)\n'
+                '\n'
+                '● 已完成第29次，正在执行第30次。进度：29/50（58%）。\n'
+                '\n'
+                '✻ Sautéed for 9s · 1 shell still running\n'
+                '\n'
+                '─────────────────────────────────────────────────────\n'
+                '❯ CCB_REQ_ID: job_86550847f237\n'
+                '\n'
+                '  再执行一次：循环50次，每次等待30s。\n'
+                '─────────────────────────────────────────────────────\n'
+                '  🤖 Sonnet 4.6 | 📁 test_ccb2 | ⏵⏵ bypass permissions on · 1 shell\n'
             ),
         ),
         now=NOW,

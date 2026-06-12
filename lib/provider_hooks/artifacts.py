@@ -3,6 +3,7 @@ from __future__ import annotations
 from .artifacts_runtime import (
     SCHEMA_VERSION,
     completion_dir_from_session_data,
+    current_turn_req_id_from_transcript,
     event_path,
     extract_outer_req_id,
     extract_req_id,
@@ -14,6 +15,7 @@ from .artifacts_runtime import (
 __all__ = [
     "SCHEMA_VERSION",
     "completion_dir_from_session_data",
+    "current_turn_req_id_from_transcript",
     "event_path",
     "extract_outer_req_id",
     "extract_req_id",

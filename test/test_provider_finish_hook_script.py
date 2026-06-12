@@ -52,6 +52,86 @@ def test_provider_finish_hook_writes_claude_completion_event(tmp_path: Path) -> 
     assert event["status"] == "completed"
 
 
+def test_provider_finish_hook_marks_empty_claude_reply_incomplete(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    completion_dir = tmp_path / "completion"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    transcript = tmp_path / "transcript.jsonl"
+    req_id = "job_emptyclaude123"
+    transcript.write_text(
+        "\n".join(
+            json.dumps(record)
+            for record in (
+                {
+                    "uuid": "old-user",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": "CCB_REQ_ID: job_previous111\n\nPrevious task.",
+                    },
+                },
+                {
+                    "uuid": "old-assistant",
+                    "parentUuid": "old-user",
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "previous done"}],
+                    },
+                },
+                {
+                    "uuid": "current-user",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": f"CCB_REQ_ID: {req_id}\n\nRun the task.",
+                    },
+                },
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    payload = {
+        "hook_event_name": "Stop",
+        "transcript_path": str(transcript),
+        "last_assistant_message": "",
+        "session_id": "claude-session-1",
+    }
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            "--provider",
+            "claude",
+            "--completion-dir",
+            str(completion_dir),
+            "--agent-name",
+            "agent3",
+            "--workspace",
+            str(workspace),
+        ],
+        input=json.dumps(payload, ensure_ascii=False),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    event_path = completion_dir / "events" / f"{req_id}.json"
+    assert event_path.exists()
+    event = json.loads(event_path.read_text(encoding="utf-8"))
+    assert event["provider"] == "claude"
+    assert event["reply"] == ""
+    assert event["status"] == "incomplete"
+    assert event["diagnostics"]["reason"] == "hook_stop_empty_reply"
+    assert event["diagnostics"]["empty_reply"] is True
+    assert event["diagnostics"]["error_type"] == "empty_provider_reply"
+    assert "without assistant reply text" in event["diagnostics"]["diagnosis"]
+
+
 def test_provider_finish_hook_uses_outer_claude_req_id_when_body_mentions_old_req_id(tmp_path: Path) -> None:
     project_root = Path(__file__).resolve().parents[1]
     completion_dir = tmp_path / "completion"
@@ -187,6 +267,100 @@ def test_provider_finish_hook_ignores_later_claude_tool_result_req_id(tmp_path: 
     assert event["req_id"] == current_req_id
     assert event["reply"] == "done after tools"
     assert event["status"] == "completed"
+
+
+def test_provider_finish_hook_ignores_claude_scheduled_task_after_stale_ccb_prompt(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    completion_dir = tmp_path / "completion"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    transcript = tmp_path / "transcript.jsonl"
+    stale_req_id = "job_stale123abc"
+    scheduled_reply = "当前进度：已完成第9次，正在执行第10次。"
+    transcript.write_text(
+        "\n".join(
+            json.dumps(record, ensure_ascii=False)
+            for record in (
+                {
+                    "uuid": "u1",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": f"CCB_REQ_ID: {stale_req_id}\n\nRun a long task.",
+                    },
+                },
+                {
+                    "uuid": "u2",
+                    "parentUuid": "u1",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "text", "text": "[Request interrupted by user]"}],
+                    },
+                },
+                {
+                    "uuid": "s1",
+                    "parentUuid": "u2",
+                    "type": "system",
+                    "subtype": "scheduled_task_fire",
+                    "content": "Running scheduled task",
+                },
+                {
+                    "uuid": "u3",
+                    "parentUuid": "s1",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": "循环计数，共50次",
+                    },
+                    "isMeta": True,
+                },
+                {
+                    "uuid": "a1",
+                    "parentUuid": "u3",
+                    "type": "assistant",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": scheduled_reply}],
+                    },
+                },
+                {
+                    "type": "last-prompt",
+                    "lastPrompt": f"CCB_REQ_ID: {stale_req_id}\n\nRun a long task.",
+                },
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    payload = {
+        "hook_event_name": "Stop",
+        "transcript_path": str(transcript),
+        "last_assistant_message": scheduled_reply,
+        "session_id": "claude-session-1",
+    }
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(project_root / "bin" / "ccb-provider-finish-hook"),
+            "--provider",
+            "claude",
+            "--completion-dir",
+            str(completion_dir),
+            "--agent-name",
+            "agent3",
+            "--workspace",
+            str(workspace),
+        ],
+        input=json.dumps(payload, ensure_ascii=False),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert not (completion_dir / "events" / f"{stale_req_id}.json").exists()
 
 
 def test_provider_finish_hook_writes_gemini_failed_event_for_login_required_response(tmp_path: Path) -> None:

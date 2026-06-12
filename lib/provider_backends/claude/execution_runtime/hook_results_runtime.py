@@ -32,6 +32,8 @@ def poll_exact_hook(submission: ProviderSubmission, *, now: str) -> ProviderPoll
 
     reply = hook_reply(event)
     status = hook_status(event)
+    diagnostics = hook_diagnostics(event)
+    status, diagnostics = normalize_empty_reply_status(status, diagnostics, reply=reply)
     provider_turn_ref = hook_provider_turn_ref(event, request_anchor=context.request_anchor)
     cursor_path = hook_cursor_path(context)
     item = build_hook_item(
@@ -40,6 +42,7 @@ def poll_exact_hook(submission: ProviderSubmission, *, now: str) -> ProviderPoll
         context=context,
         reply=reply,
         status=status,
+        diagnostics=diagnostics,
         provider_turn_ref=provider_turn_ref,
         cursor_path=cursor_path,
         now=now,
@@ -50,6 +53,7 @@ def poll_exact_hook(submission: ProviderSubmission, *, now: str) -> ProviderPoll
         context=context,
         reply=reply,
         status=status,
+        diagnostics=diagnostics,
         provider_turn_ref=provider_turn_ref,
         cursor_path=cursor_path,
         now=now,
@@ -79,6 +83,27 @@ def hook_status(event: dict[str, object]) -> CompletionStatus:
     return CompletionStatus(str(event.get("status") or CompletionStatus.COMPLETED.value))
 
 
+def normalize_empty_reply_status(
+    status: CompletionStatus,
+    diagnostics: dict[str, object],
+    *,
+    reply: str,
+) -> tuple[CompletionStatus, dict[str, object]]:
+    if reply or status not in {CompletionStatus.COMPLETED, CompletionStatus.INCOMPLETE}:
+        return status, diagnostics
+    normalized = dict(diagnostics)
+    normalized.setdefault("reason", "hook_stop_empty_reply")
+    normalized.setdefault("empty_reply", True)
+    normalized.setdefault("error_type", "empty_provider_reply")
+    normalized.setdefault(
+        "message",
+        "Provider completion hook fired without assistant reply text; inspect "
+        "the provider transcript, pane state, and authentication/API output.",
+    )
+    normalized.setdefault("diagnosis", normalized["message"])
+    return CompletionStatus.INCOMPLETE, normalized
+
+
 def hook_provider_turn_ref(event: dict[str, object], *, request_anchor: str) -> str:
     return str(event.get("session_id") or request_anchor)
 
@@ -98,8 +123,9 @@ def hook_item_payload(
     request_anchor: str,
     provider_turn_ref: str,
     status: CompletionStatus,
+    diagnostics: dict[str, object],
 ) -> dict[str, object]:
-    return {
+    payload: dict[str, object] = {
         "reply": reply,
         "text": reply,
         "turn_id": request_anchor,
@@ -108,18 +134,42 @@ def hook_item_payload(
         "hook_event_name": event.get("hook_event_name"),
         "status": status.value,
     }
+    if not payload["text"]:
+        fallback_text = fallback_payload_text(diagnostics)
+        if fallback_text:
+            payload["text"] = fallback_text
+    for key, value in diagnostics.items():
+        if value is None or key in payload:
+            continue
+        payload[key] = value
+    return payload
 
 
 def hook_diagnostics(event: dict[str, object]) -> dict[str, object]:
-    return {
-        "completion_source": "hook_artifact",
-        "hook_event_name": event.get("hook_event_name"),
-    }
+    diagnostics = dict(event.get("diagnostics") or {})
+    diagnostics.setdefault("completion_source", "hook_artifact")
+    diagnostics.setdefault("hook_event_name", event.get("hook_event_name"))
+    return diagnostics
 
 
-def hook_reason(status: CompletionStatus) -> str:
+def fallback_payload_text(diagnostics: dict[str, object]) -> str:
+    for key in ("text", "error_message", "message", "error", "diagnosis"):
+        text = str(diagnostics.get(key) or "").strip()
+        if text:
+            return text
+    return ""
+
+
+def hook_reason(status: CompletionStatus, diagnostics: dict[str, object]) -> str:
+    explicit_reason = str(diagnostics.get("reason") or "").strip().lower()
+    if explicit_reason:
+        return explicit_reason
     if status is CompletionStatus.FAILED:
         return "hook_stop_failure"
+    if status is CompletionStatus.CANCELLED:
+        return "hook_stop_cancelled"
+    if status is CompletionStatus.INCOMPLETE:
+        return "hook_stop_incomplete"
     return "hook_stop"
 
 
@@ -130,6 +180,7 @@ def build_hook_item(
     context: HookPollContext,
     reply: str,
     status: CompletionStatus,
+    diagnostics: dict[str, object],
     provider_turn_ref: str,
     cursor_path: str,
     now: str,
@@ -145,6 +196,7 @@ def build_hook_item(
             request_anchor=context.request_anchor,
             provider_turn_ref=provider_turn_ref,
             status=status,
+            diagnostics=diagnostics,
         ),
         cursor_kwargs={"opaque_cursor": cursor_path},
     )
@@ -157,6 +209,7 @@ def build_hook_decision(
     context: HookPollContext,
     reply: str,
     status: CompletionStatus,
+    diagnostics: dict[str, object],
     provider_turn_ref: str,
     cursor_path: str,
     now: str,
@@ -165,7 +218,7 @@ def build_hook_decision(
     return CompletionDecision(
         terminal=True,
         status=status,
-        reason=hook_reason(status),
+        reason=hook_reason(status, diagnostics),
         confidence=CompletionConfidence.EXACT,
         reply=reply,
         anchor_seen=bool(submission.runtime_state.get("anchor_seen", False)),
@@ -179,7 +232,7 @@ def build_hook_decision(
             updated_at=timestamp,
         ),
         finished_at=timestamp,
-        diagnostics=hook_diagnostics(event),
+        diagnostics=diagnostics,
     )
 
 

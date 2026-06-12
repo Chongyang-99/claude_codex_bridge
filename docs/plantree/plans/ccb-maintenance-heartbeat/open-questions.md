@@ -68,6 +68,10 @@ Date: 2026-06-10
   should add a CCB-owned project-scoped schedule consumer helper, ensured by
   normal project startup, that consumes due `schedule.json` entries and invokes
   the existing one-shot tick. Host OS scheduler installation remains deferred.
+- Active anomaly detection: do not add `mode = "aggressive"` or another
+  behavior branch. Pane/protocol/hook/control-plane conflict detection belongs
+  to the single default heartbeat classifier; cadence, deduplication,
+  escalation target, and policy gates control how often it wakes the assessor.
 
 ## Product
 
@@ -113,3 +117,6 @@ Date: 2026-06-10
 10. Should the internal schedule consumer runner ever become a public command,
     or should `ccb maintenance status|tick|schedule` remain the only documented
     user-facing heartbeat surface?
+11. What maximum string bounds and stale-orphan race policy should bounded
+    `provider_runtime` snapshots enforce after job terminalization or snapshot
+    cleanup lag?

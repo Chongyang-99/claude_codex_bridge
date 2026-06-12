@@ -12,6 +12,13 @@
   `ccb_self:codex` bound to canonical `agentroles.ccb_self`, and install/update
   provisioning refreshes the recommended CCB self role without changing
   existing custom project configs.
+- **Post-Update Default Provisioning Simplified**: `ccb update` now attempts
+  default Role Pack and Neovim provisioning without interactive permission
+  prompts, still honoring `CCB_INSTALL_ROLES=0` and `CCB_INSTALL_NEOVIM=0`.
+- **Project Role Lock Refresh Prompt**: project `ccb` startup now detects bound
+  Role Pack locks that lag behind the installed current role and refreshes
+  `.ccb/role-lock.json` only after interactive confirmation; non-interactive
+  starts warn without mutating the project.
 - **Role Identity Compatibility Fixed**: CCB source now matches the
   `agent-roles-spec` catalog identity `agentroles.ccb_self` and only treats
   `agentrole.ccb_self` as legacy input compatibility.

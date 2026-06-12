@@ -56,6 +56,15 @@ usable later for schedule-driven tasks sent to other configured agents.
 - [topics/schedule-consumer-runner.md](topics/schedule-consumer-runner.md):
   next slice for consuming persisted `schedule.json` automatically after
   startup instead of relying on manual `maintenance tick`.
+- [topics/active-anomaly-and-hook-attribution.md](topics/active-anomaly-and-hook-attribution.md):
+  incident-driven refinement for default active-anomaly escalation when provider
+  hooks, protocol logs, pane state, and CCB control-plane state disagree.
+- [topics/ask-runtime-health-mechanism.md](topics/ask-runtime-health-mechanism.md):
+  current ask job running/fault detection chain and identified supervision
+  gaps.
+- [topics/self-first-health-supervision.md](topics/self-first-health-supervision.md):
+  self-first supervision design that keeps ccbd conservative while making
+  `ccb_self` the semantic diagnosis and bounded-repair fallback.
 - [decisions/001-independent-runner-default-self-escalation.md](decisions/001-independent-runner-default-self-escalation.md):
   decision to use an independent CCB runner with configurable assessor
   escalation, defaulting to `ccb_self`.

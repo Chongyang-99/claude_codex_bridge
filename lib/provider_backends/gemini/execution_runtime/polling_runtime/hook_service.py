@@ -28,9 +28,8 @@ def poll_exact_hook(submission, *, now: str) -> ProviderPollResult | None:
     reply = str(event.get('reply') or '').strip()
     cursor_path = hook_cursor_path(context)
     status = hook_status(event)
-    if status is CompletionStatus.COMPLETED and not reply:
-        return None
     diagnostics = hook_event_diagnostics(event)
+    status, diagnostics = normalize_empty_reply_status(status, diagnostics, reply=reply)
     provider_turn_ref = hook_provider_turn_ref(event, request_anchor=context.request_anchor)
     item = build_hook_item(
         submission,
@@ -81,6 +80,27 @@ def hook_cursor_path(context: HookContext) -> str:
 
 def hook_status(event: dict[str, object]) -> CompletionStatus:
     return CompletionStatus(str(event.get('status') or CompletionStatus.COMPLETED.value))
+
+
+def normalize_empty_reply_status(
+    status: CompletionStatus,
+    diagnostics: dict[str, object],
+    *,
+    reply: str,
+) -> tuple[CompletionStatus, dict[str, object]]:
+    if reply or status not in {CompletionStatus.COMPLETED, CompletionStatus.INCOMPLETE}:
+        return status, diagnostics
+    normalized = dict(diagnostics)
+    normalized.setdefault('reason', 'hook_after_agent_incomplete')
+    normalized.setdefault('empty_reply', True)
+    normalized.setdefault('error_type', 'empty_provider_reply')
+    normalized.setdefault(
+        'message',
+        'Provider completion hook fired without assistant reply text; inspect '
+        'the provider transcript, pane state, and authentication/API output.',
+    )
+    normalized.setdefault('diagnosis', normalized['message'])
+    return CompletionStatus.INCOMPLETE, normalized
 
 
 def hook_provider_turn_ref(event: dict[str, object], *, request_anchor: str) -> str:

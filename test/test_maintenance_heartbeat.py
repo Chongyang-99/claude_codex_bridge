@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +19,7 @@ from maintenance_heartbeat import (
     MaintenanceHeartbeatSchedule,
     MaintenanceHeartbeatStatus,
     MaintenanceHeartbeatStore,
+    evaluate_project_view,
 )
 from storage.paths import PathLayout
 
@@ -81,23 +83,251 @@ def _patch_submit(monkeypatch, seen: dict[str, object]) -> None:
     )
 
 
-def _project_view_payload(*, agent_state: str = 'idle', agent_reason: str = 'pane_alive', comms=()) -> dict:
+def _project_view_payload(
+    *,
+    agent_state: str = 'idle',
+    agent_reason: str = 'pane_alive',
+    agent_source: str = 'pane_liveness',
+    current_job_id: str | None = None,
+    queue_depth: int = 0,
+    runtime_state: str = 'idle',
+    pane_id: str | None = '%1',
+    provider_runtime: dict | None = None,
+    comms=(),
+) -> dict:
+    agent = {
+        'name': 'demo',
+        'activity_state': agent_state,
+        'activity_reason': agent_reason,
+        'activity_source': agent_source,
+        'queue_depth': queue_depth,
+        'runtime_state': runtime_state,
+        'pane_id': pane_id,
+        'window': 'main',
+    }
+    if current_job_id:
+        agent['current_job_id'] = current_job_id
+    if provider_runtime is not None:
+        agent['provider_runtime'] = provider_runtime
     return {
         'view': {
             'ccbd': {'state': 'mounted', 'health': 'healthy', 'generation': 1},
-            'agents': [
-                {
-                    'name': 'demo',
-                    'activity_state': agent_state,
-                    'activity_reason': agent_reason,
-                    'activity_source': 'pane_liveness',
-                    'queue_depth': 0,
-                }
-            ],
+            'agents': [agent],
             'comms': list(comms),
         },
         'cache': {'generated_at': NOW},
     }
+
+
+def _diagnostic_json_from_body(body: str) -> dict:
+    raw = body.split('```json\n', 1)[1].split('\n```', 1)[0]
+    return json.loads(raw)
+
+
+def test_maintenance_classifier_flags_provider_work_without_control_work() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='active',
+            agent_reason='provider_working',
+            agent_source='provider_pane',
+            current_job_id=None,
+            queue_depth=0,
+            runtime_state='idle',
+            pane_id='%3',
+        )
+    )
+
+    assert evaluation.health == 'concern'
+    assert evaluation.summary['suspicion_count'] == 1
+    envelope = evaluation.evidence[0]
+    assert envelope['kind'] == 'suspicion_envelope'
+    assert envelope['condition_kind'] == 'provider_work_without_control_work'
+    assert envelope['agent'] == 'demo'
+    assert envelope['confidence'] == 'needs_self_assessment'
+    assert envelope['control_state']['current_job_id'] is None
+    assert envelope['control_state']['active_comms_count'] == 0
+    assert envelope['pane_ref']['pane_id'] == '%3'
+    assert 'capture_pane_readonly' in envelope['allowed_actions']
+
+
+def test_maintenance_classifier_keeps_active_ccb_job_healthy() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='active',
+            agent_reason='job_running',
+            agent_source='ccb_job',
+            current_job_id='job_running_1234',
+            queue_depth=1,
+            comms=(
+                {
+                    'id': 'job_running_1234',
+                    'target': 'demo',
+                    'business_status': 'replying',
+                    'status': 'running',
+                },
+            ),
+        )
+    )
+
+    assert evaluation.health == 'healthy'
+    assert evaluation.summary['suspicion_count'] == 0
+    assert evaluation.evidence == ()
+
+
+def test_maintenance_classifier_keeps_active_comms_without_current_job_healthy() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='active',
+            agent_reason='provider_working',
+            agent_source='provider_pane',
+            current_job_id=None,
+            comms=(
+                {
+                    'id': 'job_replying_1234',
+                    'target': 'demo',
+                    'business_status': 'replying',
+                    'status': 'running',
+                },
+            ),
+        )
+    )
+
+    assert evaluation.health == 'healthy'
+    assert evaluation.summary['active_comms_count'] == 1
+    assert evaluation.summary['suspicion_count'] == 0
+    assert evaluation.evidence == ()
+
+
+def test_maintenance_classifier_flags_degraded_activity_evidence() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='pending',
+            agent_reason='',
+            agent_source='',
+        )
+    )
+
+    assert evaluation.health == 'unknown'
+    assert evaluation.summary['suspicion_count'] == 1
+    envelope = evaluation.evidence[0]
+    assert envelope['kind'] == 'suspicion_envelope'
+    assert envelope['condition_kind'] == 'degraded_activity_evidence'
+    assert envelope['source'] == 'unknown'
+
+
+def test_maintenance_classifier_flags_active_degraded_activity_evidence() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='active',
+            agent_reason='provider_working',
+            agent_source='',
+        )
+    )
+
+    assert evaluation.health == 'unknown'
+    assert evaluation.summary['suspicion_count'] == 1
+    envelope = evaluation.evidence[0]
+    assert envelope['condition_kind'] == 'degraded_activity_evidence'
+    assert envelope['control_state']['activity_state'] == 'active'
+
+
+def test_maintenance_classifier_ignores_fresh_pending_anchor_runtime() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='active',
+            agent_reason='job_running',
+            agent_source='ccb_job',
+            current_job_id='job_running_1234',
+            provider_runtime={
+                'job_id': 'job_running_1234',
+                'agent_name': 'demo',
+                'provider': 'codex',
+                'primary_authority': 'protocol_log',
+                'runtime_state': {
+                    'delivery_state': 'pending_anchor',
+                    'anchor_seen': False,
+                    'delivery_started_at': '2026-06-10T11:59:55Z',
+                    'delivery_timeout_s': 120.0,
+                },
+            },
+            comms=(
+                {
+                    'id': 'job_running_1234',
+                    'target': 'demo',
+                    'business_status': 'replying',
+                    'status': 'running',
+                },
+            ),
+        )
+    )
+
+    assert evaluation.health == 'healthy'
+    assert evaluation.summary['suspicion_count'] == 0
+
+
+def test_maintenance_classifier_flags_pending_anchor_runtime_after_observation_window() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='active',
+            agent_reason='job_running',
+            agent_source='ccb_job',
+            current_job_id='job_running_1234',
+            provider_runtime={
+                'job_id': 'job_running_1234',
+                'agent_name': 'demo',
+                'provider': 'codex',
+                'primary_authority': 'protocol_log',
+                'runtime_state': {
+                    'delivery_state': 'pending_anchor',
+                    'anchor_seen': False,
+                    'delivery_started_at': '2026-06-10T11:59:15Z',
+                    'delivery_timeout_s': 120.0,
+                },
+            },
+            comms=(
+                {
+                    'id': 'job_running_1234',
+                    'target': 'demo',
+                    'business_status': 'replying',
+                    'status': 'running',
+                },
+            ),
+        )
+    )
+
+    assert evaluation.health == 'concern'
+    assert evaluation.summary['suspicion_count'] == 1
+    envelope = evaluation.evidence[0]
+    assert envelope['kind'] == 'suspicion_envelope'
+    assert envelope['condition_kind'] == 'provider_delivery_pending_anchor'
+    provider_runtime = envelope['provider_state']['provider_runtime']
+    assert provider_runtime['primary_authority'] == 'protocol_log'
+    assert provider_runtime['runtime_state']['delivery_state'] == 'pending_anchor'
+    assert provider_runtime['runtime_state']['delivery_started_at'] == '2026-06-10T11:59:15Z'
+
+
+def test_maintenance_classifier_flags_provider_runtime_without_control_job() -> None:
+    evaluation = evaluate_project_view(
+        _project_view_payload(
+            agent_state='idle',
+            agent_reason='pane_alive',
+            agent_source='pane_liveness',
+            current_job_id=None,
+            provider_runtime={
+                'job_id': 'job_orphan_runtime',
+                'agent_name': 'demo',
+                'provider': 'codex',
+                'runtime_state': {
+                    'delivery_state': 'accepted',
+                    'anchor_seen': True,
+                },
+            },
+        )
+    )
+
+    assert evaluation.health == 'concern'
+    assert evaluation.summary['suspicion_count'] == 1
+    assert evaluation.evidence[0]['condition_kind'] == 'provider_runtime_without_control_job'
 
 
 def test_maintenance_heartbeat_paths_use_dedicated_namespace(tmp_path: Path) -> None:
@@ -356,6 +586,169 @@ def test_maintenance_tick_concern_shortens_next_schedule(tmp_path: Path, monkeyp
     assert schedule is not None
     assert schedule.next_run_at == '2026-06-10T12:01:30Z'
     assert schedule.reason == 'concern_tick'
+
+
+def test_maintenance_tick_sends_suspicion_envelope_to_assessor(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance_service, 'utc_now', lambda: NOW)
+    seen: dict[str, object] = {}
+    _patch_submit(monkeypatch, seen)
+    _patch_project_view(
+        monkeypatch,
+        _project_view_payload(
+            agent_state='active',
+            agent_reason='provider_working',
+            agent_source='provider_pane',
+            current_job_id=None,
+            runtime_state='idle',
+            pane_id='%3',
+        ),
+    )
+    project_root = tmp_path / 'repo-tick-suspicion'
+    _write(project_root / '.ccb' / 'ccb.config', _enabled_config())
+    context = CliContextBuilder().build(
+        ParsedMaintenanceCommand(project=None, action='tick'),
+        cwd=project_root,
+        bootstrap_if_missing=False,
+    )
+
+    payload = maintenance_status(context, ParsedMaintenanceCommand(project=None, action='tick'))
+    store = MaintenanceHeartbeatStore(context.paths, project_id=context.project.project_id)
+    status = store.load_status().value
+    activations = store.load_activation_tail(1)
+    request = seen['request']
+    diagnostic = _diagnostic_json_from_body(request.body)
+    envelope = diagnostic['evidence'][0]
+
+    assert payload['tick_status'] == 'concern'
+    assert payload['tick_summary']['suspicion_count'] == 1
+    assert payload['tick_evidence'][0]['kind'] == 'suspicion_envelope'
+    assert payload['tick_evidence'][0]['condition_kind'] == 'provider_work_without_control_work'
+    assert status is not None
+    assert status.summary['suspicion_count'] == 1
+    assert len(activations) == 1
+    assert activations[0].reason == 'provider_work_without_control_work'
+    assert envelope['kind'] == 'suspicion_envelope'
+    assert envelope['control_state']['runtime_state'] == 'idle'
+    assert envelope['pane_ref']['pane_id'] == '%3'
+    assert 'capture_pane_readonly' in diagnostic['allowed_actions']
+    assert 'schedule_followup' in envelope['allowed_actions']
+
+
+def test_maintenance_dedup_ignores_provider_runtime_timing_drift(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance_service, 'utc_now', lambda: NOW)
+    submitted: list[str] = []
+
+    def _submit(payload_id: str):
+        def _invoke(context, *, allow_restart_stale, request_fn):
+            submitted.append(payload_id)
+            return request_fn(_SubmitClient({}))
+
+        return _invoke
+
+    def _runtime_payload(*, ready_at: str, deadline_at: str) -> dict:
+        return _project_view_payload(
+            agent_state='active',
+            agent_reason='job_running',
+            agent_source='ccb_job',
+            current_job_id='job_running_1234',
+            provider_runtime={
+                'job_id': 'job_running_1234',
+                'agent_name': 'demo',
+                'provider': 'codex',
+                'accepted_at': '2026-06-10T11:59:00Z',
+                'ready_at': ready_at,
+                'last_progress_at': ready_at,
+                'no_terminal_deadline_at': deadline_at,
+                'runtime_state': {
+                    'delivery_state': 'pending_anchor',
+                    'anchor_seen': False,
+                    'delivery_started_at': '2026-06-10T11:59:15Z',
+                    'delivery_timeout_deadline_at': deadline_at,
+                    'delivery_timeout_s': 120.0,
+                    'next_seq': 1,
+                },
+            },
+            comms=(
+                {
+                    'id': 'job_running_1234',
+                    'target': 'demo',
+                    'business_status': 'replying',
+                    'status': 'running',
+                },
+            ),
+        )
+
+    project_root = tmp_path / 'repo-tick-dedup-runtime'
+    _write(project_root / '.ccb' / 'ccb.config', _enabled_config())
+    context = CliContextBuilder().build(
+        ParsedMaintenanceCommand(project=None, action='tick'),
+        cwd=project_root,
+        bootstrap_if_missing=False,
+    )
+
+    _patch_project_view(
+        monkeypatch,
+        _runtime_payload(ready_at='2026-06-10T11:59:00Z', deadline_at='2026-06-10T12:14:00Z'),
+    )
+    monkeypatch.setattr(maintenance_service, 'invoke_mounted_daemon', _submit('first'))
+    first = maintenance_status(context, ParsedMaintenanceCommand(project=None, action='tick'))
+
+    _patch_project_view(
+        monkeypatch,
+        _runtime_payload(ready_at='2026-06-10T11:59:01Z', deadline_at='2026-06-10T12:14:01Z'),
+    )
+    monkeypatch.setattr(maintenance_service, 'invoke_mounted_daemon', _submit('second'))
+    second = maintenance_status(context, ParsedMaintenanceCommand(project=None, action='tick', args=('--force',)))
+    activations = MaintenanceHeartbeatStore(context.paths, project_id=context.project.project_id).load_activation_tail(2)
+
+    assert first['tick_activation_status'] == 'submitted'
+    assert second['tick_activation_status'] == 'suppressed'
+    assert len(activations) == 2
+    assert activations[-1].suppressed_reason is not None
+    assert activations[-1].suppressed_reason.startswith('recent_duplicate:')
+    assert submitted == ['first']
+
+
+def test_maintenance_tick_unknown_streak_for_degraded_activity_evidence(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(maintenance_service, 'utc_now', lambda: NOW)
+    seen: dict[str, object] = {}
+    _patch_submit(monkeypatch, seen)
+    _patch_project_view(
+        monkeypatch,
+        _project_view_payload(
+            agent_state='pending',
+            agent_reason='',
+            agent_source='',
+        ),
+    )
+    project_root = tmp_path / 'repo-tick-degraded-streak'
+    _write(project_root / '.ccb' / 'ccb.config', _enabled_config())
+    context = CliContextBuilder().build(
+        ParsedMaintenanceCommand(project=None, action='tick'),
+        cwd=project_root,
+        bootstrap_if_missing=False,
+    )
+    store = MaintenanceHeartbeatStore(context.paths, project_id=context.project.project_id)
+    store.save_status(
+        MaintenanceHeartbeatStatus(
+            project_id=context.project.project_id,
+            last_tick_status='unknown',
+            unknown_streak=2,
+            updated_at='2026-06-10T11:59:00Z',
+        )
+    )
+
+    payload = maintenance_status(context, ParsedMaintenanceCommand(project=None, action='tick'))
+    status = store.load_status().value
+
+    assert payload['tick_status'] == 'unknown'
+    assert payload['tick_needs_user'] is True
+    assert payload['tick_next_heartbeat_after_s'] == 900
+    assert payload['tick_evidence'][0]['condition_kind'] == 'degraded_activity_evidence'
+    assert status is not None
+    assert status.unknown_streak == 3
+    assert status.needs_user is True
+    assert status.next_heartbeat_after_s == 900
 
 
 def test_maintenance_tick_falls_back_to_local_ps_when_project_view_unavailable(tmp_path: Path, monkeypatch) -> None:

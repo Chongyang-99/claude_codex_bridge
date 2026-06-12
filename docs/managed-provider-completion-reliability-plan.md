@@ -147,7 +147,17 @@ Problems:
 
 - a hook may fire for an auth / info / retry side turn
 - extracted `req_id` may refer to the last visible request marker, not the currently intended answer turn
-- empty reply can still be terminalized as `completed`
+- empty reply must not be terminalized as `completed`; hook-driven providers
+  should report `incomplete` with diagnostics when a completion hook fires
+  without assistant-visible reply text
+
+Claude `Stop` hooks must not infer request identity by scanning for the latest
+visible `CCB_REQ_ID` or latest `last-prompt`. The hook must bind the current
+assistant stop to its actual transcript turn, walk the `parentUuid` chain back
+to the turn's prompt user message, skip tool-result user records, and only emit
+a completion artifact when that prompt itself is anchored by an outer
+`CCB_REQ_ID`. Scheduled-task turns, user-interruption turns, auth/info turns, or
+other provider-side turns must not reuse an earlier CCB request id.
 
 This is not a mere parser issue.
 
@@ -559,6 +569,17 @@ Current `reply = "[no response text]"` style terminalization should be demoted u
 Default rule:
 
 - empty reply + no assistant-visible content = `incomplete`, not `completed`
+- Claude and Gemini hook readers must also normalize legacy or malformed
+  `completed` + empty-reply hook events into terminal `incomplete` decisions
+  with `empty_reply`, `empty_provider_reply`, and a human-readable diagnosis.
+- Protocol-turn providers such as managed Codex must normalize
+  `task_complete` boundaries with no boundary reply and no prior
+  assistant-visible reply evidence into terminal `incomplete` decisions with
+  the same empty-reply diagnostic shape.
+- Pane-quiet providers such as Antigravity (`agy`) must normalize visible
+  request done markers with no extracted assistant reply into terminal
+  `incomplete` decisions immediately, rather than completing or waiting for a
+  long quiet timeout.
 
 #### 10.2.3 API Failure And Long-Thinking Need Closure
 

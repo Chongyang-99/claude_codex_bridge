@@ -46,6 +46,21 @@ _ACTIVE_ACTIVATION_BUSINESS_STATUSES = {'delivering', 'replying', 'sending'}
 _ACTIVE_JOB_STATUSES = {'accepted', 'queued', 'running'}
 _RUNNER_DEFAULT_SLEEP_CAP_S = 30.0
 _RUNNER_STOP_WAIT_S = 1.0
+_DEDUP_VOLATILE_KEYS = {
+    'accepted_at',
+    'ready_at',
+    'last_progress_at',
+    'no_terminal_deadline_at',
+    'delivery_started_at',
+    'delivery_timeout_deadline_at',
+    'delivery_confirmed_at',
+    'delivery_failed_at',
+    'prompt_sent_at',
+    'ready_wait_started_at',
+    'reliability_last_progress_at',
+    'reliability_timeout_deadline_at',
+    'next_seq',
+}
 
 
 @dataclass(frozen=True)
@@ -689,6 +704,7 @@ def _activation_message(
         'dedup_key': dedup_key,
         'recommended_action': evaluation.recommended_action,
         'next_heartbeat_after_s': next_after_s,
+        'allowed_actions': _activation_allowed_actions(evaluation.evidence),
         'summary': _bounded_mapping(evaluation.summary),
         'evidence': list(evaluation.evidence[:_MESSAGE_EVIDENCE_LIMIT]),
     }
@@ -696,8 +712,10 @@ def _activation_message(
     return (
         'CCB maintenance heartbeat detected a runtime condition that needs semantic supervision.\n\n'
         'Assess the diagnostic package from the ccb_self running-supervision perspective. '
-        'Do not perform automatic repair in v1. If a delayed follow-up is needed, request '
-        '`ccb maintenance schedule --after <duration> --reason <reason>` through the CCB control plane.\n\n'
+        'Use only actions explicitly allowed by the diagnostic package evidence. Prefer read-only diagnosis; '
+        'do not restart or repair unless the package allows it and no active business work would be duplicated. '
+        'If a delayed follow-up is needed, request `ccb maintenance schedule --after <duration> --reason <reason>` '
+        'through the CCB control plane.\n\n'
         'Diagnostic package:\n'
         '```json\n'
         f'{diagnostic}\n'
@@ -731,6 +749,22 @@ def _activation_summary(evaluation: MaintenanceHeartbeatEvaluation, *, next_afte
     }
 
 
+def _activation_allowed_actions(evidence: tuple[dict, ...]) -> list[str]:
+    actions: list[str] = []
+    seen: set[str] = set()
+    for item in evidence[:_MESSAGE_EVIDENCE_LIMIT]:
+        raw_actions = item.get('allowed_actions')
+        if not isinstance(raw_actions, (list, tuple)):
+            continue
+        for value in raw_actions:
+            action = str(value or '').strip()
+            if not action or action in seen:
+                continue
+            seen.add(action)
+            actions.append(action)
+    return actions
+
+
 def _bounded_mapping(payload: Mapping[str, object]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in payload.items():
@@ -745,10 +779,24 @@ def _diagnostic_dedup_key(context: CliContext, evaluation: MaintenanceHeartbeatE
         'health': evaluation.health,
         'source_kind': evaluation.source_kind,
         'summary': _bounded_mapping(evaluation.summary),
-        'evidence': list(evaluation.evidence[:_MESSAGE_EVIDENCE_LIMIT]),
+        'evidence': _dedup_stable_value(list(evaluation.evidence[:_MESSAGE_EVIDENCE_LIMIT])),
     }
     digest = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode('utf-8')).hexdigest()
     return f'maintenance:{digest[:20]}'
+
+
+def _dedup_stable_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        result: dict[str, object] = {}
+        for key, item in value.items():
+            text_key = str(key)
+            if text_key in _DEDUP_VOLATILE_KEYS:
+                continue
+            result[text_key] = _dedup_stable_value(item)
+        return result
+    if isinstance(value, (list, tuple)):
+        return [_dedup_stable_value(item) for item in value]
+    return value
 
 
 def _activation_id() -> str:

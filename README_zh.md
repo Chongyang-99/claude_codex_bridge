@@ -271,13 +271,18 @@ Role Pack 用来定义可复用的 agent 角色。一个 role 可以包含稳定
 推荐默认 catalog roles 包括 `agentroles.ccb_self` 和
 `agentroles.archi`：前者是 CCB 自维护角色，后者用于架构审查，来自
 `agent-roles-spec`，并由 Architec 支撑。`install.sh install` 默认会尝试安装
-或刷新这些推荐角色；`ccb update` 在接受 Role Pack provisioning 时会刷新已安装
-role，并安装缺失的推荐角色。也可以手动刷新：
+或刷新这些推荐角色；`ccb update` 会在用户环境里刷新已安装 role，并安装缺失的
+推荐角色。也可以手动刷新：
 
 ```bash
 ccb roles update agentroles.ccb_self
 ccb roles update agentroles.archi
 ```
+
+项目内的 role 绑定仍由 `.ccb/role-lock.json` 固定。`ccb update` 不会改写项目
+锁。在项目内运行 `ccb` 时，CCB 会比较已绑定 role lock 和用户环境里当前安装的
+role；如果锁已经落后，交互式启动会询问是否就地刷新项目锁，非交互启动只打印
+提醒。
 
 强烈建议 CCB 项目保留 `ccb_self`，因为它负责 CCB 配置维护、运行诊断、受保护
 恢复、工作链修复和单 agent 重启辅助，同时不接管业务任务。空白项目的内置默认配置
@@ -360,7 +365,7 @@ command = "ccb-nvim"
 label = "neovim"
 ```
 
-`ccb tools install neovim` 会准备隔离的 `ccb-nvim` wrapper 和 LazyVim profile，路径在 CCB 自己的 XDG 目录下。`install.sh install` 和 `ccb update` 会在交互终端询问是否安装或刷新该工具；非交互安装会跳过并打印后续命令。设置 `CCB_INSTALL_NEOVIM=1` 可强制 provisioning，设置 `CCB_INSTALL_NEOVIM=0` 可跳过。
+`ccb tools install neovim` 会准备隔离的 `ccb-nvim` wrapper 和 LazyVim profile，路径在 CCB 自己的 XDG 目录下。`install.sh install` 和 `ccb update` 默认都会尝试安装或刷新该工具，并把默认 provisioning 失败保留为 warning。设置 `CCB_INSTALL_NEOVIM=1` 可强制 provisioning，设置 `CCB_INSTALL_NEOVIM=0` 可跳过。
 如果 `PATH` 里没有 `nvim`，provisioning 会尝试下载 Linux/macOS 官方 Neovim release tarball，并校验 release sha256 后再启用；不会写入 `~/.config/nvim`。
 托管 profile 默认使用 ASCII 图标，避免没有 Nerd Font 的终端出现方块/乱码。确认终端字体支持 Nerd Font 时，可用 `CCB_LAZYVIM_ICON_STYLE=glyph ccb-nvim` 恢复 LazyVim 图标。
 用 `ccb tools doctor neovim` 验证托管 profile。LazyVim 真正可用时会显示 `neovim_status: ok` 和 `lazyvim_health_status: ok`；插件目录损坏或半下载会显示 `degraded`，重新运行 `ccb tools install neovim` 会尝试修复。
@@ -550,6 +555,8 @@ v7 线重点：
   去重抑制和 diagnostics 证据路径，同时保持 heartbeat 只能显式启用。
 - 空白项目内置默认配置新增 `ccb_self:codex` 并绑定 canonical
   `agentroles.ccb_self`，安装/更新时刷新推荐角色，但不改写已有自定义配置。
+- `ccb update` 刷新默认 Role Packs 和 Neovim 时不再反复交互确认，同时保持项目
+  role lock 显式更新。
 - CCB source 与 `agent-roles-spec` 的角色 id `agentroles.ccb_self` 对齐；
   `agentrole.ccb_self` 仅作为 legacy 输入兼容。
 - 收紧生成配置的单一权威、Role Pack hook 的 CCB_BIN/project-root 路径和
