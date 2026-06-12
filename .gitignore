@@ -21,6 +21,7 @@ test/dir1/.ccb/
 .ccb-requests/
 .gemini/
 dist/
+*.tgz
 opencode.json
 .claude/
 *.mp4

@@ -106,7 +106,16 @@ The sidebar implementation uses ideas from [tmux-agent-sidebar](https://github.c
 
 ### 1. Install or update
 
-New users should start from a release package. Download the matching package from [Releases](https://github.com/SeemSeam/claude_codex_bridge/releases), then install it:
+New users can install CCB from npm:
+
+```bash
+npm install -g @seemseam/ccb
+```
+
+The npm package downloads and verifies the matching GitHub Release package for
+your platform, then exposes `ccb`, `ask`, `autonew`, and `ctx-transfer`.
+
+You can also install from a release package directly. Download the matching package from [Releases](https://github.com/SeemSeam/claude_codex_bridge/releases), then install it:
 
 ```bash
 tar -xzf ccb-*.tar.gz
@@ -482,10 +491,21 @@ CCB does not require leaving your editor. A common setup is: editor for code, CC
 - `tmux`
 - At least one agent CLI you plan to use, such as Codex, Claude, Gemini, OpenCode, Droid, or Antigravity
 - Linux, macOS, or WSL
+- Node.js 18+ when installing through npm
 
 Current v7 / newer versions do not claim native Windows support. Native Windows support only applies to the v5 line. If you are on Windows and want current versions, use WSL and keep both `ccb` and agent CLIs inside WSL.
 
-### Release first
+### npm first
+
+```bash
+npm install -g @seemseam/ccb
+```
+
+The npm package is a lightweight installer wrapper around the official GitHub
+Release artifacts. It verifies `SHA256SUMS` before extracting the platform
+package.
+
+### Release package fallback
 
 For first install, prefer a package from [GitHub Releases](https://github.com/SeemSeam/claude_codex_bridge/releases). For existing installs:
 

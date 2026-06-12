@@ -104,7 +104,15 @@ Sidebar 相关实现使用并借鉴了 [tmux-agent-sidebar](https://github.com/h
 
 ### 1. 安装或更新
 
-新用户优先使用 release 包。到 [Releases](https://github.com/SeemSeam/claude_codex_bridge/releases) 下载与你的平台匹配的包，解压后安装：
+新用户可以先用 npm 安装：
+
+```bash
+npm install -g @seemseam/ccb
+```
+
+npm 包会下载并校验与你的平台匹配的 GitHub Release 包，然后提供 `ccb`、`ask`、`autonew` 和 `ctx-transfer`。
+
+也可以直接使用 release 包。到 [Releases](https://github.com/SeemSeam/claude_codex_bridge/releases) 下载与你的平台匹配的包，解压后安装：
 
 ```bash
 tar -xzf ccb-*.tar.gz
@@ -470,10 +478,19 @@ CCB 不要求你离开编辑器。常见方式是：编辑器负责写代码，C
 - `tmux`
 - 至少一个你要使用的 agent CLI，例如 Codex、Claude、Gemini、OpenCode、Droid 或 Antigravity
 - Linux、macOS 或 WSL
+- 通过 npm 安装时需要 Node.js 18+
 
 当前 v7 / 新版本不声明原生 Windows 支持。原生 Windows 只支持到 v5 线；如果你在 Windows 上使用新版本，推荐使用 WSL，并让 `ccb` 与 agent CLI 都运行在 WSL 内。
 
-### Release 优先
+### npm 优先
+
+```bash
+npm install -g @seemseam/ccb
+```
+
+npm 包是官方 GitHub Release artifacts 的轻量安装 wrapper，会先校验 `SHA256SUMS`，再解压平台包。
+
+### Release 包兜底
 
 首次安装推荐使用 [GitHub Releases](https://github.com/SeemSeam/claude_codex_bridge/releases) 的 release 包；已安装用户推荐：
 
