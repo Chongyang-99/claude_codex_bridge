@@ -88,6 +88,8 @@ def with_delivery_anchor_timeout(
     fallback_submission: ProviderSubmission,
     now: str,
 ) -> ProviderPollResult | None:
+    if result is not None and not isinstance(result, ProviderPollResult):
+        return result
     current = result.submission if result is not None else fallback_submission
     if result is not None and result.decision is not None:
         return result
