@@ -98,6 +98,18 @@ def poll_submission(submission: ProviderSubmission, *, now: str) -> ProviderPoll
             confidence=CompletionConfidence.OBSERVED,
         )
 
+    if done_seen and not reply:
+        return _terminal(
+            submission,
+            state,
+            now,
+            status=CompletionStatus.INCOMPLETE,
+            reason='pane_done_empty_reply',
+            reply='',
+            confidence=CompletionConfidence.OBSERVED,
+            diagnostics_extra=_empty_reply_diagnostics(),
+        )
+
     if total_secs >= MAX_WAIT_SECS:
         return _terminal(
             submission,
@@ -151,6 +163,7 @@ def _terminal(
     reason: str,
     reply: str,
     confidence: CompletionConfidence,
+    diagnostics_extra: dict[str, object] | None = None,
 ) -> ProviderPollResult:
     cleaned_reply = reply or ''
     progress = replace(
@@ -166,6 +179,15 @@ def _terminal(
         event_seq=state_int(state, 'next_seq', 1),
         updated_at=now,
     )
+    diagnostics = {
+        'mode': 'pane_quiet',
+        'quiet_secs': float(state.get('quiet_secs') or 0.0),
+        'total_secs': float(state.get('total_secs') or 0.0),
+        'done_seen': bool(state.get('done_seen')),
+        'snapshot_errors': state_int(state, 'snapshot_errors', 0),
+        'reply_chars': state_int(state, 'reply_chars', 0),
+    }
+    diagnostics.update(diagnostics_extra or {})
     decision = CompletionDecision(
         terminal=True,
         status=status,
@@ -178,16 +200,23 @@ def _terminal(
         provider_turn_ref=state_str(state, 'req_id') or None,
         source_cursor=cursor,
         finished_at=now,
-        diagnostics={
-            'mode': 'pane_quiet',
-            'quiet_secs': float(state.get('quiet_secs') or 0.0),
-            'total_secs': float(state.get('total_secs') or 0.0),
-            'done_seen': bool(state.get('done_seen')),
-            'snapshot_errors': state_int(state, 'snapshot_errors', 0),
-            'reply_chars': state_int(state, 'reply_chars', 0),
-        },
+        diagnostics=diagnostics,
     )
     return ProviderPollResult(submission=progress, items=(), decision=decision)
+
+
+def _empty_reply_diagnostics() -> dict[str, object]:
+    diagnosis = (
+        'Provider pane showed the requested done marker without assistant reply '
+        'text; inspect the pane transcript, prompt echo boundaries, and '
+        'authentication/API output.'
+    )
+    return {
+        'empty_reply': True,
+        'error_type': 'empty_provider_reply',
+        'message': diagnosis,
+        'diagnosis': diagnosis,
+    }
 
 
 __all__ = ['poll_submission']

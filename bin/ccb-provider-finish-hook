@@ -11,7 +11,7 @@ script_dir = Path(__file__).resolve().parent
 lib_dir = script_dir.parent / 'lib'
 sys.path.insert(0, str(lib_dir))
 
-from provider_hooks.artifacts import extract_req_id, latest_req_id_from_transcript, write_event
+from provider_hooks.artifacts import current_turn_req_id_from_transcript, extract_req_id, write_event
 
 
 def _parse_args() -> argparse.Namespace:
@@ -102,6 +102,20 @@ def _gemini_text_failure_details(text: str) -> dict[str, str] | None:
                 'error_message': str(text).strip(),
             }
     return None
+
+
+def _empty_reply_diagnostics(*, reason: str) -> dict[str, Any]:
+    diagnosis = (
+        'Provider completion hook fired without assistant reply text; inspect '
+        'the provider transcript, pane state, and authentication/API output.'
+    )
+    return {
+        'reason': reason,
+        'empty_reply': True,
+        'error_type': 'empty_provider_reply',
+        'message': diagnosis,
+        'diagnosis': diagnosis,
+    }
 
 
 def _gemini_event_status_and_diagnostics(payload: dict[str, Any], reply: str) -> tuple[str, dict[str, Any]]:
@@ -209,15 +223,18 @@ def _gemini_event_status_and_diagnostics(payload: dict[str, Any], reply: str) ->
 def _handle_claude(*, payload: dict, completion_dir: Path, agent_name: str, workspace_path: str) -> int:
     event_name = str(payload.get('hook_event_name') or '').strip() or 'Stop'
     transcript_path = str(payload.get('transcript_path') or '').strip()
-    req_id = latest_req_id_from_transcript(transcript_path)
+    reply = str(payload.get('last_assistant_message') or '')
+    req_id = current_turn_req_id_from_transcript(transcript_path, assistant_reply=reply)
     if not req_id:
         return 0
-    reply = str(payload.get('last_assistant_message') or '')
     status = 'completed' if event_name == 'Stop' else 'failed'
     diagnostics = {
         'hook_event_name': event_name,
         'stop_hook_active': bool(payload.get('stop_hook_active', False)),
     }
+    if status == 'completed' and not reply.strip():
+        status = 'incomplete'
+        diagnostics.update(_empty_reply_diagnostics(reason='hook_stop_empty_reply'))
     write_event(
         provider='claude',
         completion_dir=completion_dir,
@@ -251,8 +268,7 @@ def _handle_gemini(*, payload: dict, completion_dir: Path, agent_name: str, work
     status, diagnostics = _gemini_event_status_and_diagnostics(payload, reply)
     if status == 'completed' and not reply:
         status = 'incomplete'
-        diagnostics.setdefault('reason', 'hook_after_agent_incomplete')
-        diagnostics.setdefault('empty_reply', True)
+        diagnostics.update(_empty_reply_diagnostics(reason='hook_after_agent_incomplete'))
     session_id = _first_text(payload, 'session_id', 'sessionId', 'session.id') or None
     hook_event_name = _first_text(payload, 'hook_event_name') or 'AfterAgent'
     write_event(

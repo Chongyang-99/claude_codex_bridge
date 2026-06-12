@@ -33,6 +33,9 @@ _PROVIDER_ACTIVE_MARKERS = (
 _PROVIDER_BACKGROUND_ACTIVE_MARKERS = (
     'background terminal running',
     'background terminals running',
+    'running scheduled task',
+    'shell still running',
+    'shells still running',
     'messages to be submitted after next tool call',
     'press esc to interrupt and send immediately',
 )

@@ -66,3 +66,33 @@ def test_gemini_poll_exact_hook_uses_fallback_error_text_for_failed_event(monkey
     assert result.items[0].payload['text'] == 'model unavailable'
     assert result.decision is not None
     assert result.decision.reason == 'api_error'
+
+
+def test_gemini_poll_exact_hook_marks_completed_empty_reply_incomplete(monkeypatch) -> None:
+    monkeypatch.setattr(
+        'provider_backends.gemini.execution_runtime.polling_runtime.hook_service.load_event',
+        lambda completion_dir, request_anchor: {
+            'reply': '',
+            'status': 'completed',
+            'session_id': 'ses_empty',
+            'hook_event_name': 'AfterAgent',
+        },
+    )
+
+    result = poll_exact_hook(
+        _submission(completion_dir='/tmp/completion', request_anchor='req_1', next_seq=2),
+        now='2026-04-06T00:00:05Z',
+    )
+
+    assert result is not None
+    assert result.submission.reply == ''
+    assert result.submission.runtime_state['next_seq'] == 3
+    assert result.decision is not None
+    assert result.decision.status is CompletionStatus.INCOMPLETE
+    assert result.decision.reason == 'hook_after_agent_incomplete'
+    assert result.decision.diagnostics['empty_reply'] is True
+    assert result.decision.diagnostics['error_type'] == 'empty_provider_reply'
+    assert 'without assistant reply text' in result.decision.diagnostics['diagnosis']
+    assert result.items[0].payload['status'] == 'incomplete'
+    assert result.items[0].payload['empty_reply'] is True
+    assert 'without assistant reply text' in result.items[0].payload['text']

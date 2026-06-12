@@ -362,14 +362,6 @@ def _provision_neovim_after_update() -> None:
     if choice == 'env-skip':
         print('ℹ️  Neovim tool provisioning skipped by CCB_INSTALL_NEOVIM=0')
         return
-    if choice == 'declined':
-        print('ℹ️  Neovim/LazyVim provisioning skipped.')
-        print('   Run `ccb tools install neovim` later to enable the default neovim window.')
-        return
-    if choice == 'noninteractive-skip':
-        print('ℹ️  Neovim/LazyVim provisioning skipped in non-interactive update.')
-        print('   Run `ccb tools install neovim` later to enable the default neovim window.')
-        return
     required = choice == 'required'
     try:
         result = provision_neovim(required=required)
@@ -401,20 +393,11 @@ def _update_catalog_roles_after_update(*, install_dir: Path) -> int:
     except Exception as exc:
         print(f'⚠️  Agent Roles catalog unavailable: {type(exc).__name__}: {exc}')
         return 1
-    if choice == 'declined':
-        print('ℹ️  Role Pack update skipped.')
-        _print_catalog_followups(rows, include_default_roles=True)
-        return 0
-    if choice == 'noninteractive-skip':
-        print('ℹ️  Role Pack update skipped in non-interactive update.')
-        _print_catalog_followups(rows, include_default_roles=True)
-        return 0
     failures = _refresh_installed_catalog_roles(rows, install_dir=install_dir)
     refreshed_rows = _refresh_catalog_rows(rows)
     failures += _install_default_catalog_roles(refreshed_rows, install_dir=install_dir)
     refreshed_rows = _refresh_catalog_rows(refreshed_rows)
     _print_catalog_followups(refreshed_rows)
-    failures += _install_new_catalog_roles_interactive(refreshed_rows, install_dir=install_dir)
     return failures
 
 
@@ -517,65 +500,6 @@ def _print_catalog_role_rows(rows: list[dict[str, object]]) -> None:
         print(f'   {index}. {label}' + (f': {details}' if details else ''))
 
 
-def _install_new_catalog_roles_interactive(rows: tuple[dict[str, object], ...], *, install_dir: Path) -> int:
-    available = [
-        row
-        for row in rows
-        if row.get('status') == 'available'
-        and str(row.get('role_id') or '').strip() not in DEFAULT_CATALOG_ROLE_IDS
-    ]
-    if not available or not _stream_is_tty(sys.stdin) or not _stream_is_tty(sys.stdout):
-        return 0
-    print('Install newly available Agent Roles now? Enter numbers, all, or blank to skip: ', end='', flush=True)
-    try:
-        answer = sys.stdin.readline()
-    except Exception:
-        return 0
-    selected = _select_catalog_role_ids(answer, available)
-    if not selected:
-        print('ℹ️  New Role Pack installation skipped.')
-        return 0
-    stdout = sys.stdout
-    stderr = sys.stderr
-    failures = 0
-    for role_id in selected:
-        code = cmd_roles(['install', role_id], script_root=install_dir, cwd=Path.cwd(), stdout=stdout, stderr=stderr)
-        if code == 0:
-            print(f'✅ Role Pack installed: {role_id}')
-        else:
-            failures += 1
-            print(f'⚠️  Role Pack install failed: {role_id}')
-    if failures:
-        print(f'⚠️  Role Pack installs had {failures} failure(s).')
-    return failures
-
-
-def _select_catalog_role_ids(answer: str, rows: list[dict[str, object]]) -> tuple[str, ...]:
-    text = str(answer or '').strip().lower()
-    if not text or text in {'n', 'no', 'skip'}:
-        return ()
-    if text in {'a', 'all', '*'}:
-        return tuple(str(row.get('role_id') or '').strip() for row in rows if str(row.get('role_id') or '').strip())
-    selected: list[str] = []
-    by_id = {str(row.get('role_id') or '').strip().lower(): str(row.get('role_id') or '').strip() for row in rows}
-    for item in text.replace(',', ' ').split():
-        if item.isdigit():
-            index = int(item) - 1
-            if 0 <= index < len(rows):
-                role_id = str(rows[index].get('role_id') or '').strip()
-                if role_id:
-                    selected.append(role_id)
-            continue
-        role_id = by_id.get(item)
-        if role_id:
-            selected.append(role_id)
-    deduped: list[str] = []
-    for role_id in selected:
-        if role_id not in deduped:
-            deduped.append(role_id)
-    return tuple(deduped)
-
-
 def _short_catalog_text(text: str, *, limit: int = 96) -> str:
     compact = ' '.join(str(text or '').split())
     if len(compact) <= limit:
@@ -587,19 +511,6 @@ def _roles_update_choice() -> str:
     requested = str(os.environ.get('CCB_INSTALL_ROLES') or '').strip().lower()
     if requested in {'0', 'false', 'off', 'no'}:
         return 'env-skip'
-    if _truthy_env("CCB_POST_UPDATE_REQUIRED"):
-        return 'accepted'
-    if requested in {'1', 'true', 'on', 'yes'}:
-        return 'accepted'
-    if not _stream_is_tty(sys.stdin) or not _stream_is_tty(sys.stdout):
-        return 'noninteractive-skip'
-    print('Refresh installed and recommended Agent Roles from the catalog now? [Y/n] ', end='', flush=True)
-    try:
-        answer = sys.stdin.readline()
-    except Exception:
-        return 'noninteractive-skip'
-    if str(answer or '').strip().lower() in {'n', 'no'}:
-        return 'declined'
     return 'accepted'
 
 
@@ -611,26 +522,7 @@ def _neovim_install_choice() -> str:
         return 'required'
     if requested in {'1', 'true', 'on', 'yes'}:
         return 'required'
-    if not _stream_is_tty(sys.stdin) or not _stream_is_tty(sys.stdout):
-        return 'noninteractive-skip'
-    print('Install/refresh the default Neovim + LazyVim tool window now? [y/N] ', end='', flush=True)
-    try:
-        answer = sys.stdin.readline()
-    except Exception:
-        return 'noninteractive-skip'
-    if str(answer or '').strip().lower() in {'y', 'yes'}:
-        return 'optional'
-    return 'declined'
-
-
-def _stream_is_tty(stream) -> bool:
-    checker = getattr(stream, 'isatty', None)
-    if not callable(checker):
-        return False
-    try:
-        return bool(checker())
-    except Exception:
-        return False
+    return 'optional'
 
 
 def _release_artifact_url(version: str, *, artifact_name: str) -> str:

@@ -919,6 +919,42 @@
   - 5 分钟 Linux soak：23 轮、7 次 kill/restart，全部通过
   - fastpath stress：60 ask，submit p95 `227ms`，首/中/尾 terminal convergence、doctor、kill、unmounted 全部通过
 
+### ISSUE-019
+
+- 状态：`fixed-targeted`
+- 标题：`Claude scheduled task Stop 复用旧 CCB_REQ_ID，导致 ask 被误标 completed 且 self 误判 idle`
+- 根因分类：`provider-facts`
+- 测试场景：`test_ccb2 中 clauder 执行长循环后被用户打断，Claude scheduled task 继续每分钟触发`
+- 最小复现：
+  - 对 `clauder` 提交 `循环50次，每次等待30s` 一类任务
+  - Claude 创建 scheduled task，并保留后台 shell
+  - 用户手动 interrupt 后，再提交带 `CCB_REQ_ID` 的 ask
+  - 后续 scheduled task 的 `Stop` hook 触发
+- 预期结果：
+  - scheduled task 的 `Stop` 不能 terminalize 旧 CCB job
+  - project view / heartbeat 应把 `Running scheduled task`、`1 shell still running` 识别为 provider pane active
+- 实际结果：
+  - `ccb-provider-finish-hook` 从 transcript 最新 `CCB_REQ_ID` / `last-prompt` 归因，写入旧 job 的 completion artifact
+  - `job_86550847f237` 被 `hook_stop` 标成 completed，但 pane 仍显示 scheduled task、旧 CCB 输入块和 `1 shell still running`
+  - `ccb ps` 显示 clauder idle，`ccb_self` 基于控制面证据没有定位到 hook 误归因
+- 根因：
+  - Claude Stop hook 缺少当前 turn 归因；它没有沿当前 assistant 消息的 `parentUuid` 回溯到真实 user prompt
+  - project view 的 provider activity marker 未覆盖 Claude scheduled task / shell-still-running 文案
+- 系统性修复方案：
+  - Claude finish hook 使用当前 assistant reply 定位 transcript 中的当前 assistant record
+  - 沿 `parentUuid` 链回溯，跳过 tool-result user record，只接受真实 prompt user 的 outer `CCB_REQ_ID`
+  - scheduled task、用户中断、无 CCB anchor 的 provider turn 不写 completion artifact
+  - project view 将 `running scheduled task`、`shell still running` 纳入 provider pane active marker
+- 回归测试：
+  - `test_current_turn_req_id_ignores_scheduled_task_after_interrupted_ccb_prompt`
+  - `test_provider_finish_hook_ignores_claude_scheduled_task_after_stale_ccb_prompt`
+  - `test_activity_resolver_claude_scheduled_task_shell_running_after_prompt`
+- 复测结论：
+  - 2026-06-11 targeted 通过：
+    `pytest -q test/test_maintenance_heartbeat.py test/test_provider_activity_artifacts.py test/test_v2_config_loader.py test/test_provider_hook_transcript.py test/test_provider_finish_hook_script.py test/test_ccbd_project_view.py`
+    -> `184 passed`
+  - 使用真实 `test_ccb2` Claude transcript 只读验证：新 `current_turn_req_id_from_transcript(...)` 对 scheduled task reply 返回 `None`
+
 ## 6. 关闭标准
 
 问题只有同时满足以下条件才关闭：

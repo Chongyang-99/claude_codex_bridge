@@ -488,13 +488,14 @@ def test_post_update_required_installed_role_update_failure_returns_failure(monk
     assert "Role Pack updates had 1 failure" in captured.out
 
 
-def test_post_update_required_selected_new_role_install_failure_returns_failure(
+def test_post_update_does_not_prompt_for_new_non_default_role_install(
     monkeypatch,
     tmp_path: Path,
     capsys,
 ) -> None:
     _clear_post_update_env(monkeypatch)
     monkeypatch.setenv("CCB_INSTALL_ROLES", "1")
+    calls: list[list[str]] = []
     rows = (
         {
             "role_id": "agentroles.ccb_self",
@@ -517,22 +518,29 @@ def test_post_update_required_selected_new_role_install_failure_returns_failure(
             return True
 
         def readline(self) -> str:
-            return "1\n"
+            raise AssertionError("post-update role provisioning should not prompt")
 
     stdout = _TtyOutput()
     monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
     monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
     monkeypatch.setattr(update_runtime, "role_catalog_status", lambda **_kwargs: rows)
-    monkeypatch.setattr(update_runtime, "cmd_roles", lambda *_args, **_kwargs: 42)
+
+    def _fake_cmd_roles(argv, **_kwargs):
+        calls.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(update_runtime, "cmd_roles", _fake_cmd_roles)
     monkeypatch.setattr(update_runtime, "_provision_neovim_after_update", lambda: None)
 
     code = update_runtime._run_post_update_provisioning(install_dir=tmp_path / "install")
 
     captured = capsys.readouterr()
-    assert code == 1
+    assert code == 0
     output = stdout.getvalue() + captured.out
-    assert "Role Pack install failed: agentroles.new" in output
-    assert "Role Pack installs had 1 failure" in output
+    assert calls == [["install", "agentroles.ccb_self"]]
+    assert "New Agent Roles available" in output
+    assert "agentroles.new v0.1.0" in output
+    assert "Install newly available Agent Roles now?" not in output
 
 
 def test_post_update_required_default_role_install_failure_returns_failure(
@@ -650,7 +658,7 @@ def test_post_update_required_env_accepts_roles_without_prompt(monkeypatch, tmp_
     assert "Installed Role Packs already match the catalog" in stdout.getvalue()
 
 
-def test_update_roles_prompt_accepts_interactive_default(monkeypatch, tmp_path: Path) -> None:
+def test_update_roles_defaults_without_prompt(monkeypatch, tmp_path: Path) -> None:
     calls: list[dict[str, object]] = []
     rows = (
         {
@@ -682,7 +690,7 @@ def test_update_roles_prompt_accepts_interactive_default(monkeypatch, tmp_path: 
             return True
 
         def readline(self) -> str:
-            return "\n"
+            raise AssertionError("post-update role provisioning should not prompt")
 
     monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
     stdout = _TtyOutput()
@@ -702,7 +710,8 @@ def test_update_roles_prompt_accepts_interactive_default(monkeypatch, tmp_path: 
         {"argv": ["update", "agentroles.archi"], "script_root": tmp_path / "install", "cwd": Path.cwd()},
         {"argv": ["install", "agentroles.ccb_self"], "script_root": tmp_path / "install", "cwd": Path.cwd()},
     ]
-    assert "Refresh installed and recommended Agent Roles from the catalog now?" in stdout.getvalue()
+    assert "Refresh installed and recommended Agent Roles from the catalog now?" not in stdout.getvalue()
+    assert "Install newly available Agent Roles now?" not in stdout.getvalue()
     assert "Role Pack updated: agentroles.archi" in stdout.getvalue()
     assert "Default Role Pack installed: agentroles.ccb_self" in stdout.getvalue()
     assert "New Agent Roles available" in stdout.getvalue()
@@ -743,7 +752,8 @@ def test_update_roles_current_status_does_not_run_update_hooks(monkeypatch, tmp_
     assert "Installed Role Packs already match the catalog" in stdout.getvalue()
 
 
-def test_update_roles_prompt_declines_without_update(monkeypatch, tmp_path: Path) -> None:
+def test_update_roles_env_skip_does_not_update(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("CCB_INSTALL_ROLES", "0")
     rows = (
         {
             "role_id": "agentroles.ccb_self",
@@ -766,7 +776,7 @@ def test_update_roles_prompt_declines_without_update(monkeypatch, tmp_path: Path
             return True
 
         def readline(self) -> str:
-            return "n\n"
+            raise AssertionError("CCB_INSTALL_ROLES=0 should not prompt")
 
     monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
     stdout = _TtyOutput()
@@ -780,13 +790,12 @@ def test_update_roles_prompt_declines_without_update(monkeypatch, tmp_path: Path
 
     update_runtime._update_builtin_roles_after_update(install_dir=tmp_path / "install")
 
-    assert "Role Pack update skipped" in stdout.getvalue()
-    assert "Recommended Agent Roles available" in stdout.getvalue()
-    assert "agentroles.ccb_self v0.1.0" in stdout.getvalue()
-    assert "agentroles.new v0.1.0" in stdout.getvalue()
+    assert "Role Pack update skipped by CCB_INSTALL_ROLES=0" in stdout.getvalue()
+    assert "agentroles.ccb_self" not in stdout.getvalue()
 
 
-def test_update_roles_noninteractive_skips_without_prompt(monkeypatch, tmp_path: Path) -> None:
+def test_update_roles_noninteractive_defaults_without_prompt(monkeypatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
     rows = (
         {
             "role_id": "agentroles.ccb_self",
@@ -812,39 +821,18 @@ def test_update_roles_noninteractive_skips_without_prompt(monkeypatch, tmp_path:
     stdout = _PipeOutput()
     monkeypatch.setattr(update_runtime.sys, "stdout", stdout)
     monkeypatch.setattr(update_runtime, "role_catalog_status", lambda **_kwargs: rows)
-    monkeypatch.setattr(
-        update_runtime,
-        "cmd_roles",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not update roles")),
-    )
+    monkeypatch.setattr(update_runtime, "cmd_roles", lambda argv, **_kwargs: calls.append(list(argv)) or 0)
 
     update_runtime._update_builtin_roles_after_update(install_dir=tmp_path / "install")
 
-    assert "non-interactive update" in stdout.getvalue()
-    assert "Recommended Agent Roles available" in stdout.getvalue()
-    assert "agentroles.ccb_self v0.1.0" in stdout.getvalue()
+    assert calls == [["install", "agentroles.ccb_self"]]
+    assert "non-interactive update" not in stdout.getvalue()
+    assert "Recommended Agent Roles available" not in stdout.getvalue()
+    assert "Default Role Pack installed: agentroles.ccb_self" in stdout.getvalue()
     assert "agentroles.new v0.1.0" in stdout.getvalue()
 
 
-def test_update_roles_new_catalog_role_selection_parser() -> None:
-    rows = [
-        {"role_id": "agentroles.one"},
-        {"role_id": "agentroles.two"},
-        {"role_id": "agentroles.three"},
-    ]
-
-    assert update_runtime._select_catalog_role_ids("", rows) == ()
-    assert update_runtime._select_catalog_role_ids("2", rows) == ("agentroles.two",)
-    assert update_runtime._select_catalog_role_ids("1, 3", rows) == ("agentroles.one", "agentroles.three")
-    assert update_runtime._select_catalog_role_ids("all", rows) == (
-        "agentroles.one",
-        "agentroles.two",
-        "agentroles.three",
-    )
-    assert update_runtime._select_catalog_role_ids("agentroles.two", rows) == ("agentroles.two",)
-
-
-def test_update_neovim_prompt_accepts_interactive_yes(monkeypatch, capsys) -> None:
+def test_update_neovim_defaults_without_prompt(monkeypatch, capsys) -> None:
     calls: list[dict[str, object]] = []
 
     class _TtyInput:
@@ -852,7 +840,7 @@ def test_update_neovim_prompt_accepts_interactive_yes(monkeypatch, capsys) -> No
             return True
 
         def readline(self) -> str:
-            return "y\n"
+            raise AssertionError("post-update neovim provisioning should not prompt")
 
     monkeypatch.delenv("CCB_INSTALL_NEOVIM", raising=False)
     monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
@@ -867,7 +855,7 @@ def test_update_neovim_prompt_accepts_interactive_yes(monkeypatch, capsys) -> No
     update_runtime._provision_neovim_after_update()
 
     assert calls == [{"required": False}]
-    assert "Install/refresh the default Neovim + LazyVim tool window now?" in stdout.getvalue()
+    assert "Install/refresh the default Neovim + LazyVim tool window now?" not in stdout.getvalue()
     assert "Neovim tool ready" in stdout.getvalue()
 
 
@@ -888,13 +876,15 @@ def test_post_update_required_env_makes_neovim_required_without_prompt(monkeypat
     assert update_runtime._neovim_install_choice() == "required"
 
 
-def test_update_neovim_prompt_declines_without_provisioning(monkeypatch, capsys) -> None:
+def test_update_neovim_blank_input_still_provisions(monkeypatch, capsys) -> None:
+    calls: list[dict[str, object]] = []
+
     class _TtyInput:
         def isatty(self) -> bool:
             return True
 
         def readline(self) -> str:
-            return "\n"
+            raise AssertionError("post-update neovim provisioning should not prompt")
 
     monkeypatch.delenv("CCB_INSTALL_NEOVIM", raising=False)
     monkeypatch.setattr(update_runtime.sys, "stdin", _TtyInput())
@@ -903,15 +893,18 @@ def test_update_neovim_prompt_declines_without_provisioning(monkeypatch, capsys)
     monkeypatch.setattr(
         update_runtime,
         "provision_neovim",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("must not provision")),
+        lambda *, required=False: calls.append({"required": required}) or {"status": "ok", "wrapper": "/tmp/ccb-nvim"},
     )
 
     update_runtime._provision_neovim_after_update()
 
-    assert "Run `ccb tools install neovim` later" in stdout.getvalue()
+    assert calls == [{"required": False}]
+    assert "Run `ccb tools install neovim` later" not in stdout.getvalue()
 
 
-def test_update_neovim_noninteractive_skips_without_prompt(monkeypatch, capsys) -> None:
+def test_update_neovim_noninteractive_defaults_without_prompt(monkeypatch, capsys) -> None:
+    calls: list[dict[str, object]] = []
+
     class _PipeInput:
         def isatty(self) -> bool:
             return False
@@ -923,12 +916,13 @@ def test_update_neovim_noninteractive_skips_without_prompt(monkeypatch, capsys) 
     monkeypatch.setattr(
         update_runtime,
         "provision_neovim",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("must not provision")),
+        lambda *, required=False: calls.append({"required": required}) or {"status": "ok", "wrapper": "/tmp/ccb-nvim"},
     )
 
     update_runtime._provision_neovim_after_update()
 
-    assert "non-interactive update" in stdout.getvalue()
+    assert calls == [{"required": False}]
+    assert "non-interactive update" not in stdout.getvalue()
 
 
 def test_update_neovim_env_forces_required_install(monkeypatch) -> None:

@@ -194,8 +194,8 @@ def project_role_lock_warning(project_root: Path, role: RolePack) -> str:
     return (
         f'role_lock_mismatch: {role.id} locked version={locked_version or "unknown"} '
         f'digest={locked_digest or "unknown"} but installed current is '
-        f'version={role.version} digest={current_digest}; run `ccb roles add {role.id}` '
-        'to adopt the installed role version'
+        f'version={role.version} digest={current_digest}; run `ccb` interactively '
+        'and accept role lock refresh to adopt the installed role version'
     )
 
 

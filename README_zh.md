@@ -10,7 +10,7 @@
 
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg)]()
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)]()
-[![Version](https://img.shields.io/badge/version-7.4.1-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-7.4.2-orange.svg)]()
 [![Release](https://img.shields.io/badge/install-release--first-orange.svg)]()
 
 **中文** | [English](README.md)
@@ -271,13 +271,18 @@ Role Pack 用来定义可复用的 agent 角色。一个 role 可以包含稳定
 推荐默认 catalog roles 包括 `agentroles.ccb_self` 和
 `agentroles.archi`：前者是 CCB 自维护角色，后者用于架构审查，来自
 `agent-roles-spec`，并由 Architec 支撑。`install.sh install` 默认会尝试安装
-或刷新这些推荐角色；`ccb update` 在接受 Role Pack provisioning 时会刷新已安装
-role，并安装缺失的推荐角色。也可以手动刷新：
+或刷新这些推荐角色；`ccb update` 会在用户环境里刷新已安装 role，并安装缺失的
+推荐角色。也可以手动刷新：
 
 ```bash
 ccb roles update agentroles.ccb_self
 ccb roles update agentroles.archi
 ```
+
+项目内的 role 绑定仍由 `.ccb/role-lock.json` 固定。`ccb update` 不会改写项目
+锁。在项目内运行 `ccb` 时，CCB 会比较已绑定 role lock 和用户环境里当前安装的
+role；如果锁已经落后，交互式启动会询问是否就地刷新项目锁，非交互启动只打印
+提醒。
 
 强烈建议 CCB 项目保留 `ccb_self`，因为它负责 CCB 配置维护、运行诊断、受保护
 恢复、工作链修复和单 agent 重启辅助，同时不接管业务任务。空白项目的内置默认配置
@@ -360,7 +365,7 @@ command = "ccb-nvim"
 label = "neovim"
 ```
 
-`ccb tools install neovim` 会准备隔离的 `ccb-nvim` wrapper 和 LazyVim profile，路径在 CCB 自己的 XDG 目录下。`install.sh install` 和 `ccb update` 会在交互终端询问是否安装或刷新该工具；非交互安装会跳过并打印后续命令。设置 `CCB_INSTALL_NEOVIM=1` 可强制 provisioning，设置 `CCB_INSTALL_NEOVIM=0` 可跳过。
+`ccb tools install neovim` 会准备隔离的 `ccb-nvim` wrapper 和 LazyVim profile，路径在 CCB 自己的 XDG 目录下。`install.sh install` 和 `ccb update` 默认都会尝试安装或刷新该工具，并把默认 provisioning 失败保留为 warning。设置 `CCB_INSTALL_NEOVIM=1` 可强制 provisioning，设置 `CCB_INSTALL_NEOVIM=0` 可跳过。
 如果 `PATH` 里没有 `nvim`，provisioning 会尝试下载 Linux/macOS 官方 Neovim release tarball，并校验 release sha256 后再启用；不会写入 `~/.config/nvim`。
 托管 profile 默认使用 ASCII 图标，避免没有 Nerd Font 的终端出现方块/乱码。确认终端字体支持 Nerd Font 时，可用 `CCB_LAZYVIM_ICON_STYLE=glyph ccb-nvim` 恢复 LazyVim 图标。
 用 `ccb tools doctor neovim` 验证托管 profile。LazyVim 真正可用时会显示 `neovim_status: ok` 和 `lazyvim_health_status: ok`；插件目录损坏或半下载会显示 `degraded`，重新运行 `ccb tools install neovim` 会尝试修复。
@@ -544,6 +549,20 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.4.2</b> - Self-supervision 与空回复防护</summary>
+
+- 通过有界 provider-runtime snapshot、project-view 活动证据、suspicion
+  envelope 和 self-first diagnosis path 加固 CCB self-supervision。
+- Claude/Gemini hook 空回复、Codex protocol `task_complete` 空回复，以及
+  AGY done-marker 空回复会终止为带 diagnostics 的 `incomplete`。
+- 保留有意的无回复语义：`--silence` 成功仍是 `completed`，callback parent
+  的 `callback_pending` 空回复仍合法，异常 silent completion 仍可诊断。
+- 收紧默认 Role Pack install 和项目 role-lock refresh，覆盖
+  `agentroles.archi` 与 `agentroles.ccb_self`。
+
+</details>
+
+<details>
 <summary><b>v7.4.1</b> - Maintenance heartbeat 与 ccb_self 默认配置</summary>
 
 - 加固项目级 maintenance heartbeat runner、schedule 处理、activation

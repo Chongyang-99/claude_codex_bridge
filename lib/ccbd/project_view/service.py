@@ -292,6 +292,7 @@ def build_project_view(
     active_jobs = _active_jobs_by_agent(deps.dispatcher)
     queued_jobs = _queued_jobs_by_agent(deps.dispatcher)
     callback_waits = _callback_waits_by_parent_agent(deps.dispatcher)
+    provider_runtime_by_agent = _provider_runtime_by_agent(deps.dispatcher)
 
     agents = [
         _agent_view(
@@ -306,6 +307,7 @@ def build_project_view(
             active_job=active_jobs.get(agent_name),
             queued_jobs=queued_jobs.get(agent_name, ()),
             callback_wait=callback_waits.get(agent_name),
+            provider_runtimes=provider_runtime_by_agent.get(agent_name, ()),
         )
         for order, agent_name in enumerate(_agent_order(deps.config))
     ]
@@ -380,6 +382,7 @@ def _agent_view(
     queued_jobs: tuple,
     callback_wait,
     active: bool = False,
+    provider_runtimes: tuple[dict[str, object], ...] = (),
 ) -> dict[str, object]:
     spec = deps.config.agents[agent_name]
     runtime = deps.registry.get(agent_name)
@@ -390,6 +393,11 @@ def _agent_view(
         generated_at=generated_at,
     )
     job = _top_activity_job(active_job=active_job, queued_jobs=queued_jobs)
+    provider_runtime = _select_provider_runtime(
+        provider_runtimes,
+        agent_name=agent_name,
+        current_job_id=getattr(job, 'job_id', None) if job is not None else None,
+    )
     queue_depth = len(queued_jobs) + (1 if _is_top_activity_job(active_job) else 0)
     callback_child_agent = _callback_child_agent(callback_wait)
     pane_text = None
@@ -446,6 +454,8 @@ def _agent_view(
         'reconcile_state': getattr(runtime, 'reconcile_state', None) if runtime is not None else None,
         'workspace_path': getattr(runtime, 'workspace_path', None) if runtime is not None else None,
     }
+    if provider_runtime is not None:
+        record['provider_runtime'] = provider_runtime
     return record
 
 
@@ -1339,6 +1349,54 @@ def _queued_jobs_by_agent(dispatcher) -> dict[str, tuple]:
         if jobs:
             result[str(target_name)] = tuple(jobs)
     return result
+
+
+def _provider_runtime_by_agent(dispatcher) -> dict[str, tuple[dict[str, object], ...]]:
+    execution = getattr(dispatcher, '_execution_service', None)
+    snapshotter = getattr(execution, 'active_runtime_snapshots', None)
+    if not callable(snapshotter):
+        return {}
+    try:
+        snapshots = snapshotter()
+    except Exception:
+        return {}
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for snapshot in snapshots:
+        if not isinstance(snapshot, dict):
+            continue
+        agent_name = str(snapshot.get('agent_name') or '').strip()
+        if not agent_name:
+            continue
+        grouped.setdefault(agent_name, []).append(snapshot)
+    return {agent_name: tuple(items) for agent_name, items in grouped.items()}
+
+
+def _select_provider_runtime(
+    snapshots: tuple[dict[str, object], ...],
+    *,
+    agent_name: str,
+    current_job_id: object,
+) -> dict[str, object] | None:
+    if not snapshots:
+        return None
+    current = str(current_job_id or '').strip()
+    if current:
+        for snapshot in snapshots:
+            if str(snapshot.get('job_id') or '').strip() == current:
+                return snapshot
+        return None
+    if len(snapshots) == 1:
+        return snapshots[0]
+    return {
+        'agent_name': agent_name,
+        'conflict': 'multiple_provider_runtimes_without_control_job',
+        'runtime_count': len(snapshots),
+        'job_ids': [
+            str(snapshot.get('job_id') or '').strip()
+            for snapshot in snapshots
+            if str(snapshot.get('job_id') or '').strip()
+        ],
+    }
 
 
 def _runtime_state(runtime) -> str | None:

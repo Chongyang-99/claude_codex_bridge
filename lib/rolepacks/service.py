@@ -672,6 +672,23 @@ def add_role_to_project_config(
     }
 
 
+def adopt_installed_role_lock(*, project_root: Path, role_id: str) -> dict[str, object]:
+    role_id = normalize_role_id(role_id)
+    role = load_installed_role(role_id)
+    if role is None:
+        raise RolePackError(f'role is not installed; run `ccb roles install {role_id}`')
+    _write_project_role_lock(project_root, role)
+    metadata = installed_role_metadata(role.id)
+    digest = str(metadata.get('digest') or '').strip() or f'sha256:{tree_digest(role.root)}'
+    return {
+        'role_status': 'lock_refreshed',
+        'role_id': role.id,
+        'version': role.version,
+        'digest': digest,
+        'lock': str(Path(project_root).expanduser().resolve() / '.ccb' / 'role-lock.json'),
+    }
+
+
 def _find_builtin_role(role_id: str, *, script_root: Path | None) -> Path | None:
     root = builtin_role_root(script_root)
     candidate = root / role_id
@@ -853,6 +870,7 @@ __all__ = [
     'RolePack',
     'RolePackError',
     'add_role_to_project_config',
+    'adopt_installed_role_lock',
     'builtin_role_root',
     'install_role',
     'list_builtin_roles',
