@@ -414,6 +414,63 @@ def test_project_view_provider_failed_overrides_running_job_metadata(tmp_path: P
     assert agent['current_job_id'] == 'job_running_1234'
 
 
+def test_project_view_surfaces_codex_prompt_delivery_binding_evidence(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-provider-delivery-binding'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    runtime = _runtime('agent1', project_id=project_id)
+    runtime.session_id = 'codex-session-1'
+    registry.upsert(runtime)
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    write_activity(
+        provider='codex',
+        project_id=project_id,
+        agent_name='agent1',
+        runtime_dir=layout.agent_provider_runtime_dir('agent1', 'codex'),
+        state='failed',
+        source='ccb_delivery',
+        event_name='PromptDeliveryAnchorMissing',
+        provider_session_id='codex-session-1',
+        pane_id='%1',
+        workspace_path='/tmp/workspace',
+        diagnostics={
+            'reason': 'delivery_anchor_missing',
+            'provider_acceptance': 'anchor_missing',
+            'delivery_failure_kind': 'delivery_anchor_missing',
+            'binding_evidence': {
+                'binding_state': 'unhealthy',
+                'unhealthy_reasons': ['codex_pid_pane_pid_mismatch'],
+                'suspicious_reasons': [],
+                'pid_mismatch': True,
+                'codex_pid': {'pid': 111, 'status': 'alive', 'alive': True},
+                'tmux_pane_pid': 222,
+            },
+        },
+        updated_at=NOW,
+    )
+
+    response = _project_view_service(
+        project_root=project_root,
+        project_id=project_id,
+        layout=layout,
+        config=config,
+        registry=registry,
+        dispatcher=dispatcher,
+    ).build_response()
+
+    agent = response['view']['agents'][0]
+    assert agent['activity_state'] == 'failed'
+    assert agent['activity_source'] == 'ccb_delivery'
+    assert agent['activity_reason'] == 'delivery_anchor_missing'
+    assert agent['provider_acceptance_state'] == 'anchor_missing'
+    assert agent['provider_binding_state'] == 'unhealthy'
+    assert agent['provider_binding_unhealthy_reasons'] == ['codex_pid_pane_pid_mismatch']
+    assert agent['provider_binding_evidence']['codex_pid']['pid'] == 111
+
+
 def test_project_view_ignores_provider_activity_for_wrong_pane(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-provider-wrong-pane'
     project_root.mkdir()

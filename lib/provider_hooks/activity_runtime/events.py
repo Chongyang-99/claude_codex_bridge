@@ -9,6 +9,9 @@ from typing import Any
 from storage.atomic import atomic_write_json
 
 SCHEMA_VERSION = 1
+MAX_DIAGNOSTIC_STRING_LENGTH = 300
+MAX_DIAGNOSTIC_ITEMS = 50
+MAX_DIAGNOSTIC_DEPTH = 4
 
 ACTIVITY_ACTIVE = 'active'
 ACTIVITY_PENDING = 'pending'
@@ -296,14 +299,40 @@ def _safe_diagnostics(diagnostics: dict[str, Any] | None) -> dict[str, object]:
         name = str(key or '').strip()
         if not name:
             continue
-        lowered = name.lower()
-        if any(secret in lowered for secret in ('key', 'token', 'secret', 'password')):
+        if _is_secret_key(name):
             continue
-        if isinstance(value, bool) or isinstance(value, int) or isinstance(value, float):
-            result[name] = value
-        elif value is not None:
-            result[name] = str(value)[:300]
+        if value is not None:
+            result[name] = _safe_diagnostic_value(value, depth=0)
     return result
+
+
+def _safe_diagnostic_value(value: Any, *, depth: int) -> object:
+    if value is None or isinstance(value, bool) or isinstance(value, int) or isinstance(value, float):
+        return value
+    if depth >= MAX_DIAGNOSTIC_DEPTH:
+        return str(value)[:MAX_DIAGNOSTIC_STRING_LENGTH]
+    if isinstance(value, dict):
+        nested: dict[str, object] = {}
+        for index, (raw_key, raw_value) in enumerate(value.items()):
+            if index >= MAX_DIAGNOSTIC_ITEMS:
+                nested['__truncated__'] = True
+                break
+            name = str(raw_key or '').strip()
+            if not name or _is_secret_key(name):
+                continue
+            nested[name] = _safe_diagnostic_value(raw_value, depth=depth + 1)
+        return nested
+    if isinstance(value, (list, tuple)):
+        items = [_safe_diagnostic_value(item, depth=depth + 1) for item in value[:MAX_DIAGNOSTIC_ITEMS]]
+        if len(value) > MAX_DIAGNOSTIC_ITEMS:
+            items.append('__truncated__')
+        return items
+    return str(value)[:MAX_DIAGNOSTIC_STRING_LENGTH]
+
+
+def _is_secret_key(name: str) -> bool:
+    lowered = name.lower()
+    return any(secret in lowered for secret in ('key', 'token', 'secret', 'password'))
 
 
 __all__ = [

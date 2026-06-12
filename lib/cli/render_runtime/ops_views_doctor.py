@@ -176,6 +176,9 @@ def render_doctor(payload: Mapping[str, object]) -> tuple[str, ...]:
             f'agent: name={agent["agent_name"]} health={agent["health"]} provider={agent["provider"]} completion={agent["completion_family"]}'
         )
         lines.append(binding_line(agent))
+        provider_binding = _provider_binding_line(agent)
+        if provider_binding:
+            lines.append(provider_binding)
         lines.append(
             f'restore: supported={agent["execution_resume_supported"]} mode={agent["execution_restore_mode"]} reason={agent["execution_restore_reason"]}'
         )
@@ -225,6 +228,15 @@ def _format_mapping(value: object) -> str:
     if not isinstance(value, Mapping):
         return ''
     return ','.join(f'{key}={value[key]}' for key in sorted(value))
+
+
+def _provider_binding_line(agent) -> str:
+    state = agent.get('provider_binding_state')
+    if not state:
+        return ''
+    unhealthy = ','.join(str(item) for item in (agent.get('provider_binding_unhealthy_reasons') or ())) or 'none'
+    suspicious = ','.join(str(item) for item in (agent.get('provider_binding_suspicious_reasons') or ())) or 'none'
+    return f'provider_binding: state={state} unhealthy={unhealthy} suspicious={suspicious}'
 
 
 def render_doctor_storage(payload: Mapping[str, object]) -> tuple[str, ...]:

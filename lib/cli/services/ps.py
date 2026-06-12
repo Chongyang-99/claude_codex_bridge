@@ -29,7 +29,7 @@ def _agent_summary(context: CliContext, *, agent_name: str, spec, runtime) -> di
     workspace_path = _workspace_path(context, agent_name=agent_name, runtime=runtime)
     runtime_ref = _runtime_attr(runtime, 'runtime_ref')
     session_ref = _session_ref(runtime)
-    return {
+    summary = {
         'agent_name': agent_name,
         'provider': spec.provider,
         'runtime_mode': spec.runtime_mode.value,
@@ -52,6 +52,8 @@ def _agent_summary(context: CliContext, *, agent_name: str, spec, runtime) -> di
         'pane_title_marker': _runtime_attr(runtime, 'pane_title_marker'),
         'pane_state': _runtime_attr(runtime, 'pane_state'),
     }
+    summary.update(_codex_binding_summary(spec.provider, runtime))
+    return summary
 
 
 def _runtime_attr(runtime, name: str, default=None):
@@ -76,3 +78,29 @@ def _session_ref(runtime) -> str | None:
     if runtime is None:
         return None
     return runtime.session_file or runtime.session_id or runtime.session_ref
+
+
+def _codex_binding_summary(provider: str, runtime) -> dict[str, object]:
+    if runtime is None or str(provider or '').strip().lower() != 'codex':
+        return {}
+    runtime_root = str(getattr(runtime, 'runtime_root', '') or '').strip()
+    if not runtime_root:
+        return {}
+    try:
+        from provider_backends.codex.binding_evidence import collect_codex_binding_evidence
+
+        evidence = collect_codex_binding_evidence(
+            runtime_dir=runtime_root,
+            pane_id=getattr(runtime, 'pane_id', None),
+            session_file=getattr(runtime, 'session_file', None),
+            session_id=getattr(runtime, 'session_id', None),
+            managed_runtime_expected=True,
+        ).to_record()
+    except Exception:
+        return {}
+    return {
+        'provider_binding_state': evidence.get('binding_state'),
+        'provider_binding_unhealthy_reasons': evidence.get('unhealthy_reasons') or [],
+        'provider_binding_suspicious_reasons': evidence.get('suspicious_reasons') or [],
+        'provider_binding_evidence': evidence,
+    }

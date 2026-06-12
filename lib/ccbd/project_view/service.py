@@ -13,6 +13,7 @@ from ccbd.project_focus.tmux import backend_for_namespace
 from ccbd.services.dispatcher_runtime import comms_recoverability_for_job
 from ccbd.system import parse_utc_timestamp, utc_now
 from message_bureau import CallbackEdgeState
+from provider_backends.codex.binding_evidence import collect_codex_binding_evidence
 
 from .activity import (
     AgentActivityFacts,
@@ -389,6 +390,14 @@ def _agent_view(
         runtime=runtime,
         generated_at=generated_at,
     )
+    provider_activity_diagnostics = _provider_activity_diagnostics(provider_activity)
+    provider_binding_evidence = _provider_binding_evidence(
+        context,
+        agent_name=agent_name,
+        provider=spec.provider,
+        runtime=runtime,
+        provider_activity_diagnostics=provider_activity_diagnostics,
+    )
     job = _top_activity_job(active_job=active_job, queued_jobs=queued_jobs)
     queue_depth = len(queued_jobs) + (1 if _is_top_activity_job(active_job) else 0)
     callback_child_agent = _callback_child_agent(callback_wait)
@@ -445,8 +454,62 @@ def _agent_view(
         'runtime_health': getattr(runtime, 'health', None) if runtime is not None else None,
         'reconcile_state': getattr(runtime, 'reconcile_state', None) if runtime is not None else None,
         'workspace_path': getattr(runtime, 'workspace_path', None) if runtime is not None else None,
+        'provider_binding_state': _binding_evidence_value(provider_binding_evidence, 'binding_state'),
+        'provider_binding_unhealthy_reasons': _binding_evidence_value(provider_binding_evidence, 'unhealthy_reasons') or [],
+        'provider_binding_suspicious_reasons': _binding_evidence_value(provider_binding_evidence, 'suspicious_reasons') or [],
+        'provider_binding_evidence': provider_binding_evidence,
+        'provider_acceptance_state': _provider_acceptance_state(provider_activity_diagnostics),
     }
     return record
+
+
+def _provider_activity_diagnostics(provider_activity: object | None) -> dict[str, object]:
+    diagnostics = getattr(provider_activity, 'diagnostics', None) if provider_activity is not None else None
+    return diagnostics if isinstance(diagnostics, dict) else {}
+
+
+def _provider_binding_evidence(
+    context: _ProjectViewBuildContext,
+    *,
+    agent_name: str,
+    provider: str,
+    runtime: object | None,
+    provider_activity_diagnostics: dict[str, object],
+) -> dict[str, object] | None:
+    activity_evidence = provider_activity_diagnostics.get('binding_evidence')
+    if isinstance(activity_evidence, dict):
+        return dict(activity_evidence)
+    if str(provider or '').strip().lower() != 'codex' or runtime is None:
+        return None
+    runtime_dir = str(getattr(runtime, 'runtime_root', '') or '').strip()
+    if not runtime_dir:
+        return None
+    try:
+        return collect_codex_binding_evidence(
+            backend=context.namespace_backend(),
+            pane_id=str(getattr(runtime, 'pane_id', '') or '').strip() or None,
+            runtime_dir=runtime_dir,
+            session_file=getattr(runtime, 'session_file', None),
+            session_id=getattr(runtime, 'session_id', None),
+            managed_runtime_expected=True,
+        ).to_record()
+    except Exception:
+        return None
+
+
+def _binding_evidence_value(evidence: dict[str, object] | None, key: str):
+    if not isinstance(evidence, dict):
+        return None
+    return evidence.get(key)
+
+
+def _provider_acceptance_state(provider_activity_diagnostics: dict[str, object]) -> str | None:
+    text = str(provider_activity_diagnostics.get('provider_acceptance') or '').strip()
+    if text:
+        return text
+    if str(provider_activity_diagnostics.get('reason') or '').strip() == 'delivery_anchor_missing':
+        return 'anchor_missing'
+    return None
 
 
 def _provider_activity_needs_pane_error_probe(provider_activity: object | None, generated_at: str) -> bool:

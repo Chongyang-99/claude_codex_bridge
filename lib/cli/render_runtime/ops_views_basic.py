@@ -144,7 +144,19 @@ def render_ps(payload: Mapping[str, object]) -> tuple[str, ...]:
             f'agent: name={agent["agent_name"]} state={agent["state"]} provider={agent["provider"]} queue={agent["queue_depth"]}'
         )
         lines.append(binding_line(agent))
+        provider_binding = provider_binding_line(agent)
+        if provider_binding:
+            lines.append(provider_binding)
     return tuple(lines)
+
+
+def provider_binding_line(agent) -> str:
+    state = agent.get('provider_binding_state')
+    if not state:
+        return ''
+    unhealthy = ','.join(str(item) for item in (agent.get('provider_binding_unhealthy_reasons') or ())) or 'none'
+    suspicious = ','.join(str(item) for item in (agent.get('provider_binding_suspicious_reasons') or ())) or 'none'
+    return f'provider_binding: state={state} unhealthy={unhealthy} suspicious={suspicious}'
 
 
 __all__ = [

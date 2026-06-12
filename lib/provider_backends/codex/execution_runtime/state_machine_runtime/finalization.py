@@ -41,6 +41,8 @@ def finalize_poll_result(
             "last_assistant_message": poll.last_assistant_message,
             "last_assistant_signature": poll.last_assistant_signature,
             "session_path": poll.session_path,
+            "delivery_state": "accepted" if poll.anchor_seen else submission.runtime_state.get("delivery_state"),
+            "delivery_anchor_seen": poll.anchor_seen,
         },
     )
     if not poll.items:

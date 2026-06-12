@@ -188,7 +188,7 @@ def agent_summary(
     manifest = catalog.resolve_completion_manifest(spec.provider, spec.runtime_mode)
     capability = execution_restore_capability(execution_registry.get(spec.provider), provider=spec.provider)
     switch = session_switch_summary(runtime, provider=spec.provider)
-    return {
+    summary = {
         'agent_name': agent_name,
         'provider': spec.provider,
         'runtime_mode': spec.runtime_mode.value,
@@ -236,6 +236,8 @@ def agent_summary(
         'mailbox_consistency_error': mailbox_consistency.get('error'),
         'mailbox_consistency_projected': mailbox_consistency.get('projected'),
     }
+    summary.update(codex_binding_summary(spec.provider, runtime))
+    return summary
 
 
 def resolved_workspace_path(context, *, agent_name: str, runtime) -> str:
@@ -288,6 +290,32 @@ def session_switch_summary(runtime, *, provider: str) -> dict[str, object]:
         'committed': record.get('committed'),
         'candidate_session_id': candidate_id,
         'candidate_session_path': candidate_path,
+    }
+
+
+def codex_binding_summary(provider: str, runtime) -> dict[str, object]:
+    if runtime is None or str(provider or '').strip().lower() != 'codex':
+        return {}
+    runtime_root = str(getattr(runtime, 'runtime_root', '') or '').strip()
+    if not runtime_root:
+        return {}
+    try:
+        from provider_backends.codex.binding_evidence import collect_codex_binding_evidence
+
+        evidence = collect_codex_binding_evidence(
+            runtime_dir=runtime_root,
+            pane_id=getattr(runtime, 'pane_id', None),
+            session_file=getattr(runtime, 'session_file', None),
+            session_id=getattr(runtime, 'session_id', None),
+            managed_runtime_expected=True,
+        ).to_record()
+    except Exception:
+        return {}
+    return {
+        'provider_binding_state': evidence.get('binding_state'),
+        'provider_binding_unhealthy_reasons': evidence.get('unhealthy_reasons') or [],
+        'provider_binding_suspicious_reasons': evidence.get('suspicious_reasons') or [],
+        'provider_binding_evidence': evidence,
     }
 
 

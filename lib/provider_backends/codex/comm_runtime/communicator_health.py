@@ -39,6 +39,15 @@ def get_status(comm) -> dict[str, Any]:
         "status": status,
         "input_fifo": str(comm.input_fifo),
     }
+    try:
+        from .session_runtime import collect_tmux_runtime_binding_evidence
+
+        info["binding_evidence"] = collect_tmux_runtime_binding_evidence(
+            runtime_dir=comm.runtime_dir,
+            input_fifo=comm.input_fifo,
+        )
+    except Exception:
+        pass
 
     codex_pid_file = comm.runtime_dir / "codex.pid"
     if codex_pid_file.exists():

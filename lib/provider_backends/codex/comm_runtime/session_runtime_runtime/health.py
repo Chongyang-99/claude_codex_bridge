@@ -4,8 +4,15 @@ import os
 import subprocess
 from pathlib import Path
 
+from provider_backends.codex.binding_evidence import collect_codex_binding_evidence
+
 
 def check_tmux_runtime_health(*, runtime_dir: Path, input_fifo: Path) -> tuple[bool, str]:
+    evidence = collect_codex_binding_evidence(
+        runtime_dir=runtime_dir,
+        input_fifo=input_fifo,
+        managed_runtime_expected=True,
+    )
     codex_pid, codex_error = _try_read_pid(
         runtime_dir / "codex.pid",
         missing_message="Codex process PID file not found",
@@ -30,7 +37,17 @@ def check_tmux_runtime_health(*, runtime_dir: Path, input_fifo: Path) -> tuple[b
 
     if not input_fifo.exists():
         return False, "Communication pipe does not exist"
+    if evidence.pid_mismatch:
+        return False, "Codex process PID does not match tmux pane PID"
     return True, "Session healthy"
+
+
+def collect_tmux_runtime_binding_evidence(*, runtime_dir: Path, input_fifo: Path) -> dict[str, object]:
+    return collect_codex_binding_evidence(
+        runtime_dir=runtime_dir,
+        input_fifo=input_fifo,
+        managed_runtime_expected=True,
+    ).to_record()
 
 
 def _try_read_pid(pid_file: Path, *, missing_message: str, invalid_message: str) -> tuple[int, str | None]:
@@ -58,4 +75,4 @@ def _probe_pid(pid: int, *, label: str) -> tuple[bool, str]:
     return True, "Session healthy"
 
 
-__all__ = ["check_tmux_runtime_health"]
+__all__ = ["check_tmux_runtime_health", "collect_tmux_runtime_binding_evidence"]

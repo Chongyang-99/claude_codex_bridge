@@ -34,6 +34,13 @@ def heartbeat_timeout_body(job: JobRecord, *, decision) -> str:
 def heartbeat_timeout_decision(job: JobRecord, *, decision, snapshot, finished_at: str) -> CompletionDecision:
     prior_state = getattr(snapshot, 'state', None)
     source_cursor = getattr(prior_state, 'latest_cursor', None)
+    diagnostics = {
+        'heartbeat_timeout': True,
+        'heartbeat_notice_count': decision.notice_count,
+        'heartbeat_silence_seconds': round(float(decision.silence_seconds), 3),
+        'last_progress_at': decision.last_progress_at,
+    }
+    diagnostics.update(snapshot_provider_diagnostics(snapshot))
     return CompletionDecision(
         terminal=True,
         status=CompletionStatus.INCOMPLETE,
@@ -46,12 +53,7 @@ def heartbeat_timeout_decision(job: JobRecord, *, decision, snapshot, finished_a
         provider_turn_ref=str(getattr(prior_state, 'provider_turn_ref', '') or job.job_id),
         source_cursor=source_cursor,
         finished_at=finished_at,
-        diagnostics={
-            'heartbeat_timeout': True,
-            'heartbeat_notice_count': decision.notice_count,
-            'heartbeat_silence_seconds': round(float(decision.silence_seconds), 3),
-            'last_progress_at': decision.last_progress_at,
-        },
+        diagnostics=diagnostics,
     )
 
 
@@ -79,7 +81,32 @@ def heartbeat_diagnostics(
     preview = snapshot_preview(snapshot)
     if preview:
         payload['reply_preview'] = preview
+    payload.update(snapshot_provider_diagnostics(snapshot))
     return payload
+
+
+def snapshot_provider_diagnostics(snapshot) -> dict[str, object]:
+    if snapshot is None:
+        return {}
+    decision = getattr(snapshot, 'latest_decision', None)
+    diagnostics = dict(getattr(decision, 'diagnostics', None) or {})
+    result: dict[str, object] = {}
+    diagnostic_keys = {
+        'delivery_failure_kind': 'provider_delivery_failure_kind',
+        'delivery_anchor_seen': 'provider_delivery_anchor_seen',
+        'provider_acceptance': 'provider_acceptance',
+        'request_anchor': 'provider_request_anchor',
+        'retryable': 'provider_retryable',
+        'auto_retry_allowed': 'provider_auto_retry_allowed',
+    }
+    for key, output_key in diagnostic_keys.items():
+        if key in diagnostics:
+            result[output_key] = diagnostics.get(key)
+    evidence = diagnostics.get('binding_evidence')
+    if isinstance(evidence, dict):
+        result['provider_binding_state'] = evidence.get('binding_state')
+        result['provider_binding_unhealthy_reasons'] = evidence.get('unhealthy_reasons') or []
+    return result
 
 
 def snapshot_preview(snapshot) -> str:
@@ -116,6 +143,7 @@ __all__ = [
     'heartbeat_notice_body',
     'heartbeat_timeout_body',
     'heartbeat_timeout_decision',
+    'snapshot_provider_diagnostics',
     'snapshot_is_terminal',
     'snapshot_preview',
 ]

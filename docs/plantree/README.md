@@ -38,6 +38,7 @@ to resume across agents and sessions.
 | [install-update-stability](plans/install-update-stability/README.md) | Planning | Make fresh install, managed update, dependency provisioning, Role Pack refresh, and bilingual user output stable across supported environments. |
 | [workspace-sharing](plans/workspace-sharing/README.md) | In progress | Add explicit external workspace paths and internal shared worktree groups without changing default per-agent worktree behavior. |
 | [ask-parameter-policy](plans/ask-parameter-policy/README.md) | Planning | Clarify how ask skills choose silence, compact, callback, and artifact flags from result intent, dependency, and content-preservation needs. |
+| [managed-provider-completion-reliability](plans/managed-provider-completion-reliability/README.md) | In progress | Make pane-backed provider completion reliable when mailbox delivery succeeds but provider acceptance evidence is absent. |
 
 ## Legacy Planning Sources
 

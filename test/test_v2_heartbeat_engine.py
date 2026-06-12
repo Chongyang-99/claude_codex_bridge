@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from ccbd.services.job_heartbeat_runtime.common import snapshot_provider_diagnostics
 from heartbeat import HeartbeatAction, HeartbeatPolicy, HeartbeatState, evaluate_heartbeat
 
 
@@ -94,3 +97,33 @@ def test_evaluate_heartbeat_can_enter_after_unpersisted_idle_progress_advance() 
     assert entered_decision.action is HeartbeatAction.ENTER
     assert entered_decision.notice_due is True
     assert entered_state.notice_count == 1
+
+
+def test_snapshot_provider_diagnostics_carries_codex_delivery_failure_context() -> None:
+    snapshot = SimpleNamespace(
+        latest_decision=SimpleNamespace(
+            diagnostics={
+                'delivery_failure_kind': 'delivery_anchor_missing',
+                'delivery_anchor_seen': False,
+                'provider_acceptance': 'anchor_missing',
+                'request_anchor': 'job_anchor_missing',
+                'retryable': True,
+                'auto_retry_allowed': False,
+                'binding_evidence': {
+                    'binding_state': 'unhealthy',
+                    'unhealthy_reasons': ['codex_pid_pane_pid_mismatch'],
+                },
+            }
+        )
+    )
+
+    diagnostics = snapshot_provider_diagnostics(snapshot)
+
+    assert diagnostics['provider_delivery_failure_kind'] == 'delivery_anchor_missing'
+    assert diagnostics['provider_delivery_anchor_seen'] is False
+    assert diagnostics['provider_acceptance'] == 'anchor_missing'
+    assert diagnostics['provider_request_anchor'] == 'job_anchor_missing'
+    assert diagnostics['provider_retryable'] is True
+    assert diagnostics['provider_auto_retry_allowed'] is False
+    assert diagnostics['provider_binding_state'] == 'unhealthy'
+    assert diagnostics['provider_binding_unhealthy_reasons'] == ['codex_pid_pane_pid_mismatch']

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -1264,6 +1265,170 @@ def test_execution_service_codex_adapter_fails_without_session(monkeypatch: pyte
     assert update.decision is not None
     assert update.decision.status is CompletionStatus.FAILED
     assert update.decision.reason == 'runtime_unavailable'
+
+
+def test_execution_service_codex_preflight_blocks_stale_pid_without_paste(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from provider_execution import codex as codex_adapter_module
+
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    log_path = tmp_path / 'codex-session.jsonl'
+    log_path.write_text('', encoding='utf-8')
+    (runtime_dir / 'codex.pid').write_text('111\n', encoding='utf-8')
+    (runtime_dir / 'bridge.pid').write_text(f'{os.getpid()}\n', encoding='utf-8')
+    (runtime_dir / 'input.fifo').write_text('', encoding='utf-8')
+    sent: list[tuple[str, str]] = []
+
+    class FakeBackend:
+        def send_text(self, pane_id: str, text: str) -> None:
+            sent.append((pane_id, text))
+
+        def is_alive(self, pane_id: str) -> bool:
+            return pane_id == '%1'
+
+        def pane_pid(self, pane_id: str) -> int:
+            assert pane_id == '%1'
+            return 222
+
+    class FakeSession:
+        codex_session_path = str(log_path)
+        codex_session_id = 'session-1'
+        work_dir = str(tmp_path)
+
+        def ensure_pane(self):
+            return True, '%1'
+
+    FakeSession.session_file = tmp_path / '.codex-agent1-session'
+    FakeSession.runtime_dir = runtime_dir
+    FakeSession.data = {
+        'runtime_dir': str(runtime_dir),
+        'codex_session_path': str(log_path),
+        'codex_session_id': 'session-1',
+        'ccb_project_id': 'proj-codex',
+    }
+
+    class EmptyReader:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        def capture_state(self):
+            return {'log_path': log_path}
+
+        def try_get_entries(self, state):
+            return [], state
+
+    monkeypatch.setattr(codex_adapter_module, 'load_project_session', lambda work_dir, instance=None: FakeSession())
+    monkeypatch.setattr(codex_adapter_module, 'get_backend_for_session', lambda data: FakeBackend())
+    monkeypatch.setattr(codex_adapter_module, 'CodexLogReader', EmptyReader)
+    monkeypatch.setattr('provider_backends.codex.binding_evidence._pid_alive', lambda pid: True)
+
+    service = ExecutionService(build_default_execution_registry(), clock=lambda: '2026-03-18T00:00:00Z')
+    service.start(_job_for_provider('codex', body='do not paste'), runtime_context=_runtime_context(tmp_path))
+    update = service.poll()[0]
+
+    assert sent == []
+    assert [item.kind for item in update.items] == [CompletionItemKind.ERROR]
+    assert update.decision is not None
+    assert update.decision.status is CompletionStatus.FAILED
+    assert update.decision.reason == 'codex_binding_unhealthy'
+    assert update.decision.diagnostics['retryable'] is True
+    assert update.decision.diagnostics['auto_retry_allowed'] is False
+    evidence = update.decision.diagnostics['binding_evidence']
+    assert evidence['binding_state'] == 'unhealthy'
+    assert 'codex_pid_pane_pid_mismatch' in evidence['unhealthy_reasons']
+
+
+def test_execution_service_codex_delivery_anchor_missing_diagnostics_and_activity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from provider_execution import codex as codex_adapter_module
+    from provider_hooks.activity import load_activity
+
+    runtime_dir = tmp_path / 'runtime'
+    runtime_dir.mkdir()
+    log_path = tmp_path / 'codex-session.jsonl'
+    log_path.write_text('', encoding='utf-8')
+    pane_pid = os.getpid()
+    (runtime_dir / 'codex.pid').write_text(f'{pane_pid}\n', encoding='utf-8')
+    (runtime_dir / 'bridge.pid').write_text(f'{pane_pid}\n', encoding='utf-8')
+    (runtime_dir / 'input.fifo').write_text('', encoding='utf-8')
+    sent: list[tuple[str, str]] = []
+
+    class FakeBackend:
+        def send_text(self, pane_id: str, text: str) -> None:
+            sent.append((pane_id, text))
+
+        def is_alive(self, pane_id: str) -> bool:
+            return pane_id == '%1'
+
+        def pane_pid(self, pane_id: str) -> int:
+            assert pane_id == '%1'
+            return pane_pid
+
+    class FakeSession:
+        codex_session_path = str(log_path)
+        codex_session_id = 'session-1'
+        work_dir = str(tmp_path)
+
+        def ensure_pane(self):
+            return True, '%1'
+
+    FakeSession.session_file = tmp_path / '.codex-agent1-session'
+    FakeSession.runtime_dir = runtime_dir
+    FakeSession.data = {
+        'runtime_dir': str(runtime_dir),
+        'codex_session_path': str(log_path),
+        'codex_session_id': 'session-1',
+        'ccb_project_id': 'proj-codex',
+        'ccb_session_id': 'ccb-session-1',
+    }
+
+    class EmptyReader:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        def capture_state(self):
+            return {'log_path': log_path}
+
+        def try_get_entries(self, state):
+            return [], state
+
+    clock = iter(['2026-03-18T00:00:00Z', '2026-03-18T00:02:01Z'])
+    monkeypatch.setattr(codex_adapter_module, 'load_project_session', lambda work_dir, instance=None: FakeSession())
+    monkeypatch.setattr(codex_adapter_module, 'get_backend_for_session', lambda data: FakeBackend())
+    monkeypatch.setattr(codex_adapter_module, 'CodexLogReader', EmptyReader)
+    monkeypatch.setattr('provider_backends.codex.binding_evidence._pid_alive', lambda pid: True)
+
+    service = ExecutionService(build_default_execution_registry(), clock=lambda: next(clock))
+    submission = service.start(
+        _anchored_job_for_provider('codex', 'job_anchor_missing', body='real codex'),
+        runtime_context=_runtime_context(tmp_path),
+    )
+    assert submission is not None
+    assert submission.runtime_state['delivery_state'] == 'pending_anchor'
+    assert submission.runtime_state['prompt_sent'] is True
+
+    update = service.poll()[0]
+
+    assert sent and sent[0][0] == '%1'
+    assert update.decision is not None
+    assert update.decision.reason == 'codex_prompt_delivery_failed'
+    assert update.decision.status is CompletionStatus.FAILED
+    assert update.decision.diagnostics['delivery_failure_kind'] == 'delivery_anchor_missing'
+    assert update.decision.diagnostics['provider_acceptance'] == 'anchor_missing'
+    assert update.decision.diagnostics['retryable'] is True
+    assert update.decision.diagnostics['auto_retry_allowed'] is False
+    assert update.decision.diagnostics['binding_evidence']['session_log']['path'] == str(log_path)
+    activity = load_activity(runtime_dir)
+    assert activity is not None
+    assert activity['state'] == 'failed'
+    assert activity['diagnostics']['reason'] == 'delivery_anchor_missing'
+    assert activity['diagnostics']['provider_acceptance'] == 'anchor_missing'
+    assert activity['diagnostics']['binding_evidence']['binding_state'] == 'healthy'
 
 
 def test_execution_service_codex_adapter_emits_protocol_items_from_log(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

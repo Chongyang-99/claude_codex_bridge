@@ -603,6 +603,9 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
                 'active_pane_id': '%1',
                 'pane_title_marker': 'CCB-codex',
                 'pane_state': 'alive',
+                'provider_binding_state': 'unhealthy',
+                'provider_binding_unhealthy_reasons': ['codex_pid_pane_pid_mismatch'],
+                'provider_binding_suspicious_reasons': ['session_log_path_unknown'],
             }
         ],
     }
@@ -769,6 +772,9 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
                     'head_event_type': 'task_reply',
                     'head_status': 'queued',
                 },
+                'provider_binding_state': 'unhealthy',
+                'provider_binding_unhealthy_reasons': ['codex_pid_pane_pid_mismatch'],
+                'provider_binding_suspicious_reasons': ['session_log_path_unknown'],
             }
         ],
     }
@@ -783,6 +789,10 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
         'source=provider-session workspace=/tmp/ws/codex terminal=tmux '
         'socket=sock-a socket_path=None window=main window_id=@1 '
         'pane=%1 active_pane=%1 pane_state=alive marker=CCB-codex'
+    )
+    assert ps_lines[4] == (
+        'provider_binding: state=unhealthy unhealthy=codex_pid_pane_pid_mismatch '
+        'suspicious=session_log_path_unknown'
     )
 
     assert doctor_lines[0] == 'project: /tmp/repo'
@@ -835,6 +845,10 @@ def test_render_ps_and_doctor_keep_expected_line_shapes() -> None:
         'source=external-attach workspace=/tmp/ws/codex terminal=tmux '
         'socket=sock-a socket_path=None window=main window_id=@1 '
         'pane=%1 active_pane=%1 pane_state=alive marker=CCB-codex'
+    ) in doctor_lines
+    assert (
+        'provider_binding: state=unhealthy unhealthy=codex_pid_pane_pid_mismatch '
+        'suspicious=session_log_path_unknown'
     ) in doctor_lines
     assert 'restore: supported=True mode=provider_resume reason=None' in doctor_lines
     assert (

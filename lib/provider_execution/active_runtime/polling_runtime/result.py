@@ -64,7 +64,7 @@ def runtime_error_result(
         submission,
         runtime_state={**submission.runtime_state, "mode": "passive", "next_seq": item.cursor.event_seq + 1},
     )
-    diagnostics = {"reason": error_reason}
+    diagnostics = {**dict(submission.diagnostics or {}), "reason": error_reason}
     if error:
         diagnostics["error"] = error
         diagnostics["error_message"] = error

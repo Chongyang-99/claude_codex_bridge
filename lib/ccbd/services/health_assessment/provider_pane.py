@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from provider_backends.codex.binding_evidence import collect_codex_binding_evidence
 from provider_core.session_binding_evidence import session_terminal
 
 from ..provider_runtime_facts import load_provider_session
@@ -36,12 +37,15 @@ def assess_provider_pane(*, runtime, registry, session_bindings, namespace_state
         session=session,
         namespace_state_store=namespace_state_store,
     )
+    health = health_from_pane_state(pane_state)
+    if str(getattr(binding, 'provider', '') or '').strip().lower() == 'codex' and pane_state == 'alive':
+        health = _codex_health_from_binding_evidence(session=session, health=health)
     return _build_assessment(
         binding=binding,
         session=session,
         terminal=terminal,
         pane_state=pane_state,
-        health=health_from_pane_state(pane_state),
+        health=health,
     )
 
 
@@ -84,6 +88,20 @@ def _tmux_pane_state(*, runtime, session, namespace_state_store) -> str:
     ):
         return 'foreign'
     return pane_state
+
+
+def _codex_health_from_binding_evidence(*, session, health: str) -> str:
+    try:
+        evidence = collect_codex_binding_evidence(
+            session=session,
+            backend=session_backend(session),
+            pane_id=str(getattr(session, 'pane_id', '') or '').strip() or None,
+        )
+    except Exception:
+        return health
+    if evidence.preflight_failed:
+        return 'codex-binding-stale'
+    return health
 
 
 def _build_assessment(

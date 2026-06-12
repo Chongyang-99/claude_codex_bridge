@@ -9,8 +9,9 @@ from completion.models import CompletionSourceKind
 from provider_core.instance_resolution import named_agent_instance
 from provider_execution.active import PreparedActiveStart, prepare_active_start
 from provider_execution.base import ProviderRuntimeContext, ProviderSubmission
-from provider_execution.common import no_wrap_requested, normalize_session_path, send_prompt_to_runtime_target
+from provider_execution.common import error_submission, no_wrap_requested, normalize_session_path, send_prompt_to_runtime_target
 
+from ..binding_evidence import binding_preflight_diagnostics, collect_codex_binding_evidence
 from .readiness import wait_for_runtime_ready
 
 
@@ -41,6 +42,22 @@ def start_active_submission(
 
     reader = reader_factory(prepared.session, None)
     state = reader.capture_state()
+    binding_evidence = collect_codex_binding_evidence(
+        session=prepared.session,
+        backend=prepared.backend,
+        pane_id=prepared.pane_id,
+        session_log_path=state_session_path(state),
+    )
+    if binding_evidence.preflight_failed:
+        return binding_error_submission(
+            adapter,
+            job,
+            now=now,
+            work_dir=prepared.work_dir,
+            pane_id=prepared.pane_id,
+            project_id=job.request.project_id,
+            evidence=binding_evidence,
+        )
     request_anchor = request_anchor_fn(job.job_id)
     no_wrap = no_wrap_requested(job)
     prompt = job.request.body if no_wrap else wrap_prompt_fn(job.request.body, request_anchor)
@@ -75,8 +92,69 @@ def start_active_submission(
             'session_path': state_session_path(state),
             'workspace_path': str(prepared.work_dir),
             'no_wrap': no_wrap,
+            'prompt_sent': True,
+            'prompt_sent_at': now,
+            'delivery_state': 'accepted' if no_wrap else 'pending_anchor',
+            'delivery_timeout_s': 120.0,
+            'binding_evidence': binding_evidence.to_record(),
+            'runtime_dir': binding_evidence.runtime_dir,
+            'session_file': binding_evidence.session_file,
+            'session_id': binding_evidence.session_id,
+            'ccb_session_id': binding_evidence.ccb_session_id,
+            'project_id': session_project_id(prepared.session),
         },
     )
+
+
+def binding_error_submission(
+    adapter,
+    job: JobRecord,
+    *,
+    now: str,
+    work_dir: Path,
+    pane_id: str,
+    project_id: str,
+    evidence,
+) -> ProviderSubmission:
+    diagnostics = binding_preflight_diagnostics(evidence)
+    submission = error_submission(
+        job,
+        provider=adapter.provider,
+        now=now,
+        source_kind=CompletionSourceKind.PROTOCOL_EVENT_STREAM,
+        reason='codex_binding_unhealthy',
+        error=str(diagnostics.get('error') or 'codex_binding_unhealthy'),
+    )
+    return replace_submission_diagnostics(
+        submission,
+        diagnostics={
+            **dict(submission.diagnostics or {}),
+            **diagnostics,
+            'workspace_path': str(work_dir),
+            'pane_id': pane_id,
+            'delivery_state': 'preflight_failed',
+            'delivery_failure_kind': 'provider_binding_stale',
+            'project_id': str(project_id or '').strip(),
+        },
+        runtime_state={
+            **dict(submission.runtime_state),
+            **diagnostics,
+            'workspace_path': str(work_dir),
+            'pane_id': pane_id,
+            'delivery_state': 'preflight_failed',
+            'delivery_failure_kind': 'provider_binding_stale',
+            'project_id': str(project_id or '').strip(),
+        },
+    )
+
+
+def replace_submission_diagnostics(
+    submission: ProviderSubmission,
+    *,
+    diagnostics: dict[str, object],
+    runtime_state: dict[str, object],
+) -> ProviderSubmission:
+    return replace(submission, diagnostics=diagnostics, runtime_state=runtime_state)
 
 
 def resume_submission(
@@ -142,6 +220,13 @@ def preferred_log_path(state: dict[str, object]) -> Path | None:
 
 def state_session_path(state: dict[str, object]) -> str:
     return normalize_session_path(state.get('log_path'))
+
+
+def session_project_id(session) -> str:
+    data = getattr(session, 'data', None)
+    if not isinstance(data, dict):
+        return ''
+    return str(data.get('ccb_project_id') or '').strip()
 
 
 __all__ = [

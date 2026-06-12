@@ -61,6 +61,15 @@ class CodexProviderAdapter:
             'last_assistant_signature': submission.runtime_state.get('last_assistant_signature'),
             'session_path': submission.runtime_state.get('session_path'),
             'workspace_path': submission.runtime_state.get('workspace_path'),
+            'prompt_sent': submission.runtime_state.get('prompt_sent'),
+            'prompt_sent_at': submission.runtime_state.get('prompt_sent_at'),
+            'delivery_state': submission.runtime_state.get('delivery_state'),
+            'delivery_timeout_s': submission.runtime_state.get('delivery_timeout_s'),
+            'binding_evidence': submission.runtime_state.get('binding_evidence'),
+            'runtime_dir': submission.runtime_state.get('runtime_dir'),
+            'session_file': submission.runtime_state.get('session_file'),
+            'session_id': submission.runtime_state.get('session_id'),
+            'ccb_session_id': submission.runtime_state.get('ccb_session_id'),
         }
 
     def resume(
