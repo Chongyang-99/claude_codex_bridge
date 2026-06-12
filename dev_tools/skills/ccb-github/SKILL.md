@@ -7,7 +7,7 @@ description: Maintain this CCB project's GitHub-facing release surface. Use when
 
 ## Core Rule
 
-Treat GitHub as the user-facing product page. A release is not done until local version files, both READMEs, changelog, GitHub Release, release assets, and Actions status all agree.
+Treat GitHub as the user-facing product page. A release is not done until local version files, npm package metadata, both READMEs, changelog, GitHub Release, release assets, npm registry state, and Actions status all agree.
 
 GitHub's repository homepage renders README from the default branch, not from the latest release tag. If release documentation is prepared on a feature or hotfix branch, merge that branch to the default branch before calling the homepage updated.
 
@@ -25,8 +25,8 @@ When the user asks for a final release or homepage result, do the git/GitHub wor
 6. Push the default branch.
 7. Create/push the release tag when package contents changed and the user asked for a release.
 8. Create or update the GitHub Release page.
-9. Wait for required GitHub Actions and release assets.
-10. Run the published checker and report the result.
+9. Wait for required GitHub Actions, release assets, and npm Trusted Publishing when `package.json` is present.
+10. Run the published checker and npm registry verification, then report the result.
 
 Keep the checker read-only. Git writes, GitHub Release writes, workflow reruns, and tag operations are explicit agent actions done in the sequence above, not hidden inside the checker.
 
@@ -51,7 +51,7 @@ python "$CHECKER" --phase dev --repo SeemSeam/claude_codex_bridge --wait-seconds
 
 `--phase dev` checks that the worktree is clean, the branch is pushed, and the change set is classified as development-only vs package/release-impacting. When `--wait-seconds` is greater than 0, it also waits for required GitHub workflows.
 
-`--phase published` checks both release state and homepage state: GitHub latest release, release assets, `SHA256SUMS`, release workflows, branch validation workflows, and README/README_zh as rendered from the repository default branch. Use `--wait-seconds 1800` immediately after tagging so the checker waits for `Release Artifacts` and uploaded assets instead of reporting transient failures.
+`--phase published` checks both release state and homepage state: GitHub latest release, release assets, `SHA256SUMS`, release workflows, branch validation workflows, and README/README_zh as rendered from the repository default branch. Use `--wait-seconds 1800` immediately after tagging so the checker waits for `Release Artifacts` and uploaded assets instead of reporting transient failures. The checker does not replace npm registry verification; when `package.json` exists, also verify `npm view @seemseam/ccb version dist-tags --json`.
 
 ## Decision Tree
 
@@ -68,7 +68,7 @@ Use this for CCB development changes, including `dev_tools`, tests, docs, CI, an
 
 1. Classify the change:
    - `dev_tools/`, tests, docs, and CI-only checks usually do not require a package release.
-   - `lib/`, `ccb`, `bin/`, installer scripts, release build scripts, `VERSION`, README release notes, or `CHANGELOG.md` may affect users and must be considered for release.
+   - `lib/`, `ccb`, `bin/`, installer scripts, release build scripts, `VERSION`, `package.json`, README release notes, or `CHANGELOG.md` may affect users and must be considered for release.
 2. Run targeted tests first, then the smallest broad check that matches the risk.
 3. Commit the development change.
 4. Push the branch.
@@ -90,6 +90,7 @@ Default to the smallest verification set that gives meaningful signal for the fi
 - Installer or shell edits: run `bash -n install.sh` or the relevant shell syntax check, plus focused installer tests that cover the changed behavior.
 - `lib/`, `ccbd`, provider runtime, startup, tmux, or shared behavior edits: run targeted pytest for the touched module and adjacent contract tests; broaden only when the change affects cross-module behavior.
 - Release assets, version files, package build scripts, or explicit release/tag work: use the Release-Only Local Verification below.
+- npm package or Trusted Publishing workflow edits: run `node --check` on changed npm wrapper scripts, `npm pack --dry-run`, and a local tarball install smoke when the package wrapper changed.
 - GitHub homepage updates: merge to the default branch only when the user explicitly asks for homepage visibility, then verify default-branch README and CI as needed.
 
 ## Release Preparation Checklist
@@ -98,6 +99,7 @@ Update these files together:
 
 - `VERSION`
 - `ccb` `VERSION = "..."`
+- `package.json` `"version": "..."`
 - `CHANGELOG.md`
 - `README.md`
 - `README_zh.md`
@@ -111,6 +113,14 @@ README requirements:
 - Do not reintroduce root `CCB.md` support or mention it as a current feature.
 - Install commands must point at the actual public GitHub repo.
 - Release Notes / 新版本记录 must include the new version near the top.
+- npm install snippets should point at `npm install -g @seemseam/ccb` when npm is the recommended install path.
+
+npm requirements:
+
+- `package.json` version must match `VERSION`, `ccb` `VERSION`, and the release tag without the leading `v`.
+- `package.json` must publish `@seemseam/ccb` as a public package with CLI bins for `ccb`, `ask`, `autonew`, and `ctx-transfer`.
+- `.github/workflows/npm-publish.yml` must exist and use npm Trusted Publishing/OIDC: GitHub-hosted runner, Node 24, `permissions: id-token: write`, no `NODE_AUTH_TOKEN`, and `npm publish --access public`.
+- If npm Trusted Publisher is not configured for owner `SeemSeam`, repository `claude_codex_bridge`, workflow filename `npm-publish.yml`, blank environment, and allowed action `npm publish`, stop and report the registry-side blocker.
 
 GitHub repo homepage requirements:
 
@@ -126,6 +136,7 @@ Use this full local gate only for release/tag/package work, or when runtime/pack
 pytest -q
 python -m compileall -q lib ccb
 git diff --check
+npm pack --dry-run
 python scripts/build_linux_release.py --allow-dirty --output-dir dist-release-local
 ```
 
@@ -172,15 +183,20 @@ Use this order:
 4. Create and push tag `vX.Y.Z` from the intended release commit.
 5. Create the GitHub Release page for `vX.Y.Z`.
 6. Let `Release Artifacts` upload assets.
-7. Confirm `Release Artifacts` is green for the tag or a valid `workflow_dispatch` recovery on the release tag commit, and confirm branch validation workflows for the release commit are green or consciously accepted as warnings:
+7. Let `Npm Publish` publish `@seemseam/ccb@X.Y.Z` through npm Trusted Publishing when `package.json` exists.
+8. Confirm `Release Artifacts` is green for the tag or a valid `workflow_dispatch` recovery on the release tag commit, confirm `Npm Publish` is green for the release tag commit, and confirm branch validation workflows for the release commit are green or consciously accepted as warnings:
    - `Tests`
    - `CCBD Real Platform Smoke`
    - `Cross-Platform Compatibility Test`
-8. Confirm release assets exist:
+9. Confirm release assets exist:
    - `ccb-linux-x86_64.tar.gz`
    - `ccb-macos-universal.tar.gz`
    - `SHA256SUMS`
-9. Confirm the GitHub homepage README is updated by reading default-branch README through GitHub:
+10. Confirm npm registry state when `package.json` exists:
+   ```bash
+   npm view @seemseam/ccb version dist-tags --json
+   ```
+11. Confirm the GitHub homepage README is updated by reading default-branch README through GitHub:
    ```bash
    gh api 'repos/SeemSeam/claude_codex_bridge/contents/README.md?ref=main' --jq .content | base64 -d | rg 'version-|vX.Y.Z'
    ```
@@ -188,6 +204,7 @@ Use this order:
 The current workflow expects the Release page to exist before uploading assets. If `Release Artifacts` fails with `release not found`, create the Release and rerun the workflow. When using manual `workflow_dispatch`, select the release tag/ref or otherwise ensure the run's `headSha` matches the release tag commit; the checker does not accept unrelated manual runs.
 
 The published checker must pass after this sequence. It verifies local push state, tag presence, GitHub latest release, release assets, `SHA256SUMS`, default-branch README, and whether the default branch contains the release tag.
+The npm registry check must also pass after this sequence when `package.json` exists; `latest` must resolve to the same version as the GitHub Release.
 
 ## Recovery Runbook
 
@@ -196,6 +213,10 @@ Use the checker output first; each FAIL includes a suggested fix. Common cases:
 - Release page missing: create it with `gh release create vX.Y.Z --repo SeemSeam/claude_codex_bridge --title vX.Y.Z --notes-file <notes-file>`, then rerun `Release Artifacts`.
 - Release Artifacts recovered through `workflow_dispatch`: run it on the release tag/ref or otherwise ensure the run `headSha` matches the tag commit; unrelated manual runs are not accepted.
 - Release assets missing: rerun the `Release Artifacts` workflow for the tag, then verify `ccb-linux-x86_64.tar.gz`, `ccb-macos-universal.tar.gz`, and `SHA256SUMS`.
+- npm workflow missing: add `.github/workflows/npm-publish.yml`, merge it to the default branch before the next tag, and do not expect older tags that predate the workflow to publish npm.
+- npm Trusted Publisher mismatch: configure npm package `@seemseam/ccb` with owner `SeemSeam`, repository `claude_codex_bridge`, workflow filename `npm-publish.yml`, blank environment, and allowed action `npm publish`; then rerun `Npm Publish` for the release tag.
+- npm version already exists: do not overwrite; bump all version surfaces and publish a new patch version.
+- npm publish 404/401: confirm package ownership, scope permission, npm Trusted Publisher configuration, and that the workflow ran from a tag containing the committed `package.json`.
 - Tag missing locally or remotely: stop and confirm the intended release commit before creating or pushing the tag.
 - Tag SHA mismatch: do not force-push automatically; inspect the tag and ask for explicit maintainer approval before rewriting release history.
 - GitHub CLI unauthenticated: run `gh auth login`, then rerun the published check.
@@ -211,6 +232,7 @@ Run:
 ```bash
 gh release view vX.Y.Z --repo SeemSeam/claude_codex_bridge --json tagName,url,assets
 gh run list --repo SeemSeam/claude_codex_bridge --limit 10
+npm view @seemseam/ccb version dist-tags --json
 python dev_tools/skills/ccb-github/scripts/check_release_state.py --phase published --repo SeemSeam/claude_codex_bridge --wait-seconds 1800
 git status --short --branch
 ```
@@ -223,12 +245,15 @@ Do not call the release complete if any of these are true:
 
 - README or README_zh still shows an old current version or stale current-release highlights.
 - `VERSION`, `ccb`, changelog, badges, or release notes disagree.
+- `package.json` version differs from `VERSION`, `ccb` `VERSION`, or the release tag.
 - The release tag is missing, points to the wrong commit, or differs between local and origin.
 - The default branch does not contain the release tag when the GitHub homepage should represent that release.
 - The working branch has unpushed release commits.
 - GitHub latest release does not point to the new tag after publish.
 - Required release assets are missing.
 - `SHA256SUMS` does not contain checksum entries for every required tarball asset.
+- npm `latest` does not resolve to `@seemseam/ccb@X.Y.Z` after an npm-enabled release.
+- `Npm Publish` failed, is missing for a tag that should publish npm, or ran against a different commit than the release tag.
 - Tests or Release Artifacts failed.
 - GitHub homepage README on `main` still shows an old current version.
 - The worktree has uncommitted release edits.
