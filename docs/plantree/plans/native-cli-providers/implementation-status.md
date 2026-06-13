@@ -6,7 +6,10 @@ Date: 2026-06-13
 
 Native completion pivot is implemented in the working tree. Kimi,
 DeepSeek/DeepCode, and AGY now use provider-native session/event logs for
-completion detection instead of asking the model to print `CCB_DONE`.
+completion detection instead of asking the model to print `CCB_DONE`. Kimi and
+OpenCode inherited ask skill injection is implemented in the working tree,
+including Kimi default skill discovery preservation when CCB adds explicit
+`--skills-dir` arguments.
 
 ## Last Landed
 
@@ -28,12 +31,24 @@ completion detection instead of asking the model to print `CCB_DONE`.
   - AGY reads
     `~/.gemini/antigravity-cli/brain/<conversation>/.system_generated/logs/transcript*.jsonl`.
   - Provider stubs now write those native stores for source runtime tests.
+- Ask skill projection:
+  - Kimi inherited ask skill lives at
+    `inherit_skills/kimi_skills/ask/SKILL.md` and is passed to Kimi through a
+    managed provider-state skills root with `--skills-dir`. CCB also passes
+    existing Kimi default project/user skill directories first because Kimi
+    treats explicit `--skills-dir` as replacement for default discovery.
+  - OpenCode inherited ask guidance lives at
+    `inherit_skills/opencode_skills/ask.md` and is appended to generated
+    `opencode.json.instructions` through
+    `.ccb/runtime/skills/<agent>/opencode/ask.md`.
 
 ## Active TODO
 
 1. Decide whether to keep the smoke/real test projects as reusable validation
    fixtures.
-2. Commit after review/approval.
+2. Run optional source-runtime ask smoke for Kimi/OpenCode skill visibility if
+   review requests runtime-level evidence beyond launch/config tests.
+3. Commit after review/approval.
 
 ## Blocked By
 
@@ -166,3 +181,21 @@ Current native pivot verification:
   - `python -m py_compile lib/provider_backends/kimi/launcher.py
     test/test_native_cli_providers.py`: passed.
   - `python -m pytest -q test/test_native_cli_providers.py`: `5 passed`.
+
+Ask skill injection verification:
+
+- `python -m py_compile lib/provider_backends/opencode/launcher.py
+  lib/provider_backends/kimi/launcher.py lib/provider_backends/kimi/skills.py
+  lib/provider_core/inherited_skills.py lib/storage_classification/service.py
+  lib/storage_classification/provider_home.py`: passed.
+- `python -m pytest -q test/test_native_cli_providers.py
+  test/test_provider_hook_settings.py test/test_v2_runtime_launch.py
+  test/test_project_memory_real_context.py
+  test/test_provider_memory_external_matrix.py test/test_storage_classification.py
+  test/test_repo_hygiene.py test/test_ask_skill_templates.py`:
+  `141 passed, 1 skipped`.
+- `git diff --check`: passed.
+- From `/home/bfly/yunwei/test_ccb2` with isolated source home,
+  `/home/bfly/yunwei/ccb_source/ccb_test --diagnose`: passed.
+- From `/home/bfly/yunwei/test_ccb2` with isolated source home,
+  `/home/bfly/yunwei/ccb_source/ccb_test config validate`: valid.

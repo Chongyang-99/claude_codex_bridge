@@ -328,7 +328,8 @@ Example:
 {
   "$schema": "https://opencode.ai/config.json",
   "instructions": [
-    ".ccb/runtime/memory/agent3.md"
+    ".ccb/runtime/memory/agent3.md",
+    ".ccb/runtime/skills/agent3/opencode/ask.md"
   ]
 }
 ```
@@ -338,9 +339,13 @@ config file. The generated config must merge `project_root/opencode.json` when
 present:
 
 - user keys win for all fields except `instructions`
-- `instructions` is a stable union of user entries plus the CCB bridge entry
+- `instructions` is a stable union of user entries plus CCB bridge entries for
+  inherited memory and inherited ask skill guidance
 - invalid project config degrades by writing the minimal CCB config and
   recording `opencode_config_merge_failed`
+- `inherit_memory = false` removes only the memory bridge; generated
+  `OPENCODE_CONFIG` is removed only when inherited memory and inherited skills
+  are both disabled
 
 This avoids treating `OPENCODE_CONFIG` as a replacement that silently discards
 project provider, model, MCP, permission, or instruction settings.

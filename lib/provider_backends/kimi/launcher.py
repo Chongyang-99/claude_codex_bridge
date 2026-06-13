@@ -14,6 +14,7 @@ from provider_core.caller_env import (
 )
 from provider_core.contracts import ProviderRuntimeLauncher
 from provider_core.runtime_shared import apply_provider_command_template, provider_start_parts
+from provider_backends.kimi.skills import kimi_skill_dirs_for_launch
 from workspace.models import WorkspacePlan
 
 
@@ -44,6 +45,15 @@ def prepare_launch_context(
     payload["project_root"] = str(context.project.project_root)
     payload["workspace_path"] = str(prepared_state.get("run_cwd") or plan.workspace_path)
     payload["agent_events_path"] = str(context.paths.agent_events_path(spec.name))
+    payload["kimi_skill_dirs"] = [
+        str(path)
+        for path in kimi_skill_dirs_for_launch(
+            project_root=context.project.project_root,
+            workspace_path=Path(str(payload["workspace_path"])),
+            state_dir=context.paths.agent_provider_state_dir(spec.name, "kimi"),
+            env=spec.env,
+        )
+    ]
     return payload
 
 
@@ -55,11 +65,12 @@ def build_start_cmd(
     *,
     prepared_state: dict[str, object] | None = None,
 ) -> str:
-    del prepared_state
+    launch_context = prepared_state or {}
     runtime_dir = Path(runtime_dir)
     cmd_parts = provider_start_parts("kimi")
     if command.auto_permission and not _has_any(cmd_parts, _AUTO_FLAGS) and not _has_any(spec.startup_args, _AUTO_FLAGS):
         cmd_parts.append(_AUTO_FLAG)
+    cmd_parts.extend(_skill_dir_args(launch_context.get("kimi_skill_dirs"), existing_parts=(*cmd_parts, *spec.startup_args)))
     cmd_parts.extend(spec.startup_args)
     cmd = " ".join(shlex.quote(str(part)) for part in cmd_parts)
     cmd = apply_provider_command_template(cmd, spec.provider_command_template)
@@ -108,6 +119,34 @@ def build_session_payload(
 def _has_any(parts: tuple[str, ...] | list[str], flags: set[str]) -> bool:
     normalized = {str(part).strip() for part in parts}
     return bool(flags & normalized)
+
+
+def _skill_dir_args(raw_dirs: object, *, existing_parts: tuple[str, ...] | list[str]) -> list[str]:
+    args: list[str] = []
+    if not isinstance(raw_dirs, (list, tuple)):
+        return args
+    for raw in raw_dirs:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        path = Path(text).expanduser()
+        if not path.is_dir():
+            continue
+        value = str(path)
+        if _has_option_value(existing_parts, "--skills-dir", value) or _has_option_value(args, "--skills-dir", value):
+            continue
+        args.extend(("--skills-dir", value))
+    return args
+
+
+def _has_option_value(parts: tuple[str, ...] | list[str], option: str, value: str) -> bool:
+    normalized = [str(part).strip() for part in parts]
+    for index, part in enumerate(normalized):
+        if part == option and index + 1 < len(normalized) and normalized[index + 1] == value:
+            return True
+        if part == f"{option}={value}":
+            return True
+    return False
 
 
 __all__ = ["build_runtime_launcher", "build_start_cmd", "prepare_launch_context"]

@@ -196,6 +196,9 @@ Examples:
 - Claude `.claude/skills/`, `.claude/commands/`, `.claude/CLAUDE.md`
 - Droid inherited `skills/`
 - Gemini `.gemini/settings.json`, `.gemini/trustedFolders.json`
+- Kimi inherited and role `skills/` directories under managed provider state
+- OpenCode generated `opencode.json` and generated ask skill instruction files
+  under `.ccb/runtime/skills/<agent>/opencode/`
 
 Auth, OAuth, token, and credential files are never `PROJECTED_CONFIG` even when
 they were created by a projection step. They must classify as `SECRET`.
@@ -561,6 +564,8 @@ May route through projected assets or shared-cache:
 
 - inherited `skills/` and `commands/`; startup should prefer symlinks to the
   source home and fall back to marked copies
+- Kimi inherited skill roots; startup routes them as projected assets and passes
+  them with `--skills-dir`
 - `.tmp/plugins/`; the real bundle may live under
   `.ccb/shared-cache/codex/plugin-bundles/<sha>/`, with managed homes pointing
   at that bundle and retaining their local `.tmp/plugins.sha`

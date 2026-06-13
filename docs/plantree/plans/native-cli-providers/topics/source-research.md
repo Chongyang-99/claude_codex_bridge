@@ -28,6 +28,18 @@ Observed upstream:
   CCB should inject `--auto-approve` for new Kimi versions while still
   recognizing user-provided `--auto` as an explicit legacy auto flag to avoid
   duplicate injection.
+- Kimi 1.47.0 help exposes repeatable `--skills-dir DIRECTORY`, and documents
+  that it overrides default discovery rather than appending to it. Official
+  Kimi CLI skill discovery scans project `.kimi/skills`, `.claude/skills`,
+  `.codex/skills`, `.agents/skills`, plus user `~/.kimi/skills`,
+  `~/.claude/skills`, `~/.codex/skills`, `~/.config/agents/skills`, and
+  `~/.agents/skills`. CCB therefore must pass existing default directories
+  explicitly before appending managed provider-state skill roots.
+- Source and documentation probes confirm directory skills use
+  `<skill>/SKILL.md` with frontmatter fields `name` and `description`, while
+  flat `<skill>.md` files are also discovered at top level. CCB can inject
+  inherited Kimi ask skills without prompt wrapping by materializing a
+  provider-state skills root and passing it with `--skills-dir`.
 - Kimi 1.47.0 writes project-scoped turn evidence under
   `~/.kimi/sessions/<md5(project-path)>/<session>/wire.jsonl`.
 - Observed Kimi native turn events include `TurnBegin` with `user_input`,

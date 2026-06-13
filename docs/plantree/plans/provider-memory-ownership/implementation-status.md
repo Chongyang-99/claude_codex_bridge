@@ -161,7 +161,8 @@ Worker1 real `test_ccb2` four-provider verification:
   - Claude excludes project `CLAUDE.md` and includes shared/provider-user/private
     memory.
   - OpenCode memory bridge excludes project `AGENTS.md`, while generated config
-    keeps `["AGENTS.md", ".ccb/runtime/memory/opencoder.md"]`.
+    keeps native `AGENTS.md`, the CCB memory bridge, and the CCB ask skill
+    instruction bridge.
   - Gemini keeps project `GEMINI.md` under the current pending-audit policy.
 - Full record:
   [history/worker1-real-testccb2-four-provider-2026-06-07.md](history/worker1-real-testccb2-four-provider-2026-06-07.md).

@@ -2333,10 +2333,15 @@ def test_opencode_workspace_preparation_writes_memory_config(tmp_path: Path, mon
     assert cmd.endswith('opencode --continue')
     assert config['provider'] == 'anthropic'
     assert config['autoupdate'] is False
-    assert config['instructions'] == ['AGENTS.md', '.ccb/runtime/memory/builder.md']
+    assert config['instructions'] == [
+        'AGENTS.md',
+        '.ccb/runtime/memory/builder.md',
+        '.ccb/runtime/skills/builder/opencode/ask.md',
+    ]
     bundle_text = bundle_path.read_text(encoding='utf-8')
     assert 'shared ask memory' in bundle_text
     assert 'project opencode memory' not in bundle_text
+    assert (project_root / '.ccb' / 'runtime' / 'skills' / 'builder' / 'opencode' / 'ask.md').is_file()
 
 
 def test_opencode_workspace_preparation_records_memory_projection_once(tmp_path: Path, monkeypatch) -> None:
@@ -2365,7 +2370,7 @@ def test_opencode_workspace_preparation_records_memory_projection_once(tmp_path:
     assert memory_events[0]['sha256']
 
 
-def test_opencode_workspace_preparation_respects_inherit_memory_flag(tmp_path: Path, monkeypatch) -> None:
+def test_opencode_workspace_preparation_can_inject_skills_without_memory(tmp_path: Path, monkeypatch) -> None:
     project_root = tmp_path / 'repo-opencode-inherit-memory'
     runtime_dir = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-runtime' / 'opencode'
     config_path = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-state' / 'opencode' / 'opencode.json'
@@ -2384,12 +2389,60 @@ def test_opencode_workspace_preparation_respects_inherit_memory_flag(tmp_path: P
     spec = _spec('agent1', provider='opencode')
     command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=False, auto_permission=False)
     prepared = _prepare_opencode_workspace_for_test(spec, runtime_dir)
+    prepared = _prepare_opencode_workspace_for_test(spec, runtime_dir)
 
     cmd = opencode_launcher.build_start_cmd(
         command,
         spec,
         runtime_dir,
         'opencode-sess-inherit-memory',
+        prepared_state=prepared,
+    )
+
+    assert f'OPENCODE_CONFIG={shlex.quote(str(config_path))}' in cmd
+    config = json.loads(config_path.read_text(encoding='utf-8'))
+    assert config['instructions'] == ['.ccb/runtime/skills/agent1/opencode/ask.md']
+    assert not (project_root / '.ccb' / 'runtime' / 'memory' / 'agent1.md').exists()
+    events = [
+        json.loads(line)
+        for line in (project_root / '.ccb' / 'agents' / 'agent1' / 'events.jsonl').read_text(encoding='utf-8').splitlines()
+        if line.strip()
+    ]
+    memory_events = [event for event in events if str(event.get('event_type', '')).startswith('opencode_memory_projection_')]
+    assert len(memory_events) == 1
+    assert memory_events[0]['skill_path'].endswith('/.ccb/runtime/skills/agent1/opencode/ask.md')
+    assert memory_events[0]['skill_sha256']
+
+
+def test_opencode_workspace_preparation_disables_config_when_memory_and_skills_disabled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo-opencode-inherit-context-disabled'
+    runtime_dir = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-runtime' / 'opencode'
+    config_path = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-state' / 'opencode' / 'opencode.json'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text('{"instructions":["stale.md"]}\n', encoding='utf-8')
+    _write_provider_profile(
+        runtime_dir,
+        ResolvedProviderProfile(
+            provider='opencode',
+            agent_name='agent1',
+            inherit_memory=False,
+            inherit_skills=False,
+        ),
+    )
+    monkeypatch.setenv('OPENCODE_START_CMD', 'opencode')
+    spec = _spec('agent1', provider='opencode')
+    command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=False, auto_permission=False)
+    prepared = _prepare_opencode_workspace_for_test(spec, runtime_dir)
+
+    cmd = opencode_launcher.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'opencode-sess-inherit-context-disabled',
         prepared_state=prepared,
     )
 

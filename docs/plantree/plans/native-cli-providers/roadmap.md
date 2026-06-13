@@ -6,7 +6,8 @@ Date: 2026-06-13
 
 - Current status: native completion pivot is in the working tree. Kimi,
   DeepSeek/DeepCode, and AGY no longer use `CCB_DONE` as their primary
-  completion signal.
+  completion signal. Kimi and OpenCode inherited ask skill injection is also in
+  the working tree.
 - Last verified: focused native completion tests, provider catalog tests, and
   stub-backed source-runtime asks for Kimi, DeepSeek, and AGY passed.
 - Next target: review/commit.
@@ -89,10 +90,31 @@ Date: 2026-06-13
     timeout.
   - AGY local transcript inventory confirms `USER_EXPLICIT/USER_INPUT/DONE`
     plus `MODEL/*_RESPONSE/DONE` as the practical native completion marker.
+- Added inherited ask skill projection for additional providers:
+  - Kimi receives `inherit_skills/kimi_skills/ask/SKILL.md` through managed
+    provider-state skills and `--skills-dir`; existing Kimi default project/user
+    skill directories are preserved when CCB switches Kimi into explicit
+    `--skills-dir` mode.
+  - OpenCode receives `inherit_skills/opencode_skills/ask.md` through generated
+    `.ccb/runtime/skills/<agent>/opencode/ask.md` and
+    `opencode.json.instructions`.
+  - OpenCode `inherit_memory` and `inherit_skills` are independent: memory can
+    be disabled while keeping the ask instruction bridge.
+  - OpenCode projection event de-duplication now includes skill hash evidence,
+    so skill-only injection does not emit repeated unchanged events.
+- Focused ask skill injection verification:
+  `python -m pytest -q test/test_native_cli_providers.py
+  test/test_provider_hook_settings.py test/test_v2_runtime_launch.py
+  test/test_project_memory_real_context.py
+  test/test_provider_memory_external_matrix.py test/test_storage_classification.py
+  test/test_repo_hygiene.py test/test_ask_skill_templates.py`:
+  `141 passed, 1 skipped`; `git diff --check` passed.
 
 ## In Progress
 
 - Broader review/release-gate validation if requested.
+- Optional source-runtime ask smoke for Kimi/OpenCode skill visibility if
+  runtime-level evidence is requested.
 
 ## Next
 

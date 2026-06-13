@@ -46,12 +46,17 @@ OpenCode does not yet have a separate session-isolation contract.
 - CCB must not rewrite `project_root/opencode.json`; when that file exists,
   startup reads it and merges its fields into the generated config.
 - User project config wins for all fields except `instructions`.
-- `instructions` is merged as a stable union of user entries plus the generated
-  CCB project-memory bridge entry `.ccb/runtime/memory/<agent>.md`.
+- `instructions` is merged as a stable union of user entries plus CCB-generated
+  entries:
+  - `.ccb/runtime/memory/<agent>.md` when inherited memory is enabled.
+  - `.ccb/runtime/skills/<agent>/opencode/ask.md` when inherited skills are
+    enabled.
 - Invalid project `opencode.json` must not block startup; CCB writes a minimal
   generated config and records `opencode_config_merge_failed` in agent events.
-- `inherit_memory = false` removes the generated OpenCode config and omits
-  `OPENCODE_CONFIG` from the managed launch environment.
+- `inherit_memory = false` omits the memory bridge but does not disable
+  inherited skill instructions. CCB removes the generated config and omits
+  `OPENCODE_CONFIG` only when both inherited memory and inherited skills are
+  disabled.
 - Project `AGENTS.md` remains an OpenCode-native project instruction source and
   is excluded from the CCB-generated runtime memory bundle to avoid duplicate
   loading through both native discovery and the generated instructions bridge.

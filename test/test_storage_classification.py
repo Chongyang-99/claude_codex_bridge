@@ -57,6 +57,7 @@ def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_
     claude_home = ccb / 'agents' / 'agent2' / 'provider-state' / 'claude' / 'home'
     gemini_home = ccb / 'agents' / 'agent3' / 'provider-state' / 'gemini' / 'home'
     opencode_state = ccb / 'agents' / 'agent4' / 'provider-state' / 'opencode'
+    kimi_state = ccb / 'agents' / 'agent5' / 'provider-state' / 'kimi'
 
     _write(ccb / 'ccb.config', 'agent1:codex\n')
     _write(ccb / 'ccb_memory.md', '# shared memory\n')
@@ -67,6 +68,7 @@ def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_
     _write(ccb / 'agents' / 'agent1' / 'memory.md', '# private memory\n')
     _write(ccb / 'state' / 'memory.seed.json', '{}\n')
     _write(ccb / 'runtime' / 'memory' / 'agent1.md', '# memory\n')
+    _write(ccb / 'runtime' / 'skills' / 'agent4' / 'opencode' / 'ask.md', '# ask\n')
     _write(codex_home / 'sessions' / '2026' / 'session.jsonl')
     _write(codex_home / '.ccb-session-namespace.json', '{}\n')
     _write(codex_home / 'auth.json', '{}\n')
@@ -108,6 +110,7 @@ def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_
     _write(gemini_home / '.gemini' / 'settings.json', '{}\n')
     _write(gemini_home / '.npm' / '_cacache' / 'content-v2' / 'sha512' / 'aa' / 'blob')
     _write(opencode_state / 'opencode.json', '{}\n')
+    _write(kimi_state / 'inherited-skills' / 'ask' / 'SKILL.md', '# ask\n')
 
     payload = summarize_storage(PathLayout(project_root))
     records = _records_by_suffix(payload)
@@ -125,6 +128,9 @@ def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_
     assert records['state/memory.seed.json']['reason'] == 'project_memory_seed'
     assert records['runtime/memory/agent1.md']['storage_class'] == 'runtime_ephemeral'
     assert records['runtime/memory/agent1.md']['reason'] == 'project_memory_bundle'
+    assert records['runtime/skills/agent4/opencode/ask.md']['storage_class'] == 'projected_config'
+    assert records['runtime/skills/agent4/opencode/ask.md']['provider'] == 'opencode'
+    assert records['runtime/skills/agent4/opencode/ask.md']['reason'] == 'provider_skill_instruction'
     assert records['history/handoff.md']['storage_class'] == 'user_content'
     assert records['workspaces/agent1/notes.txt']['storage_class'] == 'workspace'
     assert records['shared-cache/claude/versions/2.1.137/claude']['storage_class'] == 'rebuildable_cache'
@@ -177,6 +183,7 @@ def test_storage_classification_keeps_provider_authority_and_cache_separate(tmp_
         == 'rebuildable_cache'
     )
     assert records['agents/agent4/provider-state/opencode/opencode.json']['storage_class'] == 'projected_config'
+    assert records['agents/agent5/provider-state/kimi/inherited-skills/ask/SKILL.md']['storage_class'] == 'projected_config'
 
 
 def test_storage_classification_surfaces_profile_backed_runtime_home(tmp_path: Path) -> None:

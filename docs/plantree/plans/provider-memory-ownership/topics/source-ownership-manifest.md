@@ -74,7 +74,8 @@ row is deliberately deferred until the managed `contextFileName` path is audited
 The OpenCode `provider_native_project` row was audited against OpenCode 1.16.2:
 OpenCode discovers project `AGENTS.md` natively while also loading configured
 `instructions`, so CCB excludes project `AGENTS.md` from the generated runtime
-bundle and keeps the generated bridge instruction for CCB-owned memory only.
+bundle and keeps generated bridge instructions for CCB-owned memory and
+inherited CCB ask guidance.
 
 ## Filtering Rules
 
@@ -165,9 +166,9 @@ user-defined markers must remain untouched.
    sections from released installer paths.
 6. Provider-user-memory filters preserve isolated markers and unrelated
    user-defined marker text.
-7. OpenCode generated instructions contain the CCB bridge path and do not
-   accidentally inline raw project `AGENTS.md` unless the audited policy says
-   to include it.
+7. OpenCode generated instructions contain CCB bridge paths for memory and ask
+   guidance and do not accidentally inline raw project `AGENTS.md` unless the
+   audited policy says to include it.
 8. A new default `.ccb/ccb_memory.md` no longer duplicates ask protocol text,
    while the rendered bundle still contains the renderer-owned ask protocol
    once.

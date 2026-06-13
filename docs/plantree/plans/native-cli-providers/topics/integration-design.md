@@ -46,6 +46,34 @@ The current strategy uses provider-native session/event stores:
 8. Missing anchors and long-running native turns terminalize with explicit
    provider-native timeout or anchor-missing reasons.
 
+## Skill And Instruction Injection
+
+Provider onboarding must include a capability-projection check in addition to
+native completion detection:
+
+- If the provider exposes native skills, use that native surface.
+- If the provider exposes only instruction files/config, inject CCB ask guidance
+  through that instruction surface.
+- Do not ask the model to rediscover `ask` usage from memory alone when a
+  provider-native or provider-supported projection path exists.
+
+Current behavior:
+
+- Kimi gets inherited CCB ask skill content from
+  `inherit_skills/kimi_skills/ask/SKILL.md`. Startup materializes a managed
+  skills root under `.ccb/agents/<agent>/provider-state/kimi/inherited-skills`
+  and passes it to Kimi with `--skills-dir`. Because Kimi treats any
+  `--skills-dir` as replacement for default discovery, CCB first passes
+  existing default Kimi project/user skill directories, then appends managed
+  inherited and role skill roots.
+- OpenCode does not expose a stable `--skills-dir` equivalent in the observed
+  CLI help. CCB writes `.ccb/runtime/skills/<agent>/opencode/ask.md` and appends
+  that path to generated `opencode.json.instructions` alongside the memory
+  bridge.
+- `inherit_skills = false` disables inherited skill projection. For OpenCode,
+  `inherit_memory = false` disables only the memory bridge; inherited ask
+  instructions continue unless `inherit_skills = false` is also set.
+
 ## Config Boundary
 
 Supported first-slice config:
@@ -74,6 +102,11 @@ Focused unit tests should cover:
 - Optional provider registry includes `kimi` and `deepseek`.
 - Runtime specs include `.kimi-session` and `.deepseek-session`.
 - Start command env overrides and default executables.
+- Kimi startup includes existing default skill directories and materialized CCB
+  skill directories as repeatable `--skills-dir` arguments, while skipping
+  missing directories.
+- OpenCode generated config preserves user instructions and appends memory and
+  ask-skill instruction entries without duplication.
 - Session binding maps and runtime launcher maps include both providers.
 - Native readers parse Kimi `wire.jsonl`, DeepCode sessions, and AGY
   transcripts.

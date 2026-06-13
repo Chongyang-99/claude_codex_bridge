@@ -119,7 +119,12 @@ def test_realistic_provider_memory_context_composes_each_provider_bundle(tmp_pat
 
     assert opencode_result.env == {'OPENCODE_CONFIG': str(opencode_config_path)}
     opencode_config = json.loads(opencode_config_path.read_text(encoding='utf-8'))
-    assert opencode_config['instructions'] == ['AGENTS.md', '.ccb/runtime/memory/designer.md']
+    assert opencode_config['instructions'] == [
+        'AGENTS.md',
+        '.ccb/runtime/memory/designer.md',
+        '.ccb/runtime/skills/designer/opencode/ask.md',
+    ]
+    assert (project_root / '.ccb' / 'runtime' / 'skills' / 'designer' / 'opencode' / 'ask.md').is_file()
     assert 'provider: opencode' in opencode_text
     assert 'PROJECT-AGENTS-SENTINEL' not in opencode_text
     assert 'OPENCODE-PRIVATE-SENTINEL' in opencode_text

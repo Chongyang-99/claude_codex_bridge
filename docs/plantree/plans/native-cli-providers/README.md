@@ -49,6 +49,8 @@ In scope:
 - Managed tmux pane startup using the existing simple tmux runtime path.
 - Native completion detection using `CCB_REQ_ID` binding plus provider-owned
   Kimi `wire.jsonl` and DeepCode session stores.
+- Provider capability projection for CCB ask usage, including Kimi native
+  skills-dir injection and OpenCode generated instruction injection.
 - AGY completion alignment to Antigravity transcript logs, so AGY no longer
   relies on `CCB_DONE` as its primary completion signal.
 - Empty-reply and timeout diagnostics aligned with existing pane-backed

@@ -60,13 +60,15 @@ def test_useful_tools_skills_are_provider_paired() -> None:
 def test_inherited_skills_live_under_inherit_skills_only() -> None:
     repo_root = Path(__file__).resolve().parents[1]
 
-    for legacy_root in ("claude_skills", "codex_skills", "droid_skills"):
+    for legacy_root in ("claude_skills", "codex_skills", "droid_skills", "kimi_skills", "opencode_skills"):
         assert not (repo_root / legacy_root).exists()
 
     inherited = repo_root / "inherit_skills"
     assert (inherited / "claude_skills" / "ask" / "SKILL.md").is_file()
     assert (inherited / "codex_skills" / "ask" / "SKILL.md").is_file()
     assert (inherited / "droid_skills" / "ask" / "SKILL.md").is_file()
+    assert (inherited / "kimi_skills" / "ask" / "SKILL.md").is_file()
+    assert (inherited / "opencode_skills" / "ask.md").is_file()
     assert (inherited / "claude_skills" / "ccb-clear" / "SKILL.md").is_file()
     assert (inherited / "codex_skills" / "ccb-clear" / "SKILL.md").is_file()
 
@@ -85,6 +87,7 @@ def test_inherited_skill_set_is_minimal() -> None:
         "claude_skills": {"ask", "ccb-clear"},
         "codex_skills": {"ask", "ccb-clear"},
         "droid_skills": {"ask"},
+        "kimi_skills": {"ask"},
     }
     for provider_root, expected_names in expected.items():
         skill_root = repo_root / "inherit_skills" / provider_root

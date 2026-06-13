@@ -75,7 +75,11 @@ def test_external_provider_memory_matrix_has_expected_layered_context() -> None:
             encoding='utf-8'
         )
     )
-    assert opencode_config['instructions'] == ['AGENTS.md', '.ccb/runtime/memory/opencoder.md']
+    assert opencode_config['instructions'] == [
+        'AGENTS.md',
+        '.ccb/runtime/memory/opencoder.md',
+        '.ccb/runtime/skills/opencoder/opencode/ask.md',
+    ]
 
     assert '## Provider User Memory' in gemini
     assert 'MATRIX-USER-GEMINI-MEMORY-SENTINEL' in gemini
