@@ -32,6 +32,7 @@ from provider_backends.claude.launcher_runtime.home import (
 from provider_backends.codex import launcher as codex_launcher
 from provider_backends.droid import launcher as droid_launcher
 from provider_backends.gemini import launcher as gemini_launcher
+from provider_backends.mimo import launcher as mimo_launcher
 from provider_backends.opencode import launcher as opencode_launcher
 from provider_backends.agy import launcher as agy_launcher
 from provider_backends.runtime_restore import ProviderRestoreTarget
@@ -1000,6 +1001,50 @@ def test_ensure_agent_runtime_launches_named_opencode_session(monkeypatch, tmp_p
     )
     assert payload['start_cmd'].endswith('opencode --continue')
     assert payload['ccb_session_id'].startswith('ccb-builder-')
+    assert config_path.is_file()
+
+
+def test_ensure_agent_runtime_launches_named_mimo_session(monkeypatch, tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-mimo'
+    (project_root / '.ccb').mkdir(parents=True)
+    ctx = _context(project_root, ParsedStartCommand(project=None, agent_names=('mimoer',), restore=True, auto_permission=False))
+    spec = _spec('mimoer', provider='mimo')
+    plan = WorkspacePlanner().plan(spec, ctx.project)
+    plan.workspace_path.mkdir(parents=True, exist_ok=True)
+
+    class FakeTmuxBackend:
+        def create_pane(self, cmd: str, cwd: str, direction: str = 'right', percent: int = 50, parent_pane: str | None = None) -> str:
+            self.cmd = cmd
+            self.cwd = cwd
+            return '%67'
+
+        def set_pane_title(self, pane_id: str, title: str) -> None:
+            self.title = (pane_id, title)
+
+        def set_pane_user_option(self, pane_id: str, name: str, value: str) -> None:
+            self.user_option = (pane_id, name, value)
+
+    monkeypatch.setattr('cli.services.runtime_launch._inside_tmux', lambda: True)
+    monkeypatch.setattr('cli.services.runtime_launch.shutil.which', lambda name: f'/usr/bin/{name}')
+    monkeypatch.setattr('cli.services.runtime_launch.TmuxBackend', FakeTmuxBackend)
+    monkeypatch.setenv('MIMO_START_CMD', 'mimo')
+
+    result = ensure_agent_runtime(ctx, ctx.command, spec, plan, None)
+
+    assert result.launched is True
+    assert result.binding is not None
+    expected_session = project_root / '.ccb' / '.mimo-mimoer-session'
+    assert result.binding.session_ref == str(expected_session)
+    payload = json.loads(expected_session.read_text(encoding='utf-8'))
+    state_dir = ctx.paths.agent_provider_state_dir('mimoer', 'mimo')
+    config_path = state_dir / 'mimocode.json'
+    assert payload['pane_title_marker'].startswith('CCB-mimoer-')
+    assert payload['mimo_home'] == str(state_dir / 'home')
+    assert payload['mimo_storage_root'] == str(state_dir / 'home' / 'data' / 'storage')
+    assert f'MIMOCODE_HOME={shlex.quote(str(state_dir / "home"))}' in payload['start_cmd']
+    assert f'MIMOCODE_CONFIG={shlex.quote(str(config_path))}' in payload['start_cmd']
+    assert payload['start_cmd'].endswith('mimo --continue')
+    assert payload['ccb_session_id'].startswith('ccb-mimoer-')
     assert config_path.is_file()
 
 
@@ -2291,6 +2336,16 @@ def test_opencode_launcher_build_start_cmd_requires_launch_context(tmp_path: Pat
         opencode_launcher.build_start_cmd(command, spec, runtime_dir, 'opencode-sess-missing-context')
 
 
+def test_mimo_launcher_build_start_cmd_requires_launch_context(tmp_path: Path) -> None:
+    runtime_dir = tmp_path / 'runtime-mimo-missing-context'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    spec = _spec('agent1', provider='mimo')
+    command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=False, auto_permission=False)
+
+    with pytest.raises(RuntimeError, match='prepare_launch_context'):
+        mimo_launcher.build_start_cmd(command, spec, runtime_dir, 'mimo-sess-missing-context')
+
+
 def test_gemini_launcher_build_start_cmd_requires_launch_context(tmp_path: Path) -> None:
     runtime_dir = tmp_path / 'runtime-gemini-missing-context'
     runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -2333,10 +2388,15 @@ def test_opencode_workspace_preparation_writes_memory_config(tmp_path: Path, mon
     assert cmd.endswith('opencode --continue')
     assert config['provider'] == 'anthropic'
     assert config['autoupdate'] is False
-    assert config['instructions'] == ['AGENTS.md', '.ccb/runtime/memory/builder.md']
+    assert config['instructions'] == [
+        'AGENTS.md',
+        '.ccb/runtime/memory/builder.md',
+        '.ccb/runtime/skills/builder/opencode/ask.md',
+    ]
     bundle_text = bundle_path.read_text(encoding='utf-8')
     assert 'shared ask memory' in bundle_text
     assert 'project opencode memory' not in bundle_text
+    assert (project_root / '.ccb' / 'runtime' / 'skills' / 'builder' / 'opencode' / 'ask.md').is_file()
 
 
 def test_opencode_workspace_preparation_records_memory_projection_once(tmp_path: Path, monkeypatch) -> None:
@@ -2365,7 +2425,7 @@ def test_opencode_workspace_preparation_records_memory_projection_once(tmp_path:
     assert memory_events[0]['sha256']
 
 
-def test_opencode_workspace_preparation_respects_inherit_memory_flag(tmp_path: Path, monkeypatch) -> None:
+def test_opencode_workspace_preparation_can_inject_skills_without_memory(tmp_path: Path, monkeypatch) -> None:
     project_root = tmp_path / 'repo-opencode-inherit-memory'
     runtime_dir = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-runtime' / 'opencode'
     config_path = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-state' / 'opencode' / 'opencode.json'
@@ -2384,12 +2444,60 @@ def test_opencode_workspace_preparation_respects_inherit_memory_flag(tmp_path: P
     spec = _spec('agent1', provider='opencode')
     command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=False, auto_permission=False)
     prepared = _prepare_opencode_workspace_for_test(spec, runtime_dir)
+    prepared = _prepare_opencode_workspace_for_test(spec, runtime_dir)
 
     cmd = opencode_launcher.build_start_cmd(
         command,
         spec,
         runtime_dir,
         'opencode-sess-inherit-memory',
+        prepared_state=prepared,
+    )
+
+    assert f'OPENCODE_CONFIG={shlex.quote(str(config_path))}' in cmd
+    config = json.loads(config_path.read_text(encoding='utf-8'))
+    assert config['instructions'] == ['.ccb/runtime/skills/agent1/opencode/ask.md']
+    assert not (project_root / '.ccb' / 'runtime' / 'memory' / 'agent1.md').exists()
+    events = [
+        json.loads(line)
+        for line in (project_root / '.ccb' / 'agents' / 'agent1' / 'events.jsonl').read_text(encoding='utf-8').splitlines()
+        if line.strip()
+    ]
+    memory_events = [event for event in events if str(event.get('event_type', '')).startswith('opencode_memory_projection_')]
+    assert len(memory_events) == 1
+    assert memory_events[0]['skill_path'].endswith('/.ccb/runtime/skills/agent1/opencode/ask.md')
+    assert memory_events[0]['skill_sha256']
+
+
+def test_opencode_workspace_preparation_disables_config_when_memory_and_skills_disabled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo-opencode-inherit-context-disabled'
+    runtime_dir = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-runtime' / 'opencode'
+    config_path = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-state' / 'opencode' / 'opencode.json'
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text('{"instructions":["stale.md"]}\n', encoding='utf-8')
+    _write_provider_profile(
+        runtime_dir,
+        ResolvedProviderProfile(
+            provider='opencode',
+            agent_name='agent1',
+            inherit_memory=False,
+            inherit_skills=False,
+        ),
+    )
+    monkeypatch.setenv('OPENCODE_START_CMD', 'opencode')
+    spec = _spec('agent1', provider='opencode')
+    command = ParsedStartCommand(project=None, agent_names=('agent1',), restore=False, auto_permission=False)
+    prepared = _prepare_opencode_workspace_for_test(spec, runtime_dir)
+
+    cmd = opencode_launcher.build_start_cmd(
+        command,
+        spec,
+        runtime_dir,
+        'opencode-sess-inherit-context-disabled',
         prepared_state=prepared,
     )
 

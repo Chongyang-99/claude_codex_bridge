@@ -106,12 +106,14 @@ The current policy has recorded static, unit, and external runtime validation:
 - [../../../../inherit_skills/codex_skills/ask/SKILL.md](../../../../inherit_skills/codex_skills/ask/SKILL.md)
 - [../../../../inherit_skills/claude_skills/ask/SKILL.md](../../../../inherit_skills/claude_skills/ask/SKILL.md)
 - [../../../../inherit_skills/droid_skills/ask/SKILL.md](../../../../inherit_skills/droid_skills/ask/SKILL.md)
+- [../../../../inherit_skills/kimi_skills/ask/SKILL.md](../../../../inherit_skills/kimi_skills/ask/SKILL.md)
+- [../../../../inherit_skills/opencode_skills/ask.md](../../../../inherit_skills/opencode_skills/ask.md)
 
 ## Scope
 
 In scope:
 
-- Inherited ask skill wording for Codex, Claude, and Droid.
+- Inherited ask skill wording for Codex, Claude, Droid, Kimi, and OpenCode.
 - Parameter decision rules and examples.
 - Static tests that keep inherited skill templates aligned.
 - External `ccb_test` validation that source-managed skill projection still

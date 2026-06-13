@@ -129,6 +129,17 @@ def _classify_relative(layout: PathLayout, path: Path, relative_path: str, *, si
             reason='project_memory_bundle',
             root_kind=root_kind,
         )
+    if len(parts) >= 5 and parts[0] == 'runtime' and parts[1] == 'skills':
+        return _entry(
+            path,
+            relative_path,
+            StorageClass.PROJECTED_CONFIG,
+            size,
+            agent=parts[2],
+            provider=parts[3],
+            reason='provider_skill_instruction',
+            root_kind=root_kind,
+        )
     if len(parts) >= 2 and parts[0] == 'shared-cache':
         return _entry(
             path,
@@ -343,7 +354,8 @@ def _is_marked_projected_symlink(path: Path) -> bool:
         return False
     if not isinstance(payload, dict) or payload.get('record_type') != 'ccb_projected_asset':
         return False
-    if str(payload.get('label') or '') not in {
+    label = str(payload.get('label') or '')
+    if label not in {
         'claude-binary-versions',
         'claude-inherited-skills',
         'claude-inherited-commands',
@@ -351,7 +363,9 @@ def _is_marked_projected_symlink(path: Path) -> bool:
         'codex-inherited-commands',
         'codex-plugin-bundle',
         'droid-inherited-skills',
-    }:
+        'kimi-inherited-skills',
+        'mimo-inherited-skills',
+    } and not label.startswith(('codex-role-skill:', 'claude-role-skill:', 'kimi-role-skill:')):
         return False
     source = str(payload.get('source') or '').strip()
     if not source:

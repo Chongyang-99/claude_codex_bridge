@@ -12,6 +12,8 @@ from provider_backends.claude.launcher_runtime import materialize_claude_home_co
 from provider_backends.codex.launcher_runtime import resolve_codex_home_layout
 from provider_backends.droid.home import materialize_droid_home_config
 from provider_backends.gemini.launcher_runtime.home import materialize_gemini_home_config
+from provider_backends.kimi.skills import materialize_kimi_skills
+from provider_backends.mimo.launcher import materialize_mimo_memory_config
 from provider_backends.opencode.launcher import materialize_opencode_memory_config
 from provider_hooks.settings import (
     build_activity_hook_command,
@@ -213,6 +215,25 @@ def _materialize_provider_home(
             profile=resolved_profile,
             event_path=layout.agent_events_path(spec.name),
             marker_path=Path(runtime_dir) / 'opencode-memory-projection.json',
+        )
+        return
+    if provider == 'kimi':
+        materialize_kimi_skills(
+            project_root=layout.project_root,
+            agent_name=spec.name,
+            state_dir=layout.agent_provider_state_dir(spec.name, 'kimi'),
+            profile=resolved_profile,
+        )
+        return
+    if provider == 'mimo':
+        materialize_mimo_memory_config(
+            project_root=layout.project_root,
+            agent_name=spec.name,
+            workspace_path=workspace_path,
+            config_path=layout.agent_provider_state_dir(spec.name, 'mimo') / 'mimocode.json',
+            profile=resolved_profile,
+            event_path=layout.agent_events_path(spec.name),
+            marker_path=Path(runtime_dir) / 'mimo-memory-projection.json',
         )
         return
     if provider == 'gemini':

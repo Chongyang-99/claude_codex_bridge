@@ -10,7 +10,7 @@ from provider_execution.registry import (
 def test_execution_registry_can_build_core_only_registry() -> None:
     registry = build_default_execution_registry(include_optional=False, include_test_doubles=False)
     assert set(CORE_EXECUTION_PROVIDERS) == {'codex', 'claude', 'gemini'}
-    assert set(OPTIONAL_EXECUTION_PROVIDERS) == {'opencode', 'droid', 'agy', 'kimi', 'deepseek'}
+    assert set(OPTIONAL_EXECUTION_PROVIDERS) == {'opencode', 'droid', 'agy', 'kimi', 'deepseek', 'mimo'}
     assert registry.get('codex') is not None
     assert registry.get('claude') is not None
     assert registry.get('gemini') is not None
@@ -19,4 +19,5 @@ def test_execution_registry_can_build_core_only_registry() -> None:
     assert registry.get('agy') is None
     assert registry.get('kimi') is None
     assert registry.get('deepseek') is None
+    assert registry.get('mimo') is None
     assert registry.get('fake') is None

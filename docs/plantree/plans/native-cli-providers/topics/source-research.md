@@ -28,6 +28,18 @@ Observed upstream:
   CCB should inject `--auto-approve` for new Kimi versions while still
   recognizing user-provided `--auto` as an explicit legacy auto flag to avoid
   duplicate injection.
+- Kimi 1.47.0 help exposes repeatable `--skills-dir DIRECTORY`, and documents
+  that it overrides default discovery rather than appending to it. Official
+  Kimi CLI skill discovery scans project `.kimi/skills`, `.claude/skills`,
+  `.codex/skills`, `.agents/skills`, plus user `~/.kimi/skills`,
+  `~/.claude/skills`, `~/.codex/skills`, `~/.config/agents/skills`, and
+  `~/.agents/skills`. CCB therefore must pass existing default directories
+  explicitly before appending managed provider-state skill roots.
+- Source and documentation probes confirm directory skills use
+  `<skill>/SKILL.md` with frontmatter fields `name` and `description`, while
+  flat `<skill>.md` files are also discovered at top level. CCB can inject
+  inherited Kimi ask skills without prompt wrapping by materializing a
+  provider-state skills root and passing it with `--skills-dir`.
 - Kimi 1.47.0 writes project-scoped turn evidence under
   `~/.kimi/sessions/<md5(project-path)>/<session>/wire.jsonl`.
 - Observed Kimi native turn events include `TurnBegin` with `user_input`,
@@ -123,6 +135,58 @@ Observed local/package boundary:
 - No change is needed for the current native pivot beyond keeping tests/docs
   from reintroducing pane marker completion for OpenCode.
 
+## MiMo Code
+
+Observed upstream:
+
+- GitHub: `XiaomiMiMo/MiMo-Code`.
+- Inspected tag/head: `v0.1.0` / commit
+  `42e7da3d51dba1129cd3abfa214e29f7385924a3`.
+- Package: `@mimo-ai/cli`.
+- Binary: `mimo`.
+- Local official install: `npm install -g @mimo-ai/cli@0.1.0`.
+- Local `mimo --version` returned `0.1.0`.
+- CLI help exposes `mimo run [message..]`, `--format default|json`,
+  `--dir`, `--model`, `--agent`, `--session`, `--continue`, and
+  `--dangerously-skip-permissions`.
+- `MIMOCODE_HOME` is the primary home override. It controls `data`, `cache`,
+  `config`, and `state` subdirectories and must be absolute.
+- `MIMOCODE_CONFIG` and `MIMOCODE_CONFIG_CONTENT` are supported config
+  injection surfaces. MiMo also reads `mimocode.json/jsonc`.
+- Config supports `instructions`, so CCB can inject memory and ask guidance as
+  generated instruction files.
+- Config also exposes `skills.paths`, but current CCB integration uses
+  instruction-file injection because it is enough for the ask guidance and
+  avoids committing to MiMo skill discovery semantics before more upstream
+  evidence exists.
+
+Completion evidence:
+
+- Real `mimo run --format json` emits newline-delimited JSON events.
+- Observed successful event shape:
+  - `type = step_start`
+  - `type = text`, with assistant text nested under `part.text`
+  - `type = step_finish`, with stop reason nested under `part.reason = stop`
+- MiMo also writes sqlite state at
+  `$MIMOCODE_HOME/data/mimocode.db`, with assistant `message.data` containing
+  `role=assistant`, `finish=stop`, and `time.completed`, plus text parts in
+  `part.data`.
+- A visible managed MiMo TUI pane can start successfully, but active pane prompt
+  injection did not create MiMo session/message rows in the real CCB test.
+  Therefore CCB ask execution should use `mimo run --format json` as the
+  primary completion authority while keeping the managed pane for visibility,
+  restart, and runtime maintenance.
+
+CCB slice:
+
+- Register provider key `mimo`.
+- Default executable is `mimo`.
+- Override command with `MIMO_START_CMD`.
+- Startup prepares `MIMOCODE_HOME`, generated `mimocode.json`, memory bridge,
+  and inherited ask instruction bridge.
+- Per-job ask execution runs `mimo run --format json --dir <workdir>` and
+  terminalizes on `step_finish` / `part.reason=stop`.
+
 ## Local Probe Evidence
 
 - Local Node: `v22.20.0`.
@@ -143,3 +207,7 @@ Observed local/package boundary:
   the local source of truth for OpenCode completion behavior.
 - `kimi --auto-approve --version` succeeded on local Kimi 1.47.0, while
   `kimi --auto --version` failed with "No such option: --auto".
+- `npm view @mimo-ai/cli` returned latest stable `0.1.0` and binary `mimo`.
+- `mimo run --format json` real local probe returned exact reply
+  `MIMO_CCB_REAL_OK` and showed the nested `part.text` /
+  `part.reason=stop` event shape used by CCB.

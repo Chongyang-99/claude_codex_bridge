@@ -16,6 +16,7 @@ _CLAUDE_PROJECTED_NAMES = {'settings.json', 'CLAUDE.md'}
 _GEMINI_PROJECTED_NAMES = {'settings.json', 'trustedFolders.json'}
 _CODEX_PROJECTED_NAMES = {'config.toml'}
 _OPENCODE_PROJECTED_NAMES = {'opencode.json'}
+_MIMO_PROJECTED_NAMES = {'mimocode.json'}
 _CODEX_SESSION_NAMES = {
     '.ccb-session-namespace.json',
     'history.jsonl',
@@ -63,6 +64,10 @@ def classify_provider_home(
         return _classify_gemini_home(path, relative_path, remainder, size=size, provider=provider, agent=agent, root_kind=root_kind)
     if provider == 'opencode':
         return _classify_opencode_home(path, relative_path, remainder, size=size, provider=provider, agent=agent, root_kind=root_kind)
+    if provider == 'kimi':
+        return _classify_kimi_home(path, relative_path, remainder, size=size, provider=provider, agent=agent, root_kind=root_kind)
+    if provider == 'mimo':
+        return _classify_mimo_home(path, relative_path, remainder, size=size, provider=provider, agent=agent, root_kind=root_kind)
     if provider == 'droid':
         return _classify_droid_home(path, relative_path, remainder, size=size, provider=provider, agent=agent, root_kind=root_kind)
     return _entry(path, relative_path, StorageClass.UNKNOWN, size, provider=provider, agent=agent, root_kind=root_kind)
@@ -205,6 +210,41 @@ def _classify_opencode_home(
     if name in _OPENCODE_PROJECTED_NAMES:
         return _entry(path, relative_path, StorageClass.PROJECTED_CONFIG, size, provider=provider, agent=agent, root_kind=root_kind)
     if remainder[0] in {'.cache', '.tmp'}:
+        return _entry(path, relative_path, StorageClass.REBUILDABLE_CACHE, size, provider=provider, agent=agent, root_kind=root_kind)
+    return _entry(path, relative_path, StorageClass.UNKNOWN, size, provider=provider, agent=agent, root_kind=root_kind)
+
+
+def _classify_kimi_home(
+    path: Path,
+    relative_path: str,
+    remainder: tuple[str, ...],
+    *,
+    size: int,
+    provider: str,
+    agent: str,
+    root_kind: str,
+) -> StorageEntry:
+    if remainder[0] in {'inherited-skills', 'role-skills'}:
+        return _entry(path, relative_path, StorageClass.PROJECTED_CONFIG, size, provider=provider, agent=agent, root_kind=root_kind)
+    return _entry(path, relative_path, StorageClass.UNKNOWN, size, provider=provider, agent=agent, root_kind=root_kind)
+
+
+def _classify_mimo_home(
+    path: Path,
+    relative_path: str,
+    remainder: tuple[str, ...],
+    *,
+    size: int,
+    provider: str,
+    agent: str,
+    root_kind: str,
+) -> StorageEntry:
+    name = remainder[-1]
+    if name in _MIMO_PROJECTED_NAMES:
+        return _entry(path, relative_path, StorageClass.PROJECTED_CONFIG, size, provider=provider, agent=agent, root_kind=root_kind)
+    if remainder[0] in {'data', 'state'}:
+        return _entry(path, relative_path, StorageClass.SESSION, size, provider=provider, agent=agent, root_kind=root_kind)
+    if remainder[0] == 'cache':
         return _entry(path, relative_path, StorageClass.REBUILDABLE_CACHE, size, provider=provider, agent=agent, root_kind=root_kind)
     return _entry(path, relative_path, StorageClass.UNKNOWN, size, provider=provider, agent=agent, root_kind=root_kind)
 

@@ -17,6 +17,7 @@ from provider_core.caller_env import (
 )
 from provider_core.contracts import ProviderRuntimeLauncher
 from provider_core.memory_projection import write_projection_event_and_marker
+from provider_core.inherited_skills import inherits_skills, packaged_inherited_skill_file
 from provider_core.runtime_shared import apply_provider_command_template, provider_start_parts
 from provider_profiles import load_resolved_provider_profile
 from project_memory import materialize_runtime_memory_bundle
@@ -34,6 +35,8 @@ _OPENCODE_UNCHANGED_SIGNATURE_FIELDS = (
     'warnings',
     'config_merge_status',
     'config_merge_reason',
+    'skill_path',
+    'skill_sha256',
 )
 _OPENCODE_SKIPPED_SIGNATURE_FIELDS = (
     'reason',
@@ -43,6 +46,8 @@ _OPENCODE_SKIPPED_SIGNATURE_FIELDS = (
     'sha256',
     'config_sha256',
     'warnings',
+    'skill_path',
+    'skill_sha256',
 )
 
 
@@ -157,79 +162,99 @@ def materialize_opencode_memory_config(
         )
         _record_memory_projection_event(result, event_path=event_path, marker_path=marker_path, agent_name=agent_name)
         return OpenCodeMemoryConfigResult(env={})
-    if not _inherits_memory(profile):
+    inherit_memory = _inherits_memory(profile)
+    skill_bridge = _bridge_opencode_ask_skill(
+        project_root=project_root,
+        agent_name=agent_name,
+        enabled=inherits_skills(profile),
+    )
+    if not inherit_memory and not skill_bridge.instruction:
         _remove_file(config_path)
         result = _memory_projection_result(
             status='skipped',
-            reason='inherit_memory_disabled',
+            reason='inherit_context_disabled',
             path=Path(''),
             config_path=config_path,
+            skill_path=skill_bridge.path,
+            skill_sha256=skill_bridge.sha256,
+            warnings=skill_bridge.warnings,
         )
         _record_memory_projection_event(result, event_path=event_path, marker_path=marker_path, agent_name=agent_name)
         return OpenCodeMemoryConfigResult(env={})
 
-    materialization = materialize_runtime_memory_bundle(
-        project_root,
-        agent_name=agent_name,
-        provider='opencode',
-        workspace_path=workspace_path,
-    )
-    if not materialization.sha256 or not materialization.path:
-        result = _memory_projection_result(
-            status='failed',
-            reason='bundle_write_failed',
-            path=Path(materialization.path or ''),
-            config_path=config_path,
-            source_count=len(materialization.sources),
-            warnings=materialization.warnings,
+    materialization = None
+    bridge = _OpenCodeMemoryBridge(path=Path(''), instruction='', unchanged=True)
+    if inherit_memory:
+        materialization = materialize_runtime_memory_bundle(
+            project_root,
+            agent_name=agent_name,
+            provider='opencode',
+            workspace_path=workspace_path,
         )
-        _record_memory_projection_event(result, event_path=event_path, marker_path=marker_path, agent_name=agent_name)
-        return OpenCodeMemoryConfigResult(env={})
+        if not materialization.sha256 or not _path_is_set(materialization.path):
+            result = _memory_projection_result(
+                status='failed',
+                reason='bundle_write_failed',
+                path=Path(materialization.path or ''),
+                config_path=config_path,
+                source_count=len(materialization.sources),
+                warnings=(*materialization.warnings, *skill_bridge.warnings),
+                skill_path=skill_bridge.path,
+                skill_sha256=skill_bridge.sha256,
+            )
+            _record_memory_projection_event(result, event_path=event_path, marker_path=marker_path, agent_name=agent_name)
+            return OpenCodeMemoryConfigResult(env={})
 
-    bridge = _bridge_opencode_memory_bundle(
-        project_root=project_root,
-        agent_name=agent_name,
-        source_bundle_path=materialization.path,
-    )
-    if not bridge.path:
-        warnings = (*materialization.warnings, *bridge.warnings)
-        result = _memory_projection_result(
-            status='failed',
-            reason='bridge_write_failed',
-            path=Path(''),
-            config_path=config_path,
-            sha256=materialization.sha256,
-            source_count=len(materialization.sources),
-            warnings=warnings,
+        bridge = _bridge_opencode_memory_bundle(
+            project_root=project_root,
+            agent_name=agent_name,
+            source_bundle_path=materialization.path,
         )
-        _record_memory_projection_event(result, event_path=event_path, marker_path=marker_path, agent_name=agent_name)
-        return OpenCodeMemoryConfigResult(env={})
+        if not _path_is_set(bridge.path):
+            warnings = (*materialization.warnings, *bridge.warnings, *skill_bridge.warnings)
+            result = _memory_projection_result(
+                status='failed',
+                reason='bridge_write_failed',
+                path=Path(''),
+                config_path=config_path,
+                sha256=materialization.sha256,
+                source_count=len(materialization.sources),
+                warnings=warnings,
+                skill_path=skill_bridge.path,
+                skill_sha256=skill_bridge.sha256,
+            )
+            _record_memory_projection_event(result, event_path=event_path, marker_path=marker_path, agent_name=agent_name)
+            return OpenCodeMemoryConfigResult(env={})
 
     rendered_config = _render_opencode_config(
         project_root=Path(project_root).expanduser(),
         memory_instruction=bridge.instruction,
+        skill_instructions=(skill_bridge.instruction,) if skill_bridge.instruction else (),
     )
     config_unchanged = _text_file_sha256(config_path) == rendered_config.sha256
     if not config_unchanged:
         try:
             atomic_write_text(config_path, rendered_config.text)
         except OSError as exc:
-            warnings = (*materialization.warnings, *bridge.warnings, *rendered_config.warnings)
+            materialization_warnings = materialization.warnings if materialization is not None else ()
+            warnings = (*materialization_warnings, *bridge.warnings, *skill_bridge.warnings, *rendered_config.warnings)
             result = _memory_projection_result(
                 status='failed',
                 reason=type(exc).__name__,
-                path=bridge.path,
+                path=_first_path(bridge.path, skill_bridge.path),
                 config_path=config_path,
-                sha256=materialization.sha256,
+                sha256=materialization.sha256 if materialization is not None else '',
                 config_sha256=rendered_config.sha256,
-                source_count=len(materialization.sources),
+                source_count=len(materialization.sources) if materialization is not None else 0,
                 warnings=warnings,
                 error_detail=str(exc),
-                bundle_path=materialization.path,
+                bundle_path=materialization.path if materialization is not None else None,
                 project_config_path=rendered_config.project_config_path,
                 project_config_sha256=rendered_config.project_config_sha256,
                 config_merge_status=rendered_config.merge_status,
                 config_merge_reason=rendered_config.merge_reason,
+                skill_path=skill_bridge.path,
+                skill_sha256=skill_bridge.sha256,
             )
             _record_memory_projection_event(
                 result,
@@ -245,23 +270,27 @@ def materialize_opencode_memory_config(
             )
             return OpenCodeMemoryConfigResult(env={})
 
-    status = 'skipped' if materialization.unchanged and bridge.unchanged and config_unchanged else 'ok'
+    materialization_unchanged = True if materialization is None else materialization.unchanged
+    status = 'skipped' if materialization_unchanged and bridge.unchanged and skill_bridge.unchanged and config_unchanged else 'ok'
     reason = 'unchanged' if status == 'skipped' else 'written'
-    warnings = (*materialization.warnings, *bridge.warnings, *rendered_config.warnings)
+    materialization_warnings = materialization.warnings if materialization is not None else ()
+    warnings = (*materialization_warnings, *bridge.warnings, *skill_bridge.warnings, *rendered_config.warnings)
     result = _memory_projection_result(
         status=status,
         reason=reason,
-        path=bridge.path,
+        path=_first_path(bridge.path, skill_bridge.path),
         config_path=config_path,
-        sha256=materialization.sha256,
+        sha256=materialization.sha256 if materialization is not None else '',
         config_sha256=rendered_config.sha256,
-        source_count=len(materialization.sources),
+        source_count=len(materialization.sources) if materialization is not None else 0,
         warnings=warnings,
-        bundle_path=materialization.path,
+        bundle_path=materialization.path if materialization is not None else None,
         project_config_path=rendered_config.project_config_path,
         project_config_sha256=rendered_config.project_config_sha256,
         config_merge_status=rendered_config.merge_status,
         config_merge_reason=rendered_config.merge_reason,
+        skill_path=skill_bridge.path,
+        skill_sha256=skill_bridge.sha256,
     )
     _record_memory_projection_event(result, event_path=event_path, marker_path=marker_path, agent_name=agent_name)
     _record_opencode_config_merge_failed_event(
@@ -287,6 +316,15 @@ class _OpenCodeMemoryBridge:
 
 
 @dataclass(frozen=True)
+class _OpenCodeSkillBridge:
+    path: Path
+    instruction: str
+    sha256: str
+    unchanged: bool
+    warnings: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class _RenderedOpenCodeConfig:
     text: str
     sha256: str
@@ -298,7 +336,7 @@ class _RenderedOpenCodeConfig:
 
 
 def _opencode_memory_env(config_path: Path | None, profile) -> dict[str, str]:
-    if config_path is None or not _inherits_memory(profile):
+    if config_path is None or not _inherits_opencode_context(profile):
         return {}
     if not Path(config_path).is_file():
         return {}
@@ -334,7 +372,12 @@ def _bridge_opencode_memory_bundle(
         )
 
 
-def _render_opencode_config(*, project_root: Path, memory_instruction: str) -> _RenderedOpenCodeConfig:
+def _render_opencode_config(
+    *,
+    project_root: Path,
+    memory_instruction: str,
+    skill_instructions: tuple[str, ...] = (),
+) -> _RenderedOpenCodeConfig:
     project_config_path = Path(project_root).expanduser() / 'opencode.json'
     project_config_sha = _text_file_sha256(project_config_path)
     payload: dict[str, object] = {}
@@ -358,7 +401,11 @@ def _render_opencode_config(*, project_root: Path, memory_instruction: str) -> _
             warnings.append(f'opencode_config_merge_failed: {type(exc).__name__}: {exc}')
     payload.setdefault('$schema', 'https://opencode.ai/config.json')
     payload['autoupdate'] = False
-    payload['instructions'] = _merge_instruction_entries(payload.get('instructions'), memory_instruction)
+    payload['instructions'] = _merge_instruction_entries(
+        payload.get('instructions'),
+        memory_instruction,
+        *skill_instructions,
+    )
     text = json.dumps(payload, ensure_ascii=False, indent=2) + '\n'
     return _RenderedOpenCodeConfig(
         text=text,
@@ -383,7 +430,7 @@ def _clone_json_value(value: object) -> object:
     return value
 
 
-def _merge_instruction_entries(current: object, memory_instruction: str) -> list[str]:
+def _merge_instruction_entries(current: object, *generated_instructions: str) -> list[str]:
     entries: list[str] = []
     if isinstance(current, str):
         entries.append(current)
@@ -393,13 +440,63 @@ def _merge_instruction_entries(current: object, memory_instruction: str) -> list
                 entries.append(item)
     merged: list[str] = []
     seen: set[str] = set()
-    for entry in (*entries, memory_instruction):
+    for entry in (*entries, *generated_instructions):
         stripped = str(entry or '').strip()
         if not stripped or stripped in seen:
             continue
         seen.add(stripped)
         merged.append(stripped)
     return merged
+
+
+def _bridge_opencode_ask_skill(
+    *,
+    project_root: Path,
+    agent_name: str,
+    enabled: bool,
+) -> _OpenCodeSkillBridge:
+    root = Path(project_root).expanduser()
+    normalized_agent = normalize_agent_name(agent_name)
+    skill_path = root / '.ccb' / 'runtime' / 'skills' / normalized_agent / 'opencode' / 'ask.md'
+    instruction = f'.ccb/runtime/skills/{normalized_agent}/opencode/ask.md'
+    if not enabled:
+        _remove_file(skill_path)
+        return _OpenCodeSkillBridge(path=Path(''), instruction='', sha256='', unchanged=True)
+    source = packaged_inherited_skill_file('opencode', 'ask.md')
+    if not source.is_file():
+        _remove_file(skill_path)
+        return _OpenCodeSkillBridge(
+            path=Path(''),
+            instruction='',
+            sha256='',
+            unchanged=False,
+            warnings=(f'opencode_ask_skill_missing: {source}',),
+        )
+    try:
+        text = source.read_text(encoding='utf-8')
+    except OSError as exc:
+        _remove_file(skill_path)
+        return _OpenCodeSkillBridge(
+            path=Path(''),
+            instruction='',
+            sha256='',
+            unchanged=False,
+            warnings=(f'opencode_ask_skill_read_failed: {exc}',),
+        )
+    digest = sha256_text(text)
+    if _text_file_sha256(skill_path) == digest:
+        return _OpenCodeSkillBridge(path=skill_path, instruction=instruction, sha256=digest, unchanged=True)
+    try:
+        atomic_write_text(skill_path, text)
+    except OSError as exc:
+        return _OpenCodeSkillBridge(
+            path=Path(''),
+            instruction='',
+            sha256='',
+            unchanged=False,
+            warnings=(f'opencode_ask_skill_write_failed: {exc}',),
+        )
+    return _OpenCodeSkillBridge(path=skill_path, instruction=instruction, sha256=digest, unchanged=False)
 
 
 def _memory_projection_result(
@@ -418,11 +515,13 @@ def _memory_projection_result(
     project_config_sha256: str = '',
     config_merge_status: str = '',
     config_merge_reason: str = '',
+    skill_path: Path | None = None,
+    skill_sha256: str = '',
 ) -> dict[str, object]:
     result = {
         'status': status,
         'reason': reason,
-        'path': str(path),
+        'path': _text_or_empty(path),
         'sha256': sha256,
         'config_path': _text_or_empty(config_path),
         'config_sha256': _text_or_empty(config_sha256),
@@ -433,6 +532,8 @@ def _memory_projection_result(
         'project_config_sha256': _text_or_empty(project_config_sha256),
         'config_merge_status': _text_or_empty(config_merge_status),
         'config_merge_reason': _text_or_empty(config_merge_reason),
+        'skill_path': _text_or_empty(skill_path),
+        'skill_sha256': _text_or_empty(skill_sha256),
     }
     if bundle_path is not None:
         result['bundle_path'] = str(bundle_path)
@@ -440,6 +541,8 @@ def _memory_projection_result(
 
 
 def _text_or_empty(value: object) -> str:
+    if isinstance(value, Path) and not _path_is_set(value):
+        return ''
     return str(value) if value else ''
 
 
@@ -485,6 +588,8 @@ def _opencode_memory_projection_signature(result: dict[str, object]) -> dict[str
         'warnings': _warning_list(result),
         'config_merge_status': _text_or_empty(result.get('config_merge_status')),
         'config_merge_reason': _text_or_empty(result.get('config_merge_reason')),
+        'skill_path': _text_or_empty(result.get('skill_path')),
+        'skill_sha256': _text_or_empty(result.get('skill_sha256')),
     }
 
 
@@ -515,6 +620,8 @@ def _opencode_memory_projection_event(
         'project_config_sha256': _text_or_empty(result.get('project_config_sha256')),
         'config_merge_status': signature['config_merge_status'],
         'config_merge_reason': signature['config_merge_reason'],
+        'skill_path': signature['skill_path'],
+        'skill_sha256': signature['skill_sha256'],
         'created_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
     }
 
@@ -572,7 +679,10 @@ def _same_memory_projection_signature(path: Path, payload: dict[str, object]) ->
     if existing == payload:
         return True
     if payload.get('status') == 'skipped' and payload.get('reason') == 'unchanged':
-        return bool(payload.get('sha256')) and _signature_fields_match(
+        has_stable_payload = bool(
+            payload.get('sha256') or payload.get('skill_sha256') or payload.get('config_sha256')
+        )
+        return has_stable_payload and _signature_fields_match(
             existing,
             payload,
             _OPENCODE_UNCHANGED_SIGNATURE_FIELDS,
@@ -600,6 +710,10 @@ def _signature_fields_match(
 
 def _inherits_memory(profile) -> bool:
     return True if profile is None else bool(getattr(profile, 'inherit_memory', True))
+
+
+def _inherits_opencode_context(profile) -> bool:
+    return _inherits_memory(profile) or inherits_skills(profile)
 
 
 def _path_or_none(value: object) -> Path | None:
@@ -631,6 +745,20 @@ def _same_path(left: Path, right: Path) -> bool:
         return Path(left).expanduser().resolve() == Path(right).expanduser().resolve()
     except Exception:
         return Path(left).expanduser() == Path(right).expanduser()
+
+
+def _path_is_set(path: Path | None) -> bool:
+    if path is None:
+        return False
+    text = str(path)
+    return bool(text and text != '.')
+
+
+def _first_path(*paths: Path) -> Path:
+    for path in paths:
+        if _path_is_set(path):
+            return path
+    return Path('')
 
 
 __all__ = ['build_runtime_launcher', 'build_start_cmd', 'materialize_opencode_memory_config']

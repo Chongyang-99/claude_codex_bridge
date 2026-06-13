@@ -119,7 +119,8 @@ Observed result:
 - Codex generated `AGENTS.md` excludes project `AGENTS.md`.
 - Claude generated `.claude/CLAUDE.md` excludes project `CLAUDE.md`.
 - OpenCode runtime memory excludes project `AGENTS.md`, while generated config
-  retains `["AGENTS.md", ".ccb/runtime/memory/opencoder.md"]`.
+  retains native `AGENTS.md`, the CCB memory bridge, and the CCB ask skill
+  instruction bridge.
 - Gemini generated `.gemini/GEMINI.md` includes project `GEMINI.md`, matching
   the current pending-audit policy.
 - Provider-user legacy CCB blocks are filtered.

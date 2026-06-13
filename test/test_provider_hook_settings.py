@@ -567,9 +567,58 @@ def test_prepare_provider_workspace_materializes_opencode_memory_config(
     config = json.loads(config_path.read_text(encoding='utf-8'))
     assert config['provider'] == 'anthropic'
     assert config['autoupdate'] is False
-    assert config['instructions'] == ['AGENTS.md', '.ccb/runtime/memory/agent1.md']
+    assert config['instructions'] == [
+        'AGENTS.md',
+        '.ccb/runtime/memory/agent1.md',
+        '.ccb/runtime/skills/agent1/opencode/ask.md',
+    ]
     assert 'shared ccb memory' in bundle_path.read_text(encoding='utf-8')
     assert 'project opencode memory' not in bundle_path.read_text(encoding='utf-8')
+    assert (project_root / '.ccb' / 'runtime' / 'skills' / 'agent1' / 'opencode' / 'ask.md').is_file()
+
+
+def test_prepare_provider_workspace_materializes_kimi_inherited_skills(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    workspace = project_root / 'workspace'
+    project_root.mkdir(parents=True, exist_ok=True)
+    layout = PathLayout(project_root)
+
+    prepare_provider_workspace(
+        layout=layout,
+        spec=_spec('agent1', provider='kimi'),
+        workspace_path=workspace,
+        completion_dir=layout.agent_provider_runtime_dir('agent1', 'kimi') / 'completion',
+        agent_name='agent1',
+        refresh_profile=True,
+    )
+
+    skill_path = layout.agent_provider_state_dir('agent1', 'kimi') / 'inherited-skills' / 'ask' / 'SKILL.md'
+    assert skill_path.is_file()
+    assert 'command ask "$TARGET"' in skill_path.read_text(encoding='utf-8')
+
+
+def test_prepare_provider_workspace_materializes_mimo_memory_config(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo'
+    workspace = project_root
+    _write_project_memory(project_root, 'mimo shared memory\n')
+    layout = PathLayout(project_root)
+
+    prepare_provider_workspace(
+        layout=layout,
+        spec=_spec('agent1', provider='mimo'),
+        workspace_path=workspace,
+        completion_dir=layout.agent_provider_runtime_dir('agent1', 'mimo') / 'completion',
+        agent_name='agent1',
+        refresh_profile=True,
+    )
+
+    config_path = layout.agent_provider_state_dir('agent1', 'mimo') / 'mimocode.json'
+    config = json.loads(config_path.read_text(encoding='utf-8'))
+    assert config['instructions'] == [
+        '.ccb/runtime/memory/agent1.md',
+        '.ccb/runtime/skills/agent1/mimo/ask.md',
+    ]
+    assert (project_root / '.ccb' / 'runtime' / 'skills' / 'agent1' / 'mimo' / 'ask.md').is_file()
 
 
 def test_prepare_provider_workspace_records_opencode_config_merge_failure(
