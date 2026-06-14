@@ -34,6 +34,10 @@ authority for the feature.
 - [history/neovim-local-plugin-lab-2026-06-13.md](history/neovim-local-plugin-lab-2026-06-13.md):
   isolated local Linux/tmux plugin lab for folder, Markdown, image, parser,
   browser-preview, opener, and clipboard capability checks.
+- [history/neovim-enhancement-slice-2026-06-13.md](history/neovim-enhancement-slice-2026-06-13.md):
+  landed Linux/tmux implementation slice for parser runtimepath preservation,
+  read-only doctor capabilities, Snacks folder defaults, guarded Markdown, and
+  Treesitter no-auto-install policy.
 - [topics/test-matrix.md](topics/test-matrix.md): automatic and manual tests,
   including `test_ccb2` validation.
 - [decisions/001-tool-windows-are-not-agents.md](decisions/001-tool-windows-are-not-agents.md):

@@ -1,5 +1,26 @@
 # Changelog
 
+## v7.5.3 (2026-06-14)
+
+### Kimi Runtime Reliability And Hindsight Compatibility
+
+- **Kimi Pane Fallback Added**: Kimi can now use stable pane evidence for K2.7
+  Code when the native turn log does not expose a completed reply in time,
+  without changing other provider execution paths.
+- **Kimi Hindsight Bridge Added**: Kimi can recall and retain Hindsight memory
+  at the CCB execution boundary when `.hindsight/kimi.json`,
+  `.hindsight/codex.json`, `HINDSIGHT_API_URL`, or `HINDSIGHT_BANK_ID` is
+  configured. Hindsight failures remain non-blocking diagnostics.
+- **Hindsight Token Compatibility Fixed**: both `HINDSIGHT_API_KEY` and
+  `HINDSIGHT_API_TOKEN` are accepted by the Kimi bridge and the
+  `scripts/hindsight` helper.
+- **Codex Hindsight Hook Inheritance Scoped**: managed Codex homes may inherit
+  only allowlisted Hindsight hooks from `.hindsight/codex/scripts/`, preserving
+  CCB-managed activity hooks and filtering unrelated root hooks.
+- **README Release Surface Updated**: English and Chinese README files document
+  the Kimi/Hindsight behavior and keep the public supported-provider surface
+  aligned with the 7.5 line.
+
 ## v7.5.2 (2026-06-13)
 
 ### Native CLI Provider Wave

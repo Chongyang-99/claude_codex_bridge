@@ -6,30 +6,10 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.5.2-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.5.3-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
-
-**English** | [中文](README_zh.md)
-
-[Quick Start](#quick-start) · [v7 UI](#v7-ui-tour) · [Configure Agents](#configure-your-agent-team) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
-
-<p align="center">
-  <img src="assets/readme_v7/ccb-hero-en.png" alt="CCB v7 visible multi-agent CLI workspace" width="960">
-</p>
-
-</div>
-
----
-
-## Why CCB?
-
-| See the work | Mix providers | Keep control |
-| :--- | :--- | :--- |
-| Every agent is a real terminal with layout control. | Run multiple CLIs concurrently from one command. | Stable background communication for multi-line task orchestration. |
-
-## Supported CLIs
 
 <p>
   <img src="https://img.shields.io/badge/Codex-111111?style=flat-square&logo=openai&logoColor=white" alt="Codex">
@@ -48,9 +28,44 @@
   <img src="https://img.shields.io/badge/Droid-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Droid">
 </p>
 
-Mix CLIs per agent in `.ccb/ccb.config`. Common provider ids include `codex`, `claude`, `gemini`, `kimi`, `mimo`, `qwen`, `cursor`, `copilot`, `crush`, `kiro`, `pi`, `opencode`, `agy`, and `droid`; actual availability depends on the local CLI installation and account access.
+**English** | [中文](README_zh.md)
+
+[Quick Start](#quick-start) · [v7 UI](#v7-ui-tour) · [Configure Agents](#configure-your-agent-team) · [User Guide](docs/manuals/user-guide/) · [Developer Guide](docs/manuals/developer-guide/)
+
+<p align="center">
+  <img src="assets/readme_v7/ccb-hero-en.png" alt="CCB v7 visible multi-agent CLI workspace" width="960">
+</p>
+
+</div>
+
+---
+
+## Supported CLIs
+
+Mix CLIs per agent in `.ccb/ccb.config`; actual availability depends on the local CLI installation and account access.
+
+- Codex (`codex`)
+- Claude (`claude`)
+- Gemini (`gemini`)
+- Kimi (`kimi`)
+- MiMo (`mimo`)
+- Qwen (`qwen`)
+- Cursor (`cursor`)
+- GitHub Copilot CLI (`copilot`)
+- Crush (`crush`)
+- Kiro CLI (`kiro`)
+- Pi (`pi`)
+- OpenCode (`opencode`)
+- Antigravity (`agy`)
+- Droid (`droid`)
 
 **New role specification**: package skills, memory, and tool dependencies into self-contained Role Packs, then create hot-loadable and removable specialist agents.
+
+## Why CCB?
+
+| See the work | Mix providers | Keep control |
+| :--- | :--- | :--- |
+| Every agent is a real terminal with layout control. | Run multiple CLIs concurrently from one command. | Stable background communication for multi-line task orchestration. |
 
 ## Quick Start
 
@@ -616,6 +631,23 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.5.3</b> - Kimi Runtime Reliability And Hindsight Compatibility</summary>
+
+- Adds Kimi runtime hardening without changing other provider execution paths:
+  Kimi can fall back to stable pane evidence for K2.7 Code when the native turn
+  log does not expose a completed reply in time.
+- Makes Kimi Hindsight memory opt-in at the CCB execution boundary. It activates
+  only when `.hindsight/kimi.json`, `.hindsight/codex.json`,
+  `HINDSIGHT_API_URL`, or `HINDSIGHT_BANK_ID` is configured, and failures remain
+  non-blocking provider diagnostics.
+- Accepts both `HINDSIGHT_API_KEY` and `HINDSIGHT_API_TOKEN` for the Kimi
+  bridge and the `scripts/hindsight` helper.
+- Documents the supported provider surface more clearly in the README while
+  keeping unrelated provider behavior unchanged.
+
+</details>
+
+<details>
 <summary><b>v7.5.2</b> - Native CLI Provider Wave</summary>
 
 - Adds built-in optional provider ids for Qwen Code (`qwen`), Cursor Agent

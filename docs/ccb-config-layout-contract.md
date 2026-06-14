@@ -377,6 +377,20 @@ Contract:
   instead of expanding it back into verbose provider-profile API env or nested
   `api` tables.
 
+For Codex official-login users who do not have an API key, `key/url` is not
+available. A project with multiple concurrent Codex agents must not copy one
+file-backed ChatGPT `auth.json` into every managed home because refresh-token
+rotation is a single serialized stream. Such projects may set:
+
+```toml
+[agents.agent1.provider_profile]
+inherit_auth = false
+```
+
+and then log in that agent's managed Codex home directly. With no explicit
+agent API authority, `inherit_auth = false` means "do not inherit global
+Codex credentials"; it must preserve an existing agent-local `auth.json`.
+
 ### 4.3 Agent Model Shortcut
 
 For the common case where an agent only needs a provider model override, rich or

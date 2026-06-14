@@ -6,30 +6,10 @@
 **可见、可控的多 Agent 合作TUI工作台**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.5.2-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.5.3-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
-
-**中文** | [English](README.md)
-
-[快速开始](#快速开始) · [v7 界面](#v7-界面速览) · [配置团队](#配置-agent-团队) · [使用文档](docs/manuals/user-guide/) · [开发文档](docs/manuals/developer-guide/)
-
-<p align="center">
-  <img src="assets/readme_v7/ccb-hero-zh.png" alt="CCB v7 可见多 Agent CLI 工作台" width="960">
-</p>
-
-</div>
-
----
-
-## 为什么用 CCB？
-
-| 看得见 | 混合 provider | 项目级控制 |
-| :--- | :--- | :--- |
-| 每个 agent 都是真实终端，支持界面排布设计。 | 一个命令同时并发运行多 CLI。 | 稳定后台通信，支持多线并发任务编排。 |
-
-## 支持的 CLI
 
 <p>
   <img src="https://img.shields.io/badge/Codex-111111?style=flat-square&logo=openai&logoColor=white" alt="Codex">
@@ -48,9 +28,44 @@
   <img src="https://img.shields.io/badge/Droid-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Droid">
 </p>
 
-可在 `.ccb/ccb.config` 中按 agent 混用不同 CLI。常用 provider id 包括 `codex`、`claude`、`gemini`、`kimi`、`mimo`、`qwen`、`cursor`、`copilot`、`crush`、`kiro`、`pi`、`opencode`、`agy`、`droid`；实际可用性取决于本机 CLI 安装和账号权限。
+**中文** | [English](README.md)
+
+[快速开始](#快速开始) · [v7 界面](#v7-界面速览) · [配置团队](#配置-agent-团队) · [使用文档](docs/manuals/user-guide/) · [开发文档](docs/manuals/developer-guide/)
+
+<p align="center">
+  <img src="assets/readme_v7/ccb-hero-zh.png" alt="CCB v7 可见多 Agent CLI 工作台" width="960">
+</p>
+
+</div>
+
+---
+
+## 支持的 CLI
+
+可在 `.ccb/ccb.config` 中按 agent 混用不同 CLI；实际可用性取决于本机 CLI 安装和账号权限。
+
+- Codex（`codex`）
+- Claude（`claude`）
+- Gemini（`gemini`）
+- Kimi（`kimi`）
+- MiMo（`mimo`）
+- Qwen（`qwen`）
+- Cursor（`cursor`）
+- GitHub Copilot CLI（`copilot`）
+- Crush（`crush`）
+- Kiro CLI（`kiro`）
+- Pi（`pi`）
+- OpenCode（`opencode`）
+- Antigravity（`agy`）
+- Droid（`droid`）
 
 **全新角色规范**：可把 skills、记忆和工具依赖封装进自封闭 Role Pack，快速生成可热加载、可卸载的专业 agent。
+
+## 为什么用 CCB？
+
+| 看得见 | 混合 provider | 项目级控制 |
+| :--- | :--- | :--- |
+| 每个 agent 都是真实终端，支持界面排布设计。 | 一个命令同时并发运行多 CLI。 | 稳定后台通信，支持多线并发任务编排。 |
 
 ## 快速开始
 
@@ -605,6 +620,20 @@ v7 线重点：
 - 加固 tmux、Ghostty、release helper、Codex trust 和 provider 会话恢复路径。
 
 <details open>
+<summary><b>v7.5.3</b> - Kimi 运行可靠性与 Hindsight 兼容性</summary>
+
+- 增强 Kimi 运行路径，但不改变其他 provider 的执行路径：当 native turn
+  log 没有及时暴露完成回复时，Kimi 可对 K2.7 Code 使用稳定 pane 证据兜底。
+- Kimi Hindsight 记忆改为 CCB 执行边界上的显式 opt-in：只有配置
+  `.hindsight/kimi.json`、`.hindsight/codex.json`、`HINDSIGHT_API_URL` 或
+  `HINDSIGHT_BANK_ID` 时才启用，失败时只记录 provider diagnostics，不阻塞任务。
+- Kimi bridge 和 `scripts/hindsight` helper 同时兼容 `HINDSIGHT_API_KEY` 与
+  `HINDSIGHT_API_TOKEN`。
+- README 更明确展示支持的 provider surface，同时保持无关 provider 行为不变。
+
+</details>
+
+<details>
 <summary><b>v7.5.2</b> - Native CLI Provider Wave</summary>
 
 - 新增 Qwen Code（`qwen`）、Cursor Agent（`cursor`）、GitHub

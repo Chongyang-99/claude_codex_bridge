@@ -90,6 +90,7 @@ def provision_neovim(*, required: bool = False) -> dict[str, object]:
     if lazyvim_enabled and lazyvim_sync.get('status') != 'ok':
         status_value = 'failed' if required else 'degraded'
         reason = lazyvim_sync.get('reason') or 'LazyVim sync failed'
+    capabilities = _check_neovim_capabilities(paths) if lazyvim_enabled else _check_platform_capabilities()
     status = {
         'status': status_value,
         'binary': str(nvim),
@@ -105,6 +106,7 @@ def provision_neovim(*, required: bool = False) -> dict[str, object]:
         'managed_neovim_target': manifest.get('managed_neovim_target'),
         'managed_neovim_version': manifest.get('managed_neovim_version'),
         'managed_neovim_asset': manifest.get('managed_neovim_asset'),
+        **capabilities,
         **_status_paths(paths),
     }
     if reason:
@@ -126,6 +128,7 @@ def neovim_status() -> dict[str, object]:
         lazyvim_enabled = bool(manifest.get('lazyvim_profile_enabled', paths['marker'].exists()))
         health = _check_lazyvim_health(paths) if lazyvim_enabled else {'status': 'skipped'}
         status_value = 'degraded' if lazyvim_enabled and health.get('status') != 'ok' else 'ok'
+        capabilities = _check_neovim_capabilities(paths) if lazyvim_enabled else _check_platform_capabilities()
         return {
             'status': status_value,
             'reason': health.get('reason') if lazyvim_enabled and health.get('status') != 'ok' else None,
@@ -143,12 +146,14 @@ def neovim_status() -> dict[str, object]:
             'managed_neovim_target': manifest.get('managed_neovim_target'),
             'managed_neovim_version': manifest.get('managed_neovim_version'),
             'managed_neovim_asset': manifest.get('managed_neovim_asset'),
+            **capabilities,
             **_status_paths(paths),
         }
     return {
         'status': 'missing',
         'reason': 'ccb-nvim wrapper is not installed',
         'binary': str(nvim) if nvim is not None else None,
+        **_check_platform_capabilities(),
         **_status_paths(paths),
     }
 
@@ -391,6 +396,12 @@ def _write_lazyvim_profile(paths: dict[str, Path]) -> None:
     terminal_compat = plugins / 'ccb-terminal-compat.lua'
     if not terminal_compat.exists() or _is_managed_lazyvim_init(terminal_compat):
         terminal_compat.write_text(_managed_lazyvim_terminal_compat_text(), encoding='utf-8')
+    treesitter = plugins / 'ccb-treesitter.lua'
+    if not treesitter.exists() or _is_managed_lazyvim_init(treesitter):
+        treesitter.write_text(_managed_lazyvim_treesitter_text(), encoding='utf-8')
+    markdown = plugins / 'ccb-markdown.lua'
+    if not markdown.exists() or _is_managed_lazyvim_init(markdown):
+        markdown.write_text(_managed_lazyvim_markdown_text(), encoding='utf-8')
     keep = plugins / '.keep'
     if not keep.exists():
         keep.write_text('', encoding='utf-8')
@@ -410,19 +421,57 @@ def _managed_lazyvim_init_text() -> str:
         'vim.g.mapleader = " "\n'
         'vim.g.maplocalleader = " "\n'
         'vim.g.have_nerd_font = false\n'
+        'local ccb_parser_runtimepaths = {}\n'
+        'local function ccb_record_parser_runtimepaths()\n'
+        '  local seen = {}\n'
+        '  for _, lang in ipairs({ "markdown", "markdown_inline", "lua", "vimdoc" }) do\n'
+        '    for _, file in ipairs(vim.api.nvim_get_runtime_file("parser/" .. lang .. ".so", false)) do\n'
+        '      local runtime = file:match("^(.*)[/\\\\]parser[/\\\\][^/\\\\]+$")\n'
+        '      if runtime and not seen[runtime] then\n'
+        '        seen[runtime] = true\n'
+        '        table.insert(ccb_parser_runtimepaths, runtime)\n'
+        '      end\n'
+        '    end\n'
+        '  end\n'
+        'end\n'
+        'local function ccb_restore_parser_runtimepaths()\n'
+        '  for _, runtime in ipairs(ccb_parser_runtimepaths) do\n'
+        '    if vim.fn.index(vim.opt.runtimepath:get(), runtime) < 0 then\n'
+        '      vim.opt.runtimepath:append(runtime)\n'
+        '    end\n'
+        '    if vim.fn.index(vim.opt.packpath:get(), runtime) < 0 then\n'
+        '      vim.opt.packpath:append(runtime)\n'
+        '    end\n'
+        '  end\n'
+        'end\n'
+        'local function ccb_has_recorded_parser(lang)\n'
+        '  for _, runtime in ipairs(ccb_parser_runtimepaths) do\n'
+        '    if vim.fn.filereadable(runtime .. "/parser/" .. lang .. ".so") == 1 then\n'
+        '      return true\n'
+        '    end\n'
+        '  end\n'
+        '  return false\n'
+        'end\n'
+        'ccb_record_parser_runtimepaths()\n'
+        'vim.g.ccb_markdown_parser_ready = ccb_has_recorded_parser("markdown") and ccb_has_recorded_parser("markdown_inline")\n'
         'local function ccb_terminal_compat()\n'
         '  vim.opt.fillchars = { foldopen = "-", foldclose = "+", fold = " ", foldsep = " ", diff = "/", eob = " " }\n'
         'end\n'
         'ccb_terminal_compat()\n'
-        'vim.api.nvim_create_autocmd("User", { pattern = { "VeryLazy", "LazyDone" }, callback = ccb_terminal_compat })\n'
+        'vim.api.nvim_create_autocmd("User", { pattern = { "VeryLazy", "LazyDone" }, callback = function()\n'
+        '  ccb_terminal_compat()\n'
+        '  ccb_restore_parser_runtimepaths()\n'
+        'end })\n'
         'local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"\n'
         'vim.opt.rtp:prepend(lazypath)\n'
+        'ccb_restore_parser_runtimepaths()\n'
         'local ok, lazy = pcall(require, "lazy")\n'
         'if not ok then\n'
         '  vim.api.nvim_err_writeln("CCB LazyVim profile is not provisioned: " .. tostring(lazy))\n'
         '  return\n'
         'end\n'
         'lazy.setup({ { "LazyVim/LazyVim", import = "lazyvim.plugins" }, { import = "plugins" } })\n'
+        'ccb_restore_parser_runtimepaths()\n'
     )
 
 
@@ -472,8 +521,22 @@ def _managed_lazyvim_terminal_compat_text() -> str:
         '  {\n'
         '    "folke/snacks.nvim",\n'
         '    opts = function(_, opts)\n'
-        '      if icon_style == "glyph" then return opts end\n'
         '      opts = opts or {}\n'
+        '      opts.explorer = opts.explorer or {}\n'
+        '      opts.explorer.enabled = true\n'
+        '      opts.explorer.replace_netrw = true\n'
+        '      opts.picker = opts.picker or {}\n'
+        '      opts.picker.enabled = true\n'
+        '      opts.picker.sources = opts.picker.sources or {}\n'
+        '      opts.picker.sources.explorer = vim.tbl_deep_extend("force", opts.picker.sources.explorer or {}, {\n'
+        '        watch = false,\n'
+        '      })\n'
+        '      opts.image = vim.tbl_deep_extend("force", opts.image or {}, {\n'
+        '        enabled = true,\n'
+        '        force = false,\n'
+        '        doc = { enabled = true, inline = true, float = true },\n'
+        '      })\n'
+        '      if icon_style == "glyph" then return opts end\n'
         '      opts.dashboard = opts.dashboard or {}\n'
         '      opts.dashboard.preset = opts.dashboard.preset or {}\n'
         '      opts.dashboard.preset.keys = opts.dashboard.preset.keys or {}\n'
@@ -520,6 +583,60 @@ def _managed_lazyvim_terminal_compat_text() -> str:
         '      opts = opts or {}\n'
         '      opts.sections = opts.sections or {}\n'
         '      opts.sections.lualine_z = {}\n'
+        '      return opts\n'
+        '    end,\n'
+        '  },\n'
+        '}\n'
+    )
+
+
+def _managed_lazyvim_markdown_text() -> str:
+    return (
+        '-- Managed by CCB. Markdown enhancements for the isolated LazyVim profile.\n'
+        'local function ccb_has_parser(lang)\n'
+        '  if vim.g.ccb_markdown_parser_ready == true then\n'
+        '    return true\n'
+        '  end\n'
+        '  return #vim.api.nvim_get_runtime_file("parser/" .. lang .. ".so", false) > 0\n'
+        'end\n'
+        '\n'
+        'local function ccb_markdown_parser_ready()\n'
+        '  return vim.g.ccb_markdown_parser_ready == true or (ccb_has_parser("markdown") and ccb_has_parser("markdown_inline"))\n'
+        'end\n'
+        '\n'
+        'return {\n'
+        '  {\n'
+        '    "MeanderingProgrammer/render-markdown.nvim",\n'
+        '    ft = { "markdown" },\n'
+        '    enabled = ccb_markdown_parser_ready,\n'
+        '    dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-mini/mini.icons" },\n'
+        '    opts = function(_, opts)\n'
+        '      opts = opts or {}\n'
+        '      opts.completions = opts.completions or {}\n'
+        '      opts.completions.lsp = opts.completions.lsp or {}\n'
+        '      opts.completions.lsp.enabled = true\n'
+        '      return opts\n'
+        '    end,\n'
+        '  },\n'
+        '}\n'
+    )
+
+
+def _managed_lazyvim_treesitter_text() -> str:
+    return (
+        '-- Managed by CCB. Treesitter policy for the isolated LazyVim profile.\n'
+        'local allow_parser_install = vim.env.CCB_LAZYVIM_TS_INSTALL == "1"\n'
+        '\n'
+        'return {\n'
+        '  {\n'
+        '    "nvim-treesitter/nvim-treesitter",\n'
+        '    opts = function(_, opts)\n'
+        '      opts = opts or {}\n'
+        '      if not allow_parser_install then\n'
+        '        opts.ensure_installed = {}\n'
+        '        opts.auto_install = false\n'
+        '        opts.sync_install = false\n'
+        '      end\n'
         '      return opts\n'
         '    end,\n'
         '  },\n'
@@ -818,6 +935,179 @@ def _check_lazyvim_health(paths: dict[str, Path]) -> dict[str, object]:
     }
 
 
+def _check_neovim_capabilities(paths: dict[str, Path]) -> dict[str, object]:
+    return {
+        **_check_platform_capabilities(),
+        **_check_markdown_parser_status(paths),
+    }
+
+
+def _check_platform_capabilities() -> dict[str, object]:
+    return {
+        **_check_opener_status(),
+        **_check_clipboard_status(),
+        **_check_image_status(),
+    }
+
+
+def _check_markdown_parser_status(paths: dict[str, Path]) -> dict[str, object]:
+    wrapper = paths['wrapper']
+    if not wrapper.is_file():
+        return {
+            'markdown_parser_status': 'skipped',
+            'markdown_parser_detail': 'ccb-nvim wrapper is missing',
+        }
+    script = (
+        'local missing = {}; '
+        'local details = {}; '
+        'for _, lang in ipairs({ "markdown", "markdown_inline" }) do '
+        '  local files = vim.api.nvim_get_runtime_file("parser/" .. lang .. ".so", false); '
+        '  local ok = #files > 0; '
+        '  if ok and vim.treesitter and vim.treesitter.language and type(vim.treesitter.language.inspect) == "function" then '
+        '    ok = pcall(vim.treesitter.language.inspect, lang); '
+        '  end; '
+        '  table.insert(details, lang .. ":" .. (ok and "ok" or "missing") .. ":" .. tostring(#files)); '
+        '  if not ok then table.insert(missing, lang) end; '
+        'end; '
+        'print("ccb_markdown_parser_status=" .. (#missing == 0 and "ok" or "degraded")); '
+        'print("ccb_markdown_parser_detail=" .. table.concat(details, ",")); '
+    )
+    try:
+        completed = subprocess.run(
+            [str(wrapper), '--clean', '--headless', '+lua ' + script, '+qa'],
+            cwd=str(paths['root']),
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=min(_lazyvim_sync_timeout_s(), 15.0),
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            'markdown_parser_status': 'failed',
+            'markdown_parser_detail': 'parser readiness check timed out',
+            'markdown_parser_error': _process_output_text(exc.stdout, exc.stderr),
+        }
+    except Exception as exc:
+        return {
+            'markdown_parser_status': 'failed',
+            'markdown_parser_detail': 'parser readiness check failed',
+            'markdown_parser_error': f'{type(exc).__name__}: {exc}',
+        }
+    output = (completed.stdout or '') + '\n' + (completed.stderr or '')
+    if completed.returncode != 0:
+        return {
+            'markdown_parser_status': 'failed',
+            'markdown_parser_detail': f'parser readiness check exited with {completed.returncode}',
+            'markdown_parser_error': _short_process_text(output),
+        }
+    status = _marker_value(output, 'ccb_markdown_parser_status')
+    detail = _marker_value(output, 'ccb_markdown_parser_detail')
+    if status:
+        return {
+            'markdown_parser_status': status,
+            'markdown_parser_detail': detail or '',
+        }
+    return {
+        'markdown_parser_status': 'unknown',
+        'markdown_parser_detail': 'parser readiness check produced no marker output',
+    }
+
+
+def _check_opener_status() -> dict[str, object]:
+    if platform.system() == 'Darwin':
+        return _tool_status('opener', ('open',))
+    if _is_wsl():
+        result = _tool_status('opener', ('wslview', 'explorer.exe', 'xdg-open'))
+        if result.get('opener_status') == 'missing':
+            result['opener_reason'] = 'no WSL opener helper found'
+        return result
+    if platform.system() == 'Linux':
+        return _tool_status('opener', ('xdg-open', 'gio', 'kde-open', 'gnome-open'))
+    return {
+        'opener_status': 'unknown',
+        'opener_reason': f'unsupported opener platform: {platform.system() or "unknown"}',
+    }
+
+
+def _check_clipboard_status() -> dict[str, object]:
+    if platform.system() == 'Darwin':
+        if shutil.which('pbcopy') and shutil.which('pbpaste'):
+            return {'clipboard_status': 'ok', 'clipboard_tool': 'pbcopy/pbpaste'}
+        return {'clipboard_status': 'missing', 'clipboard_reason': 'pbcopy/pbpaste not found'}
+    if _is_wsl():
+        return _tool_status('clipboard', ('win32yank.exe', 'clip.exe', 'wl-copy', 'xclip', 'xsel'))
+    if platform.system() == 'Linux':
+        if shutil.which('wl-copy') and shutil.which('wl-paste'):
+            return {'clipboard_status': 'ok', 'clipboard_tool': 'wl-clipboard'}
+        return _tool_status('clipboard', ('xclip', 'xsel'))
+    return {
+        'clipboard_status': 'unknown',
+        'clipboard_reason': f'unsupported clipboard platform: {platform.system() or "unknown"}',
+    }
+
+
+def _check_image_status() -> dict[str, object]:
+    term = str(os.environ.get('TERM') or '')
+    term_program = str(os.environ.get('TERM_PROGRAM') or '')
+    term_program_lower = term_program.lower()
+    in_tmux = bool(os.environ.get('TMUX')) or term.startswith('tmux')
+    terminal_candidate = bool(os.environ.get('KITTY_WINDOW_ID')) or any(
+        candidate in term_program_lower
+        for candidate in ('kitty', 'wezterm', 'ghostty')
+    )
+    converter_name, converter_path = _which_first(('magick', 'convert'))
+    result: dict[str, object] = {
+        'image_status': 'candidate' if terminal_candidate and not in_tmux else 'degraded',
+        'image_terminal': term_program or term or 'unknown',
+        'imagemagick_status': 'ok' if converter_path else 'missing',
+    }
+    if converter_name:
+        result['imagemagick_tool'] = converter_name
+    if in_tmux:
+        result['image_reason'] = 'tmux image passthrough must be verified before inline images are enabled'
+    elif not terminal_candidate:
+        result['image_reason'] = 'no Kitty/WezTerm/Ghostty-style terminal image protocol detected'
+    return result
+
+
+def _tool_status(prefix: str, names: tuple[str, ...]) -> dict[str, object]:
+    name, path = _which_first(names)
+    if path:
+        return {
+            f'{prefix}_status': 'ok',
+            f'{prefix}_tool': name,
+        }
+    return {
+        f'{prefix}_status': 'missing',
+    }
+
+
+def _which_first(names: tuple[str, ...]) -> tuple[str | None, str | None]:
+    for name in names:
+        path = shutil.which(name)
+        if path:
+            return name, path
+    return None, None
+
+
+def _is_wsl() -> bool:
+    if os.environ.get('WSL_DISTRO_NAME') or os.environ.get('WSL_INTEROP'):
+        return True
+    try:
+        return 'microsoft' in Path('/proc/version').read_text(encoding='utf-8', errors='ignore').lower()
+    except Exception:
+        return False
+
+
+def _marker_value(output: str, key: str) -> str | None:
+    prefix = key + '='
+    for line in output.splitlines():
+        if line.startswith(prefix):
+            return line[len(prefix):].strip()
+    return None
+
+
 def _write_bin_link(paths: dict[str, Path]) -> None:
     link = paths['bin_link']
     link.parent.mkdir(parents=True, exist_ok=True)
@@ -869,6 +1159,20 @@ def _print_status(status: dict[str, object], stdout: TextIO) -> None:
         'lazyvim_sync_error',
         'lazyvim_health_status',
         'lazyvim_health_error',
+        'markdown_parser_status',
+        'markdown_parser_detail',
+        'markdown_parser_error',
+        'opener_status',
+        'opener_tool',
+        'opener_reason',
+        'clipboard_status',
+        'clipboard_tool',
+        'clipboard_reason',
+        'image_status',
+        'image_terminal',
+        'image_reason',
+        'imagemagick_status',
+        'imagemagick_tool',
         'root',
         'config_home',
         'data_home',

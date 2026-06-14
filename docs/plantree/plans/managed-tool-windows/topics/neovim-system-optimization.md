@@ -399,6 +399,28 @@ changing the default folder-open contract.
    - record Linux, macOS, WSL home, and WSL `/mnt/<drive>` manual results in
      the test matrix or issue log.
 
+## Landed Slice: 2026-06-13
+
+Evidence:
+
+- [../history/neovim-enhancement-slice-2026-06-13.md](../history/neovim-enhancement-slice-2026-06-13.md)
+
+Landed in the first implementation slice:
+
+- parser runtime paths are captured before lazy.nvim setup and restored after
+  lazy.nvim setup;
+- doctor reports read-only Markdown parser, opener, clipboard, image, and
+  ImageMagick capability fields;
+- Snacks explorer/picker is the default folder workflow and watcher behavior is
+  disabled by default;
+- `render-markdown.nvim` is generated into the managed profile and enabled only
+  when Markdown parser readiness is visible;
+- implicit Treesitter parser downloads are disabled by default, with
+  `CCB_LAZYVIM_TS_INSTALL=1` as an explicit opt-in;
+- Linux/tmux isolated validation confirms folder opening, Markdown rendering,
+  and PNG opening degrade cleanly without parser errors or parser download
+  output.
+
 ## Acceptance Criteria
 
 - `ccb tools doctor neovim` explains which advanced surfaces are available,
@@ -436,8 +458,8 @@ changing the default folder-open contract.
 
 ## Readiness
 
-Ready to implement the diagnostics/runtimepath/folder foundation, but not ready
-to enable every rich media surface by default. Remaining gates are:
+The Linux/tmux diagnostics/runtimepath/folder/Markdown foundation has landed.
+Not ready to enable every rich media surface by default. Remaining gates are:
 
 - WSL opener and clipboard fallback order;
 - macOS and WSL manual validation;

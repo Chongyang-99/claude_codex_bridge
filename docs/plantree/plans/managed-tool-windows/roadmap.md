@@ -40,6 +40,11 @@ Date: 2026-05-30
   [history/neovim-local-plugin-lab-2026-06-13.md](history/neovim-local-plugin-lab-2026-06-13.md).
 - Recorded managed Neovim enhancement defaults in
   [decisions/003-neovim-enhancement-defaults.md](decisions/003-neovim-enhancement-defaults.md).
+- Landed the first managed Neovim enhancement slice for Linux/tmux:
+  parser runtimepath preservation, read-only capability diagnostics, Snacks
+  folder defaults with watcher disabled, guarded `render-markdown.nvim`, and
+  no implicit Treesitter parser downloads. Evidence is recorded in
+  [history/neovim-enhancement-slice-2026-06-13.md](history/neovim-enhancement-slice-2026-06-13.md).
 
 ## In Progress
 
@@ -53,14 +58,11 @@ Date: 2026-05-30
    and `ccb ask` still routes through the daemon.
 2. Record any live tmux/Neovim compatibility issues in the test matrix or manual
    issue log.
-3. Implement the managed Neovim system-optimization foundation from
+3. Continue the managed Neovim system-optimization phase from
    [topics/neovim-system-optimization.md](topics/neovim-system-optimization.md):
-   preserve parser runtime paths, add read-only capability diagnostics, and
-   keep doctor from mutating parser/plugin state.
-4. Prototype the first enhanced profile overlay in this order: Snacks folder
-   baseline with watcher disabled, in-buffer Markdown rendering gated on parser
-   readiness, image external-open fallback, then clipboard/opener keymaps.
-5. Add macOS, WSL home, and WSL mounted-drive manual checks before enabling
+   external open/reveal keymaps, clipboard policy, and explicit image fallback
+   commands.
+4. Add macOS, WSL home, and WSL mounted-drive manual checks before enabling
    rich media defaults beyond Linux/tmux.
 
 ## Deferred
