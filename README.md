@@ -6,7 +6,7 @@
 **Visible, controllable multi-agent cooperative TUI workspace**
 
 <p>
-  <img src="https://img.shields.io/badge/version-7.6.0-orange.svg" alt="version">
+  <img src="https://img.shields.io/badge/version-7.6.1-orange.svg" alt="version">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20WSL-lightgrey.svg" alt="platform">
   <img src="https://img.shields.io/badge/providers-14%20CLI%20families-0B7285.svg" alt="providers">
 </p>
@@ -81,6 +81,12 @@ After CCB is installed, use CCB's updater:
 
 ```bash
 ccb update
+```
+
+Install or refresh the optional rich media workbench; it bundles verified binaries where possible and installs only the required terminal/media/font dependencies through the platform package manager:
+
+```bash
+ccb update rich
 ```
 
 <details>
@@ -169,6 +175,16 @@ Agents can also call `/ask` from workflow orchestration to delegate and hand off
 | Mouse control | Click to switch windows, agents, and panes; refresh, kill, or delete communication entries from the communication area. |
 | Workspace | Every pane is a real CLI. Switch by mouse or tmux shortcuts. |
 | Useful shortcuts | `Ctrl-b h/j/k/l` switches adjacent panes; `Ctrl-b z` zooms or restores the current CLI pane. |
+
+<a id="rich-mode-new"></a>
+
+### Rich Mode (NEW!)
+
+Run `ccb update rich` to install the optional rich workbench; it bundles Yazi where possible, uses WezTerm for the rich terminal surface, and opens WezTerm + Yazi + LazyVim with Markdown rendering and image/PDF/video previews via `ccb rich`.
+
+<p align="center">
+  <img src="assets/readme_v7/rich-workbench.png" alt="CCB rich workbench with Yazi PDF preview in WezTerm" width="860">
+</p>
 
 ### Contact
 
@@ -440,6 +456,8 @@ command = "ccb-nvim"
 label = "neovim"
 ```
 
+`ccb update rich` prepares the optional workbench bundle under CCB-owned XDG paths, downloads and validates bundled binaries where available, and uses the platform package manager only for required rich dependencies such as WezTerm, Markdown/PDF/image/video helpers, and recommended fonts. Under WSL, CCB can launch Windows-native `wezterm.exe` while running the rich tools inside the current Linux distro. Normal `ccb update` keeps this bundle untouched; rerun `ccb update rich` to install, repair, or refresh it, then use `ccb rich` or mount the tool window above. Set `CCB_RICH_DOWNLOAD_BINARIES=0` to skip bundled binary downloads, or `CCB_RICH_INSTALL_DEPS=0` to skip system package installation.
+
 Rich workbench tools, including the managed Neovim profile, are installed and updated explicitly with `ccb update rich`. Ordinary `install.sh install`, `ccb update`, and `ccb tools ... neovim` do not provision standalone Neovim; the public Neovim tool route now directs users to `ccb update rich`.
 If `nvim` is not already on `PATH`, rich provisioning may download the official Neovim release tarball for Linux/macOS and verifies the release sha256 before activating it. It does not write `~/.config/nvim`.
 The managed profile defaults to ASCII icons so terminals without Nerd Font support do not show unreadable boxes. To opt back into LazyVim glyph icons, launch the rich workbench with `CCB_LAZYVIM_ICON_STYLE=glyph ccb rich`.
@@ -533,14 +551,6 @@ If agent A is handling a user-originated CCB task and needs agent B's result to 
 
 </details>
 
-### Editor Workflow
-
-<p align="center">
-  <img src="assets/nvim.png" alt="Neovim integration with multi-model code review" width="860">
-</p>
-
-CCB does not require leaving your editor. A common setup is: editor for code, CCB terminal for multi-agent planning, implementation, review, testing, and handoff.
-
 ### Install And Update
 
 #### Requirements
@@ -631,6 +641,20 @@ v7 highlights:
 - Hardened tmux, Ghostty, release helper, Codex trust, and provider session restore paths.
 
 <details open>
+<summary><b>v7.6.1</b> - Rich Workbench Binary Packaging</summary>
+
+- `ccb update rich` now bundles verified Yazi/ya binaries where possible before
+  falling back to package managers.
+- Linux rich installs prefer official Yazi musl builds before GNU builds to
+  avoid newer glibc requirements on older stable distributions.
+- Downloaded Yazi binaries must pass `--version` validation before activation,
+  and invalid managed binaries are removed so fallback paths remain available.
+- Under WSL, rich launchers can use Windows-native `wezterm.exe` while keeping
+  CCB, Yazi, and preview helpers inside the current Linux distro.
+
+</details>
+
+<details>
 <summary><b>v7.6.0</b> - Rich Workbench Lifecycle</summary>
 
 - Makes rich workbench an explicit optional bundle installed with

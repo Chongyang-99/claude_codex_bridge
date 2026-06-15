@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import shutil
 import signal
 import subprocess
 import sys
+import tempfile
+import urllib.request
 from typing import TextIO
+import zipfile
 
 from . import neovim as neovim_tools
 
@@ -22,6 +27,159 @@ DETACHED_TMUX_ENV_KEYS = (
     'CCB_TMUX_SOCKET',
     'CCB_TMUX_SOCKET_PATH',
 )
+RICH_DEPENDENCIES: tuple[dict[str, object], ...] = (
+    {
+        'id': 'wezterm',
+        'commands': ('wezterm',),
+        'packages': {
+            'apt': ('wezterm',),
+            'dnf': ('wezterm',),
+            'yum': ('wezterm',),
+            'pacman': ('wezterm',),
+            'zypper': ('wezterm',),
+            'apk': ('wezterm',),
+            'brew_cask': ('wezterm',),
+        },
+    },
+    {
+        'id': 'yazi',
+        'commands': ('yazi', 'ya'),
+        'require_all': True,
+        'packages': {
+            'apt': ('yazi',),
+            'dnf': ('yazi',),
+            'yum': ('yazi',),
+            'pacman': ('yazi',),
+            'zypper': ('yazi',),
+            'apk': ('yazi',),
+            'brew': ('yazi',),
+        },
+    },
+    {
+        'id': 'markdown',
+        'commands': ('python3',),
+        'python_module': 'rich',
+        'packages': {
+            'apt': ('python3-rich',),
+            'dnf': ('python3-rich',),
+            'yum': ('python3-rich',),
+            'pacman': ('python-rich',),
+            'zypper': ('python3-rich',),
+            'apk': ('py3-rich',),
+            'brew': ('glow',),
+        },
+    },
+    {
+        'id': 'image_preview',
+        'commands': ('chafa',),
+        'packages': {
+            'apt': ('chafa',),
+            'dnf': ('chafa',),
+            'yum': ('chafa',),
+            'pacman': ('chafa',),
+            'zypper': ('chafa',),
+            'apk': ('chafa',),
+            'brew': ('chafa',),
+        },
+    },
+    {
+        'id': 'image_metadata',
+        'commands': ('identify',),
+        'packages': {
+            'apt': ('imagemagick',),
+            'dnf': ('ImageMagick',),
+            'yum': ('ImageMagick',),
+            'pacman': ('imagemagick',),
+            'zypper': ('ImageMagick',),
+            'apk': ('imagemagick',),
+            'brew': ('imagemagick',),
+        },
+    },
+    {
+        'id': 'pdf',
+        'commands': ('pdfinfo', 'pdftotext', 'pdftoppm'),
+        'require_all': True,
+        'packages': {
+            'apt': ('poppler-utils',),
+            'dnf': ('poppler-utils',),
+            'yum': ('poppler-utils',),
+            'pacman': ('poppler',),
+            'zypper': ('poppler-tools',),
+            'apk': ('poppler-utils',),
+            'brew': ('poppler',),
+        },
+    },
+    {
+        'id': 'video',
+        'commands': ('ffprobe', 'ffmpeg'),
+        'require_all': True,
+        'packages': {
+            'apt': ('ffmpeg',),
+            'dnf': ('ffmpeg',),
+            'yum': ('ffmpeg',),
+            'pacman': ('ffmpeg',),
+            'zypper': ('ffmpeg',),
+            'apk': ('ffmpeg',),
+            'brew': ('ffmpeg',),
+        },
+    },
+)
+RICH_FONT_DEPENDENCIES: tuple[dict[str, object], ...] = (
+    {
+        'id': 'font_jetbrains_mono',
+        'families': ('JetBrains Mono',),
+        'packages': {
+            'apt': ('fonts-jetbrains-mono',),
+            'dnf': ('jetbrains-mono-fonts',),
+            'yum': ('jetbrains-mono-fonts',),
+            'pacman': ('ttf-jetbrains-mono',),
+            'zypper': ('jetbrains-mono-fonts',),
+            'apk': ('font-jetbrains-mono',),
+            'brew_cask': ('font-jetbrains-mono',),
+        },
+    },
+    {
+        'id': 'font_symbols',
+        'families': ('Symbols Nerd Font Mono', 'Symbols Nerd Font', 'Noto Sans Symbols2'),
+        'packages': {
+            'apt': ('fonts-noto', 'fonts-symbola'),
+            'dnf': ('google-noto-symbols-fonts',),
+            'yum': ('google-noto-symbols-fonts',),
+            'pacman': ('noto-fonts', 'ttf-jetbrains-mono-nerd'),
+            'zypper': ('noto-sans-symbols-fonts',),
+            'apk': ('font-noto',),
+            'brew_cask': ('font-symbols-only-nerd-font',),
+        },
+    },
+    {
+        'id': 'font_cjk',
+        'families': ('Noto Sans Mono CJK SC', 'Noto Sans CJK SC', 'Noto Sans CJK'),
+        'packages': {
+            'apt': ('fonts-noto-cjk',),
+            'dnf': ('google-noto-sans-cjk-fonts',),
+            'yum': ('google-noto-sans-cjk-fonts',),
+            'pacman': ('noto-fonts-cjk',),
+            'zypper': ('noto-sans-cjk-fonts',),
+            'apk': ('font-noto-cjk',),
+            'brew_cask': ('font-noto-sans-cjk-sc',),
+        },
+    },
+    {
+        'id': 'font_emoji',
+        'families': ('Noto Color Emoji', 'Apple Color Emoji', 'Segoe UI Emoji'),
+        'packages': {
+            'apt': ('fonts-noto-color-emoji',),
+            'dnf': ('google-noto-emoji-color-fonts',),
+            'yum': ('google-noto-emoji-color-fonts',),
+            'pacman': ('noto-fonts-emoji',),
+            'zypper': ('noto-coloremoji-fonts',),
+            'apk': ('font-noto-emoji',),
+            'brew_cask': ('font-noto-color-emoji',),
+        },
+    },
+)
+YAZI_RELEASE_API_URL = 'https://api.github.com/repos/sxyazi/yazi/releases/latest'
+DOWNLOAD_TIMEOUT_S = 120.0
 
 
 def cmd_tools(
@@ -96,22 +254,544 @@ def cmd_rich(
 
 
 def update_rich_workbench() -> dict[str, object]:
-    result = provision_workbench(profile='rich')
+    paths = _paths()
+    binary_result = install_bundled_rich_binaries(paths=paths)
+    dependency_result = install_rich_dependencies()
+    result = provision_workbench(profile='rich', binary_result=binary_result)
     if result.get('status') not in {'ok', 'degraded'}:
         result['rich_update_status'] = result.get('status')
+        _merge_binary_install_result(result, binary_result)
+        _merge_dependency_install_result(result, dependency_result)
         return result
     enabled = enable_workbench(profile='rich')
     enabled['rich_update_status'] = result.get('status')
+    _merge_binary_install_result(enabled, binary_result)
+    _merge_dependency_install_result(enabled, dependency_result)
+    _write_manifest(paths, enabled)
     return enabled
+
+
+def install_bundled_rich_binaries(*, paths: dict[str, Path] | None = None) -> dict[str, object]:
+    if _env_false('CCB_RICH_DOWNLOAD_BINARIES'):
+        return {'status': 'skipped', 'reason': 'skipped by CCB_RICH_DOWNLOAD_BINARIES=0'}
+    paths = paths or _paths()
+    _ensure_dirs(paths)
+    result = _ensure_bundled_yazi(paths)
+    return result
+
+
+def install_rich_dependencies() -> dict[str, object]:
+    if _env_false('CCB_RICH_INSTALL_DEPS'):
+        return {'status': 'skipped', 'reason': 'skipped by CCB_RICH_INSTALL_DEPS=0'}
+    missing = _missing_rich_dependencies(include_unknown_fonts=True)
+    if not missing:
+        return {'status': 'ok', 'reason': 'all rich dependencies are already available'}
+    manager = _detect_package_manager()
+    if not manager:
+        return {
+            'status': 'degraded',
+            'reason': 'no supported package manager found for automatic rich dependency installation',
+            'missing': ','.join(_dependency_ids(missing)),
+        }
+    install_items = _dependency_install_items(missing, manager)
+    if not install_items:
+        return {
+            'status': 'degraded',
+            'tool': manager,
+            'reason': 'no package mapping for missing rich dependencies on this platform',
+            'missing': ','.join(_dependency_ids(missing)),
+        }
+    sudo = _sudo_prefix(manager)
+    if sudo is None:
+        return {
+            'status': 'degraded',
+            'tool': manager,
+            'reason': 'automatic dependency installation requires root or sudo',
+            'missing': ','.join(_dependency_ids(missing)),
+        }
+    commands = _dependency_install_commands(manager, install_items, sudo=sudo)
+    print(f'🔧 Installing rich dependencies with {manager}: {", ".join(_format_install_item(item) for item in install_items)}')
+    failed: list[str] = []
+    installed: list[str] = []
+    for command, label in commands:
+        completed = subprocess.run(command)
+        if completed.returncode == 0:
+            installed.append(label)
+        else:
+            failed.append(label)
+    remaining = _missing_rich_dependencies(include_unknown_fonts=False)
+    status = 'ok' if not remaining else 'degraded'
+    result: dict[str, object] = {
+        'status': status,
+        'tool': manager,
+        'packages': ','.join(_format_install_item(item) for item in install_items),
+    }
+    if installed:
+        result['installed_packages'] = ','.join(installed)
+    if failed:
+        result['failed_packages'] = ','.join(failed)
+    if remaining:
+        result['missing'] = ','.join(_dependency_ids(remaining))
+        result['reason'] = 'some rich dependencies are still unavailable after automatic install'
+    elif failed:
+        result['reason'] = 'all required rich dependencies are available; some optional package installs failed'
+    return result
 
 
 def print_workbench_status(status: dict[str, object], stdout: TextIO | None = None) -> None:
     _print_status(status, stdout or sys.stdout)
 
 
-def provision_workbench(*, profile: str = DEFAULT_PROFILE) -> dict[str, object]:
+def _missing_rich_dependencies(*, include_unknown_fonts: bool) -> list[dict[str, object]]:
+    missing: list[dict[str, object]] = []
+    for spec in RICH_DEPENDENCIES:
+        if _command_dependency_missing(spec):
+            missing.append(spec)
+    for spec in RICH_FONT_DEPENDENCIES:
+        font_missing = _font_dependency_missing(spec)
+        if font_missing is True or (font_missing is None and include_unknown_fonts):
+            missing.append(spec)
+    return missing
+
+
+def _command_dependency_missing(spec: dict[str, object]) -> bool:
+    if spec.get('id') == 'markdown':
+        return _markdown_dependency_missing()
+    if spec.get('id') == 'wezterm':
+        return _wezterm_command() is None
+    commands = tuple(str(item) for item in spec.get('commands', ()) or ())
+    require_all = bool(spec.get('require_all', False))
+    found = [command for command in commands if _which_workbench_command(command)]
+    if commands:
+        if require_all and len(found) != len(commands):
+            return True
+        if not require_all and not found:
+            return True
+    module = str(spec.get('python_module') or '').strip()
+    if module:
+        python = _which_workbench_command('python3')
+        if not python or not _python_module_available(module, python=python):
+            return True
+    return False
+
+
+def _markdown_dependency_missing() -> bool:
+    if _which_workbench_command('glow') or _which_workbench_command('mdcat'):
+        return False
+    python = _which_workbench_command('python3')
+    return not (python and _python_module_available('rich', python=python))
+
+
+def _python_module_available(module: str, *, python: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [python, '-c', f'import {module}'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+        )
+    except Exception:
+        return False
+    return completed.returncode == 0
+
+
+def _font_dependency_missing(spec: dict[str, object]) -> bool | None:
+    results = [_font_family_available(str(family)) for family in tuple(spec.get('families', ()) or ())]
+    if not results or all(result is None for result in results):
+        return None
+    return not any(result is True for result in results)
+
+
+def _font_family_available(family: str) -> bool | None:
+    fc_match = shutil.which('fc-match')
+    if not fc_match:
+        return None
+    try:
+        completed = subprocess.run(
+            [fc_match, '-f', '%{family}\n', family],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return None
+    if completed.returncode != 0:
+        return None
+    requested = family.lower().replace(' ', '')
+    families = (completed.stdout or '').lower().replace(' ', '')
+    return requested in families
+
+
+def _detect_package_manager() -> str | None:
+    if platform.system() == 'Darwin' and shutil.which('brew'):
+        return 'brew'
+    for manager in ('apt-get', 'dnf', 'yum', 'pacman', 'zypper', 'apk'):
+        if shutil.which(manager):
+            return 'apt' if manager == 'apt-get' else manager
+    return None
+
+
+def _dependency_install_items(missing: list[dict[str, object]], manager: str) -> list[tuple[str, str]]:
+    seen: set[tuple[str, str]] = set()
+    result: list[tuple[str, str]] = []
+    package_keys = ('brew', 'brew_cask') if manager == 'brew' else (manager,)
+    for spec in missing:
+        packages = spec.get('packages')
+        if not isinstance(packages, dict):
+            continue
+        for key in package_keys:
+            values = tuple(str(item) for item in packages.get(key, ()) or ())
+            kind = 'cask' if key == 'brew_cask' else 'package'
+            if manager == 'brew' and key == 'brew':
+                kind = 'formula'
+            for package in values:
+                item = (kind, package)
+                if item not in seen:
+                    seen.add(item)
+                    result.append(item)
+    return result
+
+
+def _dependency_install_commands(
+    manager: str,
+    items: list[tuple[str, str]],
+    *,
+    sudo: list[str],
+) -> list[tuple[list[str], str]]:
+    commands: list[tuple[list[str], str]] = []
+    if manager == 'apt':
+        commands.append((sudo + ['apt-get', 'update'], 'apt-get update'))
+        for _kind, package in items:
+            commands.append((sudo + ['apt-get', 'install', '-y', package], package))
+    elif manager in {'dnf', 'yum'}:
+        for _kind, package in items:
+            commands.append((sudo + [manager, 'install', '-y', package], package))
+    elif manager == 'pacman':
+        for _kind, package in items:
+            commands.append((sudo + ['pacman', '-Sy', '--needed', '--noconfirm', package], package))
+    elif manager == 'zypper':
+        for _kind, package in items:
+            commands.append((sudo + ['zypper', '--non-interactive', 'install', package], package))
+    elif manager == 'apk':
+        for _kind, package in items:
+            commands.append((sudo + ['apk', 'add', package], package))
+    elif manager == 'brew':
+        for kind, package in items:
+            if kind == 'cask':
+                commands.append((['brew', 'install', '--cask', package], f'cask:{package}'))
+            else:
+                commands.append((['brew', 'install', package], package))
+    return commands
+
+
+def _sudo_prefix(manager: str) -> list[str] | None:
+    if manager == 'brew':
+        return []
+    geteuid = getattr(os, 'geteuid', None)
+    if callable(geteuid) and geteuid() == 0:
+        return []
+    if not shutil.which('sudo'):
+        return None
+    return ['sudo'] if sys.stdin.isatty() else ['sudo', '-n']
+
+
+def _dependency_ids(items: list[dict[str, object]]) -> list[str]:
+    return [str(item.get('id') or '').strip() for item in items if str(item.get('id') or '').strip()]
+
+
+def _format_install_item(item: tuple[str, str]) -> str:
+    kind, package = item
+    return f'{kind}:{package}' if kind in {'cask', 'formula'} else package
+
+
+def _merge_dependency_install_result(status: dict[str, object], dependency_result: dict[str, object]) -> None:
+    prefix = 'dependency_install'
+    status[f'{prefix}_status'] = dependency_result.get('status')
+    for key in ('tool', 'packages', 'installed_packages', 'failed_packages', 'missing', 'reason'):
+        value = dependency_result.get(key)
+        if value not in (None, '', [], {}):
+            status[f'{prefix}_{key}'] = value
+
+
+def _merge_binary_install_result(status: dict[str, object], binary_result: dict[str, object]) -> None:
+    prefix = 'binary_install'
+    status[f'{prefix}_status'] = binary_result.get('status')
+    for key in ('tool', 'packages', 'version', 'asset', 'missing', 'reason'):
+        value = binary_result.get(key)
+        if value not in (None, '', [], {}):
+            status[f'{prefix}_{key}'] = value
+
+
+def _env_false(name: str) -> bool:
+    value = str(os.environ.get(name) or '').strip().lower()
+    return value in {'0', 'false', 'off', 'no'}
+
+
+def _which_workbench_command(command: str) -> str | None:
+    bin_dir = _paths()['bin_dir']
+    candidates = [bin_dir / command]
+    if platform.system() == 'Windows' and not command.lower().endswith('.exe'):
+        candidates.append(bin_dir / f'{command}.exe')
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return shutil.which(command)
+
+
+def _wezterm_command() -> str | None:
+    if _is_wsl():
+        return _windows_wezterm_exe() or shutil.which('wezterm')
+    return shutil.which('wezterm') or shutil.which('wezterm.exe')
+
+
+def _is_wsl() -> bool:
+    if os.environ.get('WSL_DISTRO_NAME') or os.environ.get('WSL_INTEROP'):
+        return True
+    try:
+        return 'microsoft' in Path('/proc/version').read_text(encoding='utf-8', errors='ignore').lower()
+    except Exception:
+        return False
+
+
+def _windows_wezterm_exe() -> str | None:
+    configured = str(os.environ.get('CCB_WORKBENCH_WEZTERM_EXE') or '').strip()
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured))
+    discovered = shutil.which('wezterm.exe')
+    if discovered:
+        candidates.append(Path(discovered))
+    candidates.extend(
+        [
+            Path('/mnt/c/Program Files/WezTerm/wezterm.exe'),
+            Path('/mnt/c/Program Files (x86)/WezTerm/wezterm.exe'),
+        ]
+    )
+    users_dir = Path('/mnt/c/Users')
+    try:
+        candidates.extend(users_dir.glob('*/AppData/Local/Programs/WezTerm/wezterm.exe'))
+    except Exception:
+        pass
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.is_file():
+            return key
+    return None
+
+
+def _ensure_bundled_yazi(paths: dict[str, Path]) -> dict[str, object]:
+    asset_names = _yazi_asset_names()
+    if not asset_names:
+        return {'status': 'skipped', 'reason': 'no Yazi binary asset mapping for this platform'}
+    manifest = _read_binary_manifest(paths)
+    current = manifest.get('yazi') if isinstance(manifest.get('yazi'), dict) else {}
+    if (
+        paths['yazi_binary'].is_file()
+        and paths['ya_binary'].is_file()
+        and os.access(paths['yazi_binary'], os.X_OK)
+        and os.access(paths['ya_binary'], os.X_OK)
+        and current.get('asset') in asset_names
+        and _yazi_bundle_runs(paths)
+    ):
+        asset_name = str(current.get('asset') or asset_names[0])
+        return {
+            'status': 'ok',
+            'tool': 'github-release',
+            'packages': f'yazi:{current.get("version") or "current"}',
+            'version': current.get('version'),
+            'asset': asset_name,
+            'reason': 'bundled Yazi already available',
+        }
+    release: dict[str, object] = {}
+    last_reason = ''
+    try:
+        release = _github_latest_release(YAZI_RELEASE_API_URL)
+    except Exception as exc:
+        _remove_invalid_bundled_yazi(paths)
+        return {'status': 'degraded', 'tool': 'github-release', 'reason': f'Yazi release lookup failed: {type(exc).__name__}: {exc}'}
+    for asset_name in asset_names:
+        asset = _release_asset(release, asset_name)
+        if asset is None:
+            last_reason = f'Yazi release asset not found: {asset_name}'
+            continue
+        try:
+            with tempfile.TemporaryDirectory(prefix='ccb-yazi-') as tmp:
+                archive_path = Path(tmp) / asset_name
+                _download_asset(asset, archive_path)
+                extract_dir = Path(tmp) / 'extract'
+                extract_dir.mkdir(parents=True, exist_ok=True)
+                with zipfile.ZipFile(archive_path) as archive:
+                    archive.extractall(extract_dir)
+                yazi_source = _find_extracted_binary(extract_dir, 'yazi')
+                ya_source = _find_extracted_binary(extract_dir, 'ya')
+                if yazi_source is None or ya_source is None:
+                    last_reason = f'{asset_name} did not contain yazi and ya binaries'
+                    continue
+                yazi_source.chmod(0o755)
+                ya_source.chmod(0o755)
+                yazi_ok, yazi_reason = _binary_runs(yazi_source)
+                ya_ok, ya_reason = _binary_runs(ya_source)
+                if not yazi_ok or not ya_ok:
+                    last_reason = f'{asset_name} failed validation: {yazi_reason or ya_reason}'
+                    continue
+                shutil.copy2(yazi_source, paths['yazi_binary'])
+                shutil.copy2(ya_source, paths['ya_binary'])
+                paths['yazi_binary'].chmod(0o755)
+                paths['ya_binary'].chmod(0o755)
+        except Exception as exc:
+            last_reason = f'{asset_name} failed: {type(exc).__name__}: {exc}'
+            continue
+        version = str(release.get('tag_name') or '').strip()
+        manifest['yazi'] = {
+            'version': version,
+            'asset': asset_name,
+            'installed_at': _now(),
+            'yazi': str(paths['yazi_binary']),
+            'ya': str(paths['ya_binary']),
+        }
+        _write_binary_manifest(paths, manifest)
+        return {
+            'status': 'ok',
+            'tool': 'github-release',
+            'packages': f'yazi:{version or asset_name}',
+            'version': version,
+            'asset': asset_name,
+        }
+    _remove_invalid_bundled_yazi(paths)
+    return {'status': 'degraded', 'tool': 'github-release', 'reason': f'Yazi binary download failed: {last_reason or "no compatible asset found"}'}
+
+
+def _yazi_asset_name() -> str | None:
+    names = _yazi_asset_names()
+    return names[0] if names else None
+
+
+def _yazi_asset_names() -> tuple[str, ...]:
+    system = platform.system()
+    machine = platform.machine().lower()
+    if machine in {'x86_64', 'amd64'}:
+        arch = 'x86_64'
+    elif machine in {'aarch64', 'arm64'}:
+        arch = 'aarch64'
+    elif machine in {'i386', 'i686'}:
+        arch = 'i686'
+    else:
+        return ()
+    if system == 'Linux':
+        if arch in {'x86_64', 'aarch64'}:
+            return (f'yazi-{arch}-unknown-linux-musl.zip', f'yazi-{arch}-unknown-linux-gnu.zip')
+        return (f'yazi-{arch}-unknown-linux-gnu.zip',)
+    if system == 'Darwin':
+        if arch not in {'x86_64', 'aarch64'}:
+            return ()
+        return (f'yazi-{arch}-apple-darwin.zip',)
+    if system == 'Windows':
+        if arch not in {'x86_64', 'aarch64'}:
+            return ()
+        return (f'yazi-{arch}-pc-windows-msvc.zip',)
+    return ()
+
+
+def _yazi_bundle_runs(paths: dict[str, Path]) -> bool:
+    yazi_ok, _ = _binary_runs(paths['yazi_binary'])
+    ya_ok, _ = _binary_runs(paths['ya_binary'])
+    return yazi_ok and ya_ok
+
+
+def _binary_runs(path: Path) -> tuple[bool, str]:
+    try:
+        completed = subprocess.run(
+            [str(path), '--version'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10,
+        )
+    except Exception as exc:
+        return False, f'{path.name}: {type(exc).__name__}: {exc}'
+    if completed.returncode == 0:
+        return True, ''
+    output = (completed.stderr or completed.stdout or '').strip().splitlines()
+    detail = output[0] if output else f'exit {completed.returncode}'
+    return False, f'{path.name}: {detail}'
+
+
+def _remove_invalid_bundled_yazi(paths: dict[str, Path]) -> None:
+    for key in ('yazi_binary', 'ya_binary'):
+        try:
+            paths[key].unlink()
+        except FileNotFoundError:
+            pass
+        except Exception:
+            continue
+
+
+def _github_latest_release(url: str) -> dict[str, object]:
+    request = urllib.request.Request(url, headers={'User-Agent': 'ccb-rich-workbench'})
+    with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_S) as response:
+        payload = json.loads(response.read().decode('utf-8'))
+    return payload if isinstance(payload, dict) else {}
+
+
+def _release_asset(release: dict[str, object], name: str) -> dict[str, object] | None:
+    assets = release.get('assets')
+    if not isinstance(assets, list):
+        return None
+    for asset in assets:
+        if isinstance(asset, dict) and asset.get('name') == name:
+            return asset
+    return None
+
+
+def _download_asset(asset: dict[str, object], destination: Path) -> None:
+    url = str(asset.get('browser_download_url') or '').strip()
+    if not url:
+        raise RuntimeError('missing browser_download_url')
+    request = urllib.request.Request(url, headers={'User-Agent': 'ccb-rich-workbench'})
+    with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_S) as response:
+        data = response.read()
+    digest = str(asset.get('digest') or '').strip()
+    if digest.startswith('sha256:'):
+        expected = digest.split(':', 1)[1].lower()
+        actual = hashlib.sha256(data).hexdigest().lower()
+        if actual != expected:
+            raise RuntimeError(f'sha256 mismatch for {asset.get("name")}: expected {expected}, got {actual}')
+    destination.write_bytes(data)
+
+
+def _find_extracted_binary(root: Path, name: str) -> Path | None:
+    candidates = [path for path in root.rglob(name) if path.is_file()]
+    if platform.system() == 'Windows':
+        candidates.extend(path for path in root.rglob(name + '.exe') if path.is_file())
+    if not candidates:
+        return None
+    candidates.sort(key=lambda path: (len(path.parts), str(path)))
+    return candidates[0]
+
+
+def _read_binary_manifest(paths: dict[str, Path]) -> dict[str, object]:
+    try:
+        payload = json.loads(paths['binary_manifest'].read_text(encoding='utf-8'))
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_binary_manifest(paths: dict[str, Path], payload: dict[str, object]) -> None:
+    paths['binary_manifest'].parent.mkdir(parents=True, exist_ok=True)
+    paths['binary_manifest'].write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+
+
+def provision_workbench(*, profile: str = DEFAULT_PROFILE, binary_result: dict[str, object] | None = None) -> dict[str, object]:
     paths = _paths()
     _ensure_dirs(paths)
+    if binary_result is None:
+        binary_result = install_bundled_rich_binaries(paths=paths) if profile == 'rich' else {'status': 'skipped'}
     _write_preview_helpers(paths)
     _write_piper_plugin(paths['yazi_safe_profile'] / 'plugins' / 'piper.yazi')
     _write_piper_plugin(paths['yazi_rich_profile'] / 'plugins' / 'piper.yazi')
@@ -122,6 +802,7 @@ def provision_workbench(*, profile: str = DEFAULT_PROFILE) -> dict[str, object]:
     _write_bin_links(paths)
     neovim_result = neovim_tools.provision_neovim(required=False)
     status = _build_status(paths, profile=profile, neovim_result=neovim_result, installed=True)
+    _merge_binary_install_result(status, binary_result)
     _write_manifest(paths, status)
     return status
 
@@ -275,6 +956,8 @@ def _paths() -> dict[str, Path]:
         'bin_dir': bin_dir,
         'bin_link_dir': bin_link_dir,
         'wrapper': bin_dir / 'ccb-workbench',
+        'yazi_binary': bin_dir / 'yazi',
+        'ya_binary': bin_dir / 'ya',
         'yazi_wrapper': bin_dir / 'ccb-yazi',
         'yazi_rich_wrapper': bin_dir / 'ccb-yazi-rich',
         'md_preview': bin_dir / 'ccb-md-preview',
@@ -294,6 +977,7 @@ def _paths() -> dict[str, Path]:
         'wezterm_profile': profiles / 'wezterm',
         'wezterm_config': profiles / 'wezterm' / 'wezterm.lua',
         'manifest': root / 'manifest.json',
+        'binary_manifest': root / 'binary-bundles.json',
         'state_root': state_home / 'ccb' / 'tools' / 'workbench',
         'launches': state_home / 'ccb' / 'tools' / 'workbench' / 'launches.json',
         'cache_root': cache_home / 'ccb' / 'tools' / 'workbench',
@@ -718,14 +1402,144 @@ case "$cmd" in
     ;;
   terminal|wezterm)
     shift || true
-    if ! command -v wezterm >/dev/null 2>&1; then
-      printf '%s\\n' 'ccb-workbench terminal requires WezTerm' >&2
+    is_wsl=0
+    if [ -n "${{WSL_DISTRO_NAME:-}}" ] || [ -n "${{WSL_INTEROP:-}}" ]; then
+      is_wsl=1
+    elif [ -r /proc/version ] && grep -qi microsoft /proc/version 2>/dev/null; then
+      is_wsl=1
+    fi
+    find_windows_wezterm() {{
+      if command -v wezterm.exe >/dev/null 2>&1; then
+        command -v wezterm.exe
+        return 0
+      fi
+      if [ -n "${{CCB_WORKBENCH_WEZTERM_EXE:-}}" ] && [ -f "${{CCB_WORKBENCH_WEZTERM_EXE}}" ]; then
+        printf '%s\\n' "${{CCB_WORKBENCH_WEZTERM_EXE}}"
+        return 0
+      fi
+      for candidate in \
+        '/mnt/c/Program Files/WezTerm/wezterm.exe' \
+        '/mnt/c/Program Files (x86)/WezTerm/wezterm.exe'
+      do
+        if [ -f "$candidate" ]; then
+          printf '%s\\n' "$candidate"
+          return 0
+        fi
+      done
+      for candidate in /mnt/c/Users/*/AppData/Local/Programs/WezTerm/wezterm.exe; do
+        if [ -f "$candidate" ]; then
+          printf '%s\\n' "$candidate"
+          return 0
+        fi
+      done
+      return 1
+    }}
+    wsl_to_windows_path() {{
+      if command -v wslpath >/dev/null 2>&1; then
+        wslpath -w "$1" 2>/dev/null || printf '%s\\n' "$1"
+      else
+        printf '%s\\n' "$1"
+      fi
+    }}
+    wezterm_bin=""
+    wezterm_windows=""
+    if [ "$is_wsl" = 1 ]; then
+      wezterm_windows="$(find_windows_wezterm || true)"
+    fi
+    if [ -z "$wezterm_windows" ] && command -v wezterm >/dev/null 2>&1; then
+      wezterm_bin="$(command -v wezterm)"
+    fi
+    if [ -z "$wezterm_windows" ] && [ -z "$wezterm_bin" ]; then
+      printf '%s\\n' 'ccb-workbench terminal requires WezTerm or Windows wezterm.exe under WSL' >&2
       exit 127
     fi
     if [ "$#" -eq 0 ]; then
       set -- "${{SHELL:-/bin/sh}}" -lc 'ccb-yazi-rich "$PWD"'
     fi
-    exec wezterm --config-file {_shell_quote(str(paths['wezterm_config']))} \
+    term_program="$(printf '%s' "${{TERM_PROGRAM:-}}" | tr '[:upper:]' '[:lower:]')"
+    workbench_terminal="$(printf '%s' "${{CCB_WORKBENCH_TERMINAL_PROGRAM:-}}" | tr '[:upper:]' '[:lower:]')"
+    in_wezterm=0
+    if [ -n "${{WEZTERM_PANE:-}}" ] || [ -n "${{WEZTERM_EXECUTABLE:-}}" ] || [ -n "${{WEZTERM_UNIX_SOCKET:-}}" ] || [ "$term_program" = "wezterm" ] || [ "$workbench_terminal" = "wezterm" ]; then
+      in_wezterm=1
+    fi
+    if [ -n "$wezterm_windows" ]; then
+      config_win="$(wsl_to_windows_path {_shell_quote(str(paths['wezterm_config']))})"
+      if [ "$in_wezterm" = 1 ]; then
+        if [ -n "${{WSL_DISTRO_NAME:-}}" ]; then
+          exec "$wezterm_windows" cli spawn -- wsl.exe -d "$WSL_DISTRO_NAME" --cd "$PWD" -- env \
+            -u TMUX \
+            -u TMUX_PANE \
+            -u CCB_TMUX_SOCKET \
+            -u CCB_TMUX_SOCKET_PATH \
+            PATH="$PATH" \
+            CCB_WORKBENCH_PROFILE=rich \
+            CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
+            CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+            CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
+            CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
+            CCB_WORKBENCH_FORCE_RICH=1 \
+            "$@"
+        fi
+        exec "$wezterm_windows" cli spawn -- wsl.exe --cd "$PWD" -- env \
+          -u TMUX \
+          -u TMUX_PANE \
+          -u CCB_TMUX_SOCKET \
+          -u CCB_TMUX_SOCKET_PATH \
+          PATH="$PATH" \
+          CCB_WORKBENCH_PROFILE=rich \
+          CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
+          CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+          CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
+          CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
+          CCB_WORKBENCH_FORCE_RICH=1 \
+          "$@"
+      fi
+      if [ -n "${{WSL_DISTRO_NAME:-}}" ]; then
+        exec "$wezterm_windows" --config-file "$config_win" \
+          start --always-new-process --no-auto-connect -- wsl.exe -d "$WSL_DISTRO_NAME" --cd "$PWD" -- env \
+          -u TMUX \
+          -u TMUX_PANE \
+          -u CCB_TMUX_SOCKET \
+          -u CCB_TMUX_SOCKET_PATH \
+          PATH="$PATH" \
+          CCB_WORKBENCH_PROFILE=rich \
+          CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
+          CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+          CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
+          CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
+          CCB_WORKBENCH_FORCE_RICH=1 \
+          "$@"
+      fi
+      exec "$wezterm_windows" --config-file "$config_win" \
+        start --always-new-process --no-auto-connect -- wsl.exe --cd "$PWD" -- env \
+        -u TMUX \
+        -u TMUX_PANE \
+        -u CCB_TMUX_SOCKET \
+        -u CCB_TMUX_SOCKET_PATH \
+        PATH="$PATH" \
+        CCB_WORKBENCH_PROFILE=rich \
+        CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
+        CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+        CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
+        CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
+        CCB_WORKBENCH_FORCE_RICH=1 \
+        "$@"
+    fi
+    if [ "$in_wezterm" = 1 ]; then
+      exec "$wezterm_bin" cli spawn --cwd "$PWD" -- env \
+        -u TMUX \
+        -u TMUX_PANE \
+        -u CCB_TMUX_SOCKET \
+        -u CCB_TMUX_SOCKET_PATH \
+        CCB_WORKBENCH_PROFILE=rich \
+        CCB_WORKBENCH_ROOT={_shell_quote(str(paths['root']))} \
+        CCB_WORKBENCH_TERMINAL_PROGRAM=WezTerm \
+        CCB_WORKBENCH_YAZI_SAFE_CONFIG={_shell_quote(str(paths['yazi_safe_profile']))} \
+        CCB_WORKBENCH_YAZI_RICH_CONFIG={_shell_quote(str(paths['yazi_rich_profile']))} \
+        CCB_WORKBENCH_FORCE_RICH=1 \
+        "$@"
+    fi
+    exec "$wezterm_bin" --config-file {_shell_quote(str(paths['wezterm_config']))} \
       start --always-new-process --no-auto-connect --cwd "$PWD" -- env \
       -u TMUX \
       -u TMUX_PANE \
@@ -841,7 +1655,7 @@ def _component_statuses(
     del profile, manifest
     yazi = _tool_component('yazi', ('yazi',))
     ya = _tool_component('ya', ('ya',))
-    wezterm = _tool_component('wezterm', ('wezterm',))
+    wezterm = _wezterm_component()
     pdf_text = _tool_component('pdf_text', ('pdftotext', 'pdfinfo'), require_all=True)
     pdf_image = _tool_component('pdf_image', ('pdftoppm', 'pdftocairo'))
     image_preview = _image_component(paths)
@@ -871,7 +1685,7 @@ def _tool_component(name: str, commands: tuple[str, ...], *, require_all: bool =
     found: list[str] = []
     missing: list[str] = []
     for command in commands:
-        path = shutil.which(command)
+        path = _which_workbench_command(command)
         if path:
             found.append(f'{command}:{path}')
         else:
@@ -889,6 +1703,16 @@ def _tool_component(name: str, commands: tuple[str, ...], *, require_all: bool =
     if status != 'ok':
         result['reason'] = f'{name} helper not found'
     return result
+
+
+def _wezterm_component() -> dict[str, object]:
+    path = _wezterm_command()
+    if path:
+        result: dict[str, object] = {'status': 'ok', 'tools': f'wezterm:{path}'}
+        if _is_wsl() and path.lower().endswith('wezterm.exe'):
+            result['tool'] = 'windows-native'
+        return result
+    return {'status': 'missing', 'missing': 'wezterm', 'reason': 'wezterm helper not found'}
 
 
 def _terminal_component() -> dict[str, object]:
@@ -913,11 +1737,11 @@ def _terminal_component() -> dict[str, object]:
 
 
 def _markdown_component(paths: dict[str, Path]) -> dict[str, object]:
-    if shutil.which('glow'):
+    if _which_workbench_command('glow'):
         return {'status': 'ok', 'tool': 'glow'}
-    if shutil.which('mdcat'):
+    if _which_workbench_command('mdcat'):
         return {'status': 'ok', 'tool': 'mdcat'}
-    if shutil.which('python3') and paths['md_preview'].is_file():
+    if _which_workbench_command('python3') and paths['md_preview'].is_file():
         return {'status': 'ok', 'tool': 'python3-rich-or-plain'}
     return {'status': 'missing', 'reason': 'no Markdown renderer helper found'}
 
@@ -927,7 +1751,7 @@ def _image_component(paths: dict[str, Path]) -> dict[str, object]:
         return {'status': 'missing', 'reason': 'generated image preview helper not found'}
     found: list[str] = []
     for command in ('chafa', 'identify', 'file'):
-        path = shutil.which(command)
+        path = _which_workbench_command(command)
         if path:
             found.append(f'{command}:{path}')
     if found:
@@ -1130,6 +1954,20 @@ def _print_status(status: dict[str, object], stdout: TextIO) -> None:
         'disabled_at',
         'close_status',
         'closed_processes',
+        'binary_install_status',
+        'binary_install_tool',
+        'binary_install_packages',
+        'binary_install_version',
+        'binary_install_asset',
+        'binary_install_missing',
+        'binary_install_reason',
+        'dependency_install_status',
+        'dependency_install_tool',
+        'dependency_install_packages',
+        'dependency_install_installed_packages',
+        'dependency_install_failed_packages',
+        'dependency_install_missing',
+        'dependency_install_reason',
         'rich_update_status',
         'launch_status',
         'launch_pid',
@@ -1140,6 +1978,7 @@ def _print_status(status: dict[str, object], stdout: TextIO) -> None:
         'terminal_image_protocol',
         'terminal_reason',
         'wezterm_status',
+        'wezterm_tool',
         'wezterm_tools',
         'wezterm_reason',
         'yazi_status',
@@ -1212,6 +2051,8 @@ __all__ = [
     'cmd_rich',
     'disable_workbench',
     'enable_workbench',
+    'install_bundled_rich_binaries',
+    'install_rich_dependencies',
     'launch_workbench',
     'print_workbench_status',
     'provision_workbench',

@@ -95,12 +95,57 @@ Normal CCB:
 Rich CCB:
 
 - `ccb update rich` installs or updates the rich bundle;
-- the rich bundle owns WezTerm, Yazi, LazyVim/Neovim, Markdown rendering,
-  PDF/image/video helpers, generated config, wrappers, and doctor output;
+- the rich bundle owns WezTerm integration, bundled Yazi where available,
+  LazyVim/Neovim, Markdown rendering, PDF/image/video helpers, generated
+  config, wrappers, and doctor output;
 - `ccb rich` launches the already-installed rich bundle and should fail with a
   clear instruction when the bundle is missing;
 - `ccb rich-install` is not a compatibility alias; the single install/update
   entry is `ccb update rich`.
+
+## Dependency Encapsulation Contract
+
+The rich bundle should minimize system mutation.
+
+`ccb update rich` dependency order:
+
+1. Prefer CCB-owned binaries under `$XDG_DATA_HOME/ccb/tools/workbench/bin`.
+2. Validate downloaded binaries before marking them installed.
+3. Use the platform package manager only for dependencies that are not safely
+   bundled yet, or as a fallback when a bundled binary is unavailable or
+   incompatible.
+
+Current bundled binary contract:
+
+- Yazi/ya are downloaded from the official Yazi GitHub release assets when
+  `CCB_RICH_DOWNLOAD_BINARIES` is not false.
+- Linux x86_64/aarch64 prefer `unknown-linux-musl` assets before GNU assets so
+  older stable distributions do not fail on newer glibc requirements.
+- Downloaded `yazi` and `ya` must pass `--version` validation before they are
+  copied into the CCB workbench `bin` directory.
+- A failed bundled Yazi install must remove invalid CCB-owned binaries so
+  dependency detection can fall back to a system `yazi` or package manager
+  install instead of treating a broken binary as available.
+- `CCB_RICH_DOWNLOAD_BINARIES=0` disables bundled binary download.
+
+Current package-managed dependency contract:
+
+- WezTerm, Poppler, FFmpeg, image helpers, Markdown helpers, and fonts can
+  still be installed through apt/dnf/yum/pacman/zypper/apk/Homebrew when
+  missing.
+- Yazi remains package-managed only as fallback when a bundled binary is
+  skipped, unsupported, or fails validation.
+- `CCB_RICH_INSTALL_DEPS=0` disables package-manager installation.
+
+WSL terminal contract:
+
+- When running under WSL, rich launchers prefer Windows-native `wezterm.exe`
+  from `CCB_WORKBENCH_WEZTERM_EXE`, `PATH`, or common Windows install paths.
+- Windows WezTerm launches `wsl.exe --cd "$PWD" -- env ...` so the visible
+  terminal is native Windows, while `ccb-workbench`, Yazi, preview helpers, and
+  provider commands continue running inside the current Linux distro.
+- If already inside WezTerm, the launcher uses `wezterm cli spawn`; otherwise
+  it starts a new WezTerm window with the generated CCB config.
 
 ## WezTerm Visual Encapsulation
 
@@ -465,7 +510,10 @@ Safe default provisioning:
 
 Rich provisioning:
 
-- locate or install WezTerm when requested;
+- locate or install WezTerm when requested, preferring Windows-native
+  `wezterm.exe` under WSL when available;
+- download and validate CCB-owned Yazi/ya binaries where feasible before using
+  package managers;
 - locate Poppler image tools such as `pdftoppm`;
 - locate FFmpeg thumbnail support;
 - locate terminal image support;
@@ -528,12 +576,17 @@ Implemented:
   `CCB_WORKBENCH_PROFILE=rich CCB_WORKBENCH_FORCE_RICH=1 ccb-workbench files`
   as a CCB-owned tool pane without creating an agent. See
   [../history/rich-layout-alias-slice-2026-06-15.md](../history/rich-layout-alias-slice-2026-06-15.md).
+- Binary-first rich dependency hardening: CCB-owned Yazi/ya release download,
+  Linux musl preference, executable validation, invalid-binary cleanup,
+  package-manager fallback, status output for binary install results, and WSL
+  Windows-native WezTerm launch routing. See
+  [../history/rich-binary-dependency-slice-2026-06-15.md](../history/rich-binary-dependency-slice-2026-06-15.md).
 
 Not yet implemented:
 
 - Broader direct GUI WezTerm validation outside tmux across multiple hosts.
 - Platform-specific GUI close hardening beyond recorded launch PIDs.
-- macOS and WSL validation.
+- macOS and additional WSL GUI validation.
 
 ## Implementation Slices
 

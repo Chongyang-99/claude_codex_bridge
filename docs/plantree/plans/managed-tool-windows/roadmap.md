@@ -90,20 +90,27 @@ Date: 2026-05-30
   and `ccb rich` requires the rich bundle to be installed/enabled first.
   Evidence is recorded in
   [history/rich-update-entry-slice-2026-06-15.md](history/rich-update-entry-slice-2026-06-15.md).
+- Landed binary-first rich dependency hardening:
+  `ccb update rich` downloads CCB-owned Yazi/ya release binaries where
+  possible, validates them before use, prefers Linux musl builds to avoid
+  glibc drift, falls back to platform package managers for non-bundled
+  dependencies, and can launch Windows-native `wezterm.exe` from WSL while
+  keeping rich tools inside the current Linux distro. Evidence is recorded in
+  [history/rich-binary-dependency-slice-2026-06-15.md](history/rich-binary-dependency-slice-2026-06-15.md).
 
 ## In Progress
 
 - Continue hardening the rich terminal workbench after the lifecycle boundary:
   direct GUI WezTerm validation across more hosts, degraded-banner behavior,
-  richer launch/close records, and cross-platform package dependency checks.
+  richer launch/close records, and macOS/WSL manual validation.
 
 ## Next
 
 1. Continue the rich terminal workbench implementation from
    [topics/rich-terminal-workbench-profile.md](topics/rich-terminal-workbench-profile.md):
    direct GUI WezTerm validation across more hosts, richer launch/close
-   records, degraded-banner behavior for `rich`, and cross-platform packaging
-   checks.
+   records, degraded-banner behavior for `rich`, and richer diagnostics for
+   binary/package fallback decisions.
 2. Add macOS, WSL home, and WSL mounted-drive manual checks before enabling
    rich media defaults beyond Linux/tmux.
 

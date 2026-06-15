@@ -1,5 +1,25 @@
 # Changelog
 
+## v7.6.1 (2026-06-16)
+
+### Rich Workbench Binary Packaging
+
+- **Yazi Bundle Download Added**: `ccb update rich` now downloads CCB-owned
+  Yazi/ya release binaries where supported and places them under the managed
+  workbench `bin` directory before falling back to system package managers.
+- **Linux Musl Preference Added**: Linux x86_64/aarch64 rich installs prefer
+  official Yazi musl builds before GNU builds, avoiding newer glibc
+  requirements on older stable distributions.
+- **Binary Validation Hardened**: downloaded `yazi` and `ya` must pass
+  `--version` validation before activation; invalid managed binaries are
+  removed so package-manager fallback remains possible.
+- **WSL WezTerm Routing Added**: rich launchers under WSL can use
+  Windows-native `wezterm.exe` while keeping CCB, Yazi, and preview helpers
+  running inside the current Linux distribution.
+- **Release Surface Synchronized**: VERSION, CLI version constants,
+  package.json, release workflow defaults, README release notes, and rich
+  workbench plan-tree evidence are aligned for 7.6.1.
+
 ## v7.6.0 (2026-06-15)
 
 ### Rich Workbench Lifecycle
