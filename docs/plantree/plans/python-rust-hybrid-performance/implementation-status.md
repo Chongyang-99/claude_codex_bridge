@@ -14,6 +14,12 @@ inventory, and compact storage summary helper paths may land; JSONL/job and
 ProjectView helper experiments remain documented evidence only and should not
 enter the code commit.
 
+Lifecycle-level startup, high-load, and pane-interaction optimization is now
+tracked by
+[../ccb-runtime-performance/README.md](../ccb-runtime-performance/README.md);
+use that plan to decide whether a Rust helper result is large enough to matter
+for total-system CPU or latency.
+
 ## Active TODO
 
 - Review Phase 12 storage summary evidence before any default enablement. The

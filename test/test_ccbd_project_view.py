@@ -2180,6 +2180,62 @@ def test_project_view_updates_build_cache_and_tmux_metrics(tmp_path: Path) -> No
     assert metrics.last_project_view_store_scan_count == 3
 
 
+def test_project_view_consumes_sidebar_refresh_request_without_crashing(tmp_path: Path) -> None:
+    project_root = tmp_path / 'repo-project-view-sidebar-refresh'
+    project_root.mkdir()
+    layout = PathLayout(project_root)
+    project_id = compute_project_id(project_root)
+    config = _config()
+    registry = AgentRegistry(layout, config)
+    registry.upsert(_runtime('agent1', project_id=project_id))
+    mount_manager = MountManager(layout, clock=lambda: NOW)
+    mount_manager.mark_mounted(project_id=project_id, pid=123, socket_path=layout.ccbd_socket_path, generation=1, started_at=NOW)
+    ProjectNamespaceStateStore(layout).save(
+        ProjectNamespaceState(
+            project_id=project_id,
+            namespace_epoch=3,
+            tmux_socket_path=str(layout.ccbd_tmux_socket_path),
+            tmux_session_name='ccb-project-view-sidebar-refresh',
+            layout_version=2,
+        )
+    )
+    dispatcher = JobDispatcher(layout, config, registry, clock=lambda: NOW)
+    backend = _SidebarRefreshBackend(session_name='ccb-project-view-sidebar-refresh')
+    controller = ProjectNamespaceController(
+        layout,
+        project_id,
+        backend_factory=lambda socket_path=None: backend,
+    )
+    metrics = SimpleNamespace(
+        project_view_sidebar_refreshes=0,
+        project_view_sidebar_refresh_failures=0,
+        last_project_view_sidebar_refresh_duration_s=None,
+    )
+    service = ProjectViewService(
+        ProjectViewDependencies(
+            project_root=project_root,
+            project_id=project_id,
+            config=config,
+            registry=registry,
+            mount_manager=mount_manager,
+            namespace_state_store=ProjectNamespaceStateStore(layout),
+            dispatcher=dispatcher,
+            namespace_controller=controller,
+            clock=lambda: NOW,
+            metrics=metrics,
+        )
+    )
+
+    service.request_sidebar_refresh()
+    response = service.build_response()
+
+    assert response['cache']['sequence'] == 1
+    assert ['send-keys', '-t', '%90', 'C-l'] in backend.calls
+    assert metrics.project_view_sidebar_refreshes == 1
+    assert metrics.project_view_sidebar_refresh_failures == 0
+    assert metrics.last_project_view_sidebar_refresh_duration_s >= 0.0
+
+
 class _FocusBackend:
     def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
         del check, timeout
@@ -2229,6 +2285,26 @@ class _SnapshotBackend:
         if args[:3] == ['capture-pane', '-p', '-t']:
             return type('CP', (), {'returncode': 0, 'stdout': '', 'stderr': ''})()
         raise AssertionError(args)
+
+
+class _SidebarRefreshBackend(_SnapshotBackend):
+    def __init__(self, *, session_name: str) -> None:
+        super().__init__()
+        self.session_name = session_name
+
+    def list_panes_by_user_options(self, expected: dict[str, str]) -> list[str]:
+        if expected.get('@ccb_role') == 'sidebar':
+            return ['%90']
+        return []
+
+    def _tmux_run(self, args: list[str], *, capture=False, check=False, timeout=None):
+        if args == ['display-message', '-p', '-t', '%90', '#{session_name}']:
+            self.calls.append(list(args))
+            return type('CP', (), {'returncode': 0, 'stdout': f'{self.session_name}\n', 'stderr': ''})()
+        if args[:2] == ['send-keys', '-t']:
+            self.calls.append(list(args))
+            return type('CP', (), {'returncode': 0, 'stdout': '', 'stderr': ''})()
+        return super()._tmux_run(args, capture=capture, check=check, timeout=timeout)
 
 
 class _ProviderPromptBackend(_SnapshotBackend):

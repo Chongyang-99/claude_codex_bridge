@@ -4,12 +4,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from time import monotonic
 from typing import Any
+import threading
 
 from agents.config_loader import load_project_config
 from agents.models import AgentState
 from ccbd.api_models import JobStatus, TargetKind
 from ccbd.models import MountState
-from ccbd.project_focus.tmux import backend_for_namespace
+from ccbd.project_focus.tmux import backend_for_namespace, refresh_sidebar_panes
 from ccbd.services.dispatcher_runtime import comms_recoverability_for_job
 from ccbd.system import parse_utc_timestamp, utc_now
 from message_bureau import CallbackEdgeState
@@ -234,23 +235,39 @@ class ProjectViewService:
         self._deps = deps
         self._sequence_cache = deps.sequence_cache or ProjectViewSequenceCache()
         self._cached_response: _CachedProjectViewResponse | None = None
+        self._sidebar_refresh_lock = threading.Lock()
+        self._sidebar_refresh_pending = False
 
     def invalidate_cache(self) -> None:
         self._cached_response = None
+
+    def request_sidebar_refresh(self) -> None:
+        with self._sidebar_refresh_lock:
+            self._sidebar_refresh_pending = True
 
     def build_response(self, *, schema_version: int = PROJECT_VIEW_SCHEMA_VERSION) -> dict[str, object]:
         if int(schema_version) != PROJECT_VIEW_SCHEMA_VERSION:
             raise ValueError(f'project_view schema_version must be {PROJECT_VIEW_SCHEMA_VERSION}')
         response_started = monotonic()
+        sidebar_refresh_started = None
         ttl_ms = _project_view_ttl_ms(self._deps)
         ttl_s = max(0.0, ttl_ms / 1000.0)
         now = monotonic()
+        did_refresh_sidebar = False
         if ttl_s > 0:
             cached = self._cached_response
             if cached is not None and now < cached.expires_at:
+                did_refresh_sidebar = self._consume_sidebar_refresh_request()
+                if did_refresh_sidebar:
+                    sidebar_refresh_started = monotonic()
+                    did_refresh_sidebar = self._refresh_sidebar_panes(refresh_started=sidebar_refresh_started)
                 _record_project_view_cache_hit(self._deps.metrics, response_started=response_started)
                 return cached.response
         metrics_context = _ProjectViewMetricsContext()
+        sidebar_refresh_started = monotonic()
+        did_refresh_sidebar = self._consume_sidebar_refresh_request()
+        if did_refresh_sidebar:
+            did_refresh_sidebar = self._refresh_sidebar_panes(refresh_started=sidebar_refresh_started)
         generated_at = self._deps.clock()
         build_started = monotonic()
         view = build_project_view(self._deps, generated_at=generated_at, metrics_context=metrics_context)
@@ -274,6 +291,41 @@ class ProjectViewService:
             context=metrics_context,
         )
         return response
+
+    def _consume_sidebar_refresh_request(self) -> bool:
+        with self._sidebar_refresh_lock:
+            if not self._sidebar_refresh_pending:
+                return False
+            self._sidebar_refresh_pending = False
+            return True
+
+    def _refresh_sidebar_panes(self, *, refresh_started: float | None = None) -> bool:
+        if self._deps.namespace_controller is None:
+            return False
+        namespace = self._deps.namespace_state_store.load()
+        if namespace is None:
+            return False
+        started = refresh_started if refresh_started is not None else monotonic()
+        try:
+            backend = backend_for_namespace(self._deps.namespace_controller._backend_factory, namespace)
+            refresh_sidebar_panes(
+                backend,
+                project_id=self._deps.project_id,
+                session_name=namespace.tmux_session_name,
+            )
+            _record_project_view_sidebar_refresh(
+                self._deps.metrics,
+                refresh_started=started,
+                success=True,
+            )
+            return True
+        except Exception:
+            _record_project_view_sidebar_refresh(
+                self._deps.metrics,
+                refresh_started=started,
+                success=False,
+            )
+            return False
 
 
 def build_project_view(
@@ -367,6 +419,17 @@ def _record_project_view_cache_miss(
     metrics.last_project_view_tmux_command_count = context.tmux_command_count
     metrics.last_project_view_capture_pane_count = context.capture_pane_count
     metrics.last_project_view_store_scan_count = context.store_scan_count
+
+
+def _record_project_view_sidebar_refresh(metrics, *, refresh_started: float, success: bool) -> None:
+    if metrics is None:
+        return
+    metrics.project_view_sidebar_refreshes = int(getattr(metrics, 'project_view_sidebar_refreshes', 0) or 0) + 1
+    if not success:
+        metrics.project_view_sidebar_refresh_failures = (
+            int(getattr(metrics, 'project_view_sidebar_refresh_failures', 0) or 0) + 1
+        )
+    metrics.last_project_view_sidebar_refresh_duration_s = max(0.0, monotonic() - refresh_started)
 
 
 def _agent_view(
