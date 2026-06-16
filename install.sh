@@ -308,7 +308,9 @@ SCRIPTS_TO_LINK=(
   bin/ask
   bin/autonew
   bin/build-ccb-agent-sidebar
+  bin/build-ccb-rs-helper
   bin/ccb-agent-sidebar
+  bin/ccb-rs-helper
   bin/ccb-provider-activity-hook
   bin/ctx-transfer
   ccb
@@ -1851,6 +1853,118 @@ sidebar_helper_unavailable_error() {
   exit 1
 }
 
+is_rs_helper_wrapper() {
+  local path="$1"
+  [[ -f "$path" ]] && grep -q 'CCB_RS_HELPER_WRAPPER' "$path" 2>/dev/null
+}
+
+rs_helper_runs_on_this_host() {
+  local binary="$1"
+  [[ -x "$binary" ]] || return 1
+  "$binary" --capabilities >/dev/null 2>&1
+}
+
+require_rs_helper_rust_toolchain() {
+  local missing=()
+  if ! command -v cargo >/dev/null 2>&1; then
+    missing+=(cargo)
+  fi
+  if ! command -v rustc >/dev/null 2>&1; then
+    missing+=(rustc)
+  fi
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  echo "ERROR: Rust toolchain required to build ccb-rs-helper"
+  echo "   Missing: ${missing[*]}"
+  echo "   Rust helpers require bin/ccb-rs-helper; install Rust or use a release package with a prebuilt helper."
+  case "$(detect_platform)" in
+    macos)
+      echo "   macOS: brew install rust"
+      ;;
+    linux)
+      echo "   Debian/Ubuntu: sudo apt-get install -y cargo rustc"
+      ;;
+  esac
+  echo "   Rustup: https://rustup.rs/"
+  exit 1
+}
+
+rs_helper_unavailable_error() {
+  echo "ERROR: ccb-rs-helper binary not available"
+  echo "   Rust helper-backed paths require a runnable helper when explicitly enabled."
+  echo "   Install Rust and re-run install.sh, or install an official release package with a prebuilt helper."
+  exit 1
+}
+
+install_prebuilt_rs_helper() {
+  local binary="$1"
+  local target="$2"
+  if ! rs_helper_runs_on_this_host "$binary"; then
+    return 1
+  fi
+  cp -f "$binary" "$target"
+  chmod +x "$target" 2>/dev/null || true
+  if ! rs_helper_runs_on_this_host "$target"; then
+    rm -f "$target"
+    return 1
+  fi
+  echo "Installed prebuilt ccb-rs-helper"
+  return 0
+}
+
+build_rs_helper_if_possible() {
+  local asset_root crate_dir binary target
+  asset_root="$(resolve_install_asset_root)"
+  crate_dir="$asset_root/tools/ccb-rs-helper"
+  binary="$crate_dir/target/release/ccb-rs-helper"
+  target="$asset_root/bin/ccb-rs-helper"
+
+  if [[ ! -f "$crate_dir/Cargo.toml" ]]; then
+    if [[ -x "$target" ]] && ! is_rs_helper_wrapper "$target" && rs_helper_runs_on_this_host "$target"; then
+      return
+    fi
+    rs_helper_unavailable_error
+  fi
+
+  if install_uses_live_source; then
+    if [[ -x "$binary" ]] && rs_helper_runs_on_this_host "$binary"; then
+      return
+    fi
+    require_rs_helper_rust_toolchain
+    echo "Building ccb-rs-helper..."
+    if cargo build --release --manifest-path "$crate_dir/Cargo.toml" >/dev/null 2>&1 && [[ -x "$binary" ]]; then
+      echo "Built ccb-rs-helper"
+      return
+    fi
+    rs_helper_unavailable_error
+  fi
+
+  mkdir -p "$asset_root/bin"
+  if [[ -x "$target" ]] && ! is_rs_helper_wrapper "$target" && rs_helper_runs_on_this_host "$target"; then
+    return
+  fi
+
+  if [[ -x "$binary" ]] && install_prebuilt_rs_helper "$binary" "$target"; then
+    return
+  fi
+
+  require_rs_helper_rust_toolchain
+  echo "Building ccb-rs-helper..."
+  if cargo build --release --manifest-path "$crate_dir/Cargo.toml" >/dev/null 2>&1 && [[ -x "$binary" ]]; then
+    cp -f "$binary" "$target"
+    chmod +x "$target" 2>/dev/null || true
+    if rs_helper_runs_on_this_host "$target"; then
+      echo "Built ccb-rs-helper"
+      return
+    fi
+    rm -f "$target"
+  fi
+
+  rs_helper_unavailable_error
+}
+
 install_prebuilt_sidebar_helper() {
   local binary="$1"
   local target="$2"
@@ -1929,7 +2043,7 @@ install_bin_links() {
     local target_path="$target_root/$path"
     if ! install_entrypoint_executable "$target_path" "$BIN_DIR/$name"; then
       case "$path" in
-        bin/build-ccb-agent-sidebar|bin/ccb-agent-sidebar)
+        bin/build-ccb-agent-sidebar|bin/ccb-agent-sidebar|bin/build-ccb-rs-helper|bin/ccb-rs-helper)
           ;;
         *)
           return 1
@@ -2943,6 +3057,7 @@ install_all() {
     write_install_metadata
   fi
   build_sidebar_helper_if_possible
+  build_rs_helper_if_possible
   install_bin_links
   verify_installed_entrypoints
   ensure_path_configured

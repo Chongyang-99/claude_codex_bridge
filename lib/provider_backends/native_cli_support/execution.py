@@ -583,6 +583,44 @@ def _terminal(
 
 
 def observe_jsonl_output(path: Path) -> NativeCliObservation:
+    helper = _observe_jsonl_output_with_rust_helper(path)
+    if helper is not None:
+        return helper
+    return _observe_jsonl_output_python(path)
+
+
+def _observe_jsonl_output_with_rust_helper(path: Path) -> NativeCliObservation | None:
+    mode = str(os.environ.get("CCB_RUST_NATIVE_OUTPUT") or "").strip().lower()
+    global_mode = str(os.environ.get("CCB_RUST_HELPERS") or "").strip().lower()
+    if not mode and global_mode not in {"0", "false", "no", "off", "disabled"}:
+        mode = "auto"
+    if mode not in {"1", "auto", "required"}:
+        return None
+    required = mode == "required"
+    try:
+        from rust_helpers_native_output import observe_native_jsonl_output
+    except Exception as exc:
+        if required:
+            raise RuntimeError(
+                "native.output.observe requires ccb-rs-helper; no Python fallback is available for this path"
+            ) from exc
+        return None
+    result = observe_native_jsonl_output(path)
+    value = result.value
+    if not isinstance(value, dict):
+        return None
+    return NativeCliObservation(
+        text=str(value.get("text") or ""),
+        finished=bool(value.get("finished")),
+        finish_reason=str(value.get("finish_reason") or ""),
+        turn_ref=value.get("turn_ref") if isinstance(value.get("turn_ref"), str) else None,
+        completed_at=value.get("completed_at"),
+        error=str(value.get("error") or ""),
+        intermediate=bool(value.get("intermediate")),
+    )
+
+
+def _observe_jsonl_output_python(path: Path) -> NativeCliObservation:
     if not path or not path.is_file():
         return NativeCliObservation()
     chunks: list[str] = []

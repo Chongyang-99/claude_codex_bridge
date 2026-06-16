@@ -85,8 +85,8 @@ jobs:
           export TERM=xterm-256color
           python -m pytest -q -m provider_blackbox test/test_v2_phase2_entrypoint.py
 
-  rust-sidebar:
-    name: Rust sidebar
+  rust-helpers:
+    name: Rust helpers
     runs-on: ubuntu-latest
 
     steps:
@@ -99,8 +99,14 @@ jobs:
       - name: Run sidebar tests
         run: cargo test --manifest-path tools/ccb-agent-sidebar/Cargo.toml
 
+      - name: Run ccb-rs-helper tests
+        run: cargo test --manifest-path tools/ccb-rs-helper/Cargo.toml
+
       - name: Build sidebar binary
         run: bin/build-ccb-agent-sidebar
+
+      - name: Build ccb-rs-helper binary
+        run: bin/build-ccb-rs-helper
 
   macos-install-smoke:
     name: macOS install smoke
@@ -140,8 +146,10 @@ jobs:
             test/test_cli_management_update.py \
             test/test_cli_startup_update.py
 
-      - name: Build macOS sidebar helper for release install smoke
-        run: bin/build-ccb-agent-sidebar
+      - name: Build macOS Rust helpers for release install smoke
+        run: |
+          bin/build-ccb-agent-sidebar
+          bin/build-ccb-rs-helper
 
       - name: Smoke macOS release install
         shell: bash
@@ -201,6 +209,8 @@ jobs:
           test -x "$smoke_root/bin/ask"
           test -x "$smoke_root/bin/autonew"
           test -x "$smoke_root/bin/ctx-transfer"
+          test -x "$smoke_root/bin/ccb-rs-helper"
+          "$smoke_root/bin/ccb-rs-helper" --capabilities | grep -F 'native.output.observe'
           "$smoke_root/install/.venv/bin/python" -c 'import watchdog'
 
       - name: Smoke macOS release packaging
@@ -214,9 +224,13 @@ jobs:
           smoke_extract="$(mktemp -d)"
           tar -xzf dist-macos-smoke/ccb-macos-universal.tar.gz -C "$smoke_extract"
           helper="$smoke_extract/ccb-macos-universal/bin/ccb-agent-sidebar"
+          rs_helper="$smoke_extract/ccb-macos-universal/bin/ccb-rs-helper"
           file "$helper" | tee "$smoke_extract/sidebar-file.txt"
+          file "$rs_helper" | tee "$smoke_extract/rs-helper-file.txt"
           grep -F 'universal binary' "$smoke_extract/sidebar-file.txt"
+          grep -F 'universal binary' "$smoke_extract/rs-helper-file.txt"
           "$helper" --help >/dev/null 2>&1 || test "$?" -eq 2
+          "$rs_helper" --capabilities | grep -F 'native.output.observe'
 
   test-wsl:
     name: WSL / Ubuntu 22.04
