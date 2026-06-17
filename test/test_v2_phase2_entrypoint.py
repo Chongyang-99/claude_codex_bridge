@@ -157,8 +157,10 @@ def _run_phase2_local(args: list[str], *, cwd: Path, start_app: CcbdApp | None =
 def _phase2_start_against_app(app: CcbdApp):
     # In-process app tests own the daemon lifecycle; starting keeper here races the fixture.
     def _start(context, command, *, terminal_size=None):
+        from cli.services.daemon_runtime.policy import STARTUP_TRANSACTION_TIMEOUT_S
+
         assert context.project.project_root == app.project_root
-        payload = CcbdClient(app.paths.ccbd_socket_path).start(
+        payload = CcbdClient(app.paths.ccbd_socket_path, timeout_s=STARTUP_TRANSACTION_TIMEOUT_S).start(
             agent_names=command.agent_names,
             restore=command.restore,
             auto_permission=command.auto_permission,
