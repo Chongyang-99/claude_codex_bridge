@@ -1055,6 +1055,55 @@ def test_render_trace_keeps_line_protocol_shape() -> None:
     assert 'job: id=job_123 agent=codex provider=codex status=completed submission=None created=2026-03-30T00:00:00Z updated=2026-03-30T00:00:10Z' in lines
 
 
+def test_render_trace_marks_empty_reply_artifact_as_uncaptured() -> None:
+    payload = {
+        'target': 'job_123',
+        'resolved_kind': 'job',
+        'submission_id': None,
+        'message_id': 'msg_1',
+        'attempt_id': 'att_1',
+        'reply_id': None,
+        'job_id': 'job_123',
+        'message_count': 0,
+        'attempt_count': 0,
+        'reply_count': 1,
+        'event_count': 0,
+        'job_count': 0,
+        'submission': None,
+        'messages': [],
+        'attempts': [],
+        'replies': [
+            {
+                'reply_id': 'rep_1',
+                'message_id': 'msg_1',
+                'attempt_id': 'att_1',
+                'agent_name': 'sl1_ki',
+                'terminal_status': 'failed',
+                'reply_size': 0,
+                'notice': False,
+                'notice_kind': None,
+                'reason': 'kimi_native_turn_timeout',
+                'finished_at': '2026-03-30T00:05:00Z',
+                'reply_preview': '',
+                'artifact_reply_forced': True,
+                'reply_artifact_bytes': 0,
+                'reply_artifact_path': '/tmp/reply.txt',
+                'no_captured_reply': True,
+            }
+        ],
+        'events': [],
+        'jobs': [],
+    }
+
+    lines = render_trace(payload)
+
+    assert (
+        'reply: id=rep_1 message=msg_1 attempt=att_1 agent=sl1_ki terminal=failed size=0 '
+        'notice=false kind=None reason=kimi_native_turn_timeout finished=2026-03-30T00:05:00Z '
+        'preview= artifact_forced=true artifact_bytes=0 no_captured_reply=true artifact_path=/tmp/reply.txt'
+    ) in lines
+
+
 def test_render_inbox_and_ack_include_reply_delivery_details() -> None:
     inbox_payload = {
         'target': 'claude',

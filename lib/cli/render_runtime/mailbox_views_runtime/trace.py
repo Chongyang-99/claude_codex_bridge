@@ -82,6 +82,7 @@ def _reply_line(reply) -> str:
         f'notice={str(bool(reply.get("notice"))).lower()} kind={reply.get("notice_kind")} '
         f'reason={reply.get("reason")} finished={reply.get("finished_at")} '
         f'preview={reply.get("reply_preview")}'
+        f'{_reply_artifact_suffix(reply)}'
     )
 
 
@@ -102,6 +103,19 @@ def _job_line(job) -> str:
         f'id={job.get("job_id")} agent={job.get("agent_name")} provider={job.get("provider")} '
         f'status={job.get("status")} submission={job.get("submission_id")} '
         f'created={job.get("created_at")} updated={job.get("updated_at")}'
+    )
+
+
+def _reply_artifact_suffix(reply) -> str:
+    artifact = reply.get('reply_artifact')
+    has_artifact = isinstance(artifact, Mapping) or reply.get('reply_artifact_path') is not None
+    if not has_artifact:
+        return ''
+    return (
+        f' artifact_forced={str(bool(reply.get("artifact_reply_forced"))).lower()}'
+        f' artifact_bytes={reply.get("reply_artifact_bytes")}'
+        f' no_captured_reply={str(bool(reply.get("no_captured_reply"))).lower()}'
+        f' artifact_path={reply.get("reply_artifact_path")}'
     )
 
 

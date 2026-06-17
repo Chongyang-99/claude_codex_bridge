@@ -491,6 +491,15 @@ def test_dispatcher_describes_empty_forced_reply_artifact_as_uncaptured_reply(tm
     assert artifact_path.exists()
     assert artifact_path.read_text(encoding='utf-8') == ''
 
+    trace = dispatcher.trace(job_id)
+    trace_reply = trace['replies'][0]
+    assert trace_reply['reply_artifact'] == artifact
+    assert trace_reply['artifact_reply_forced'] is True
+    assert trace_reply['empty_reply_artifact'] is True
+    assert trace_reply['no_captured_reply'] is True
+    assert trace_reply['total_secs'] == 300.1
+    assert trace_reply['captured_reply_chars'] == 0
+
 
 def test_dispatcher_routes_reply_into_registered_caller_mailbox(tmp_path: Path) -> None:
     project_root = tmp_path / 'repo-registered-caller'

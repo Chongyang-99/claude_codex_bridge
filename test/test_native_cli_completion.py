@@ -295,6 +295,39 @@ def test_kimi_completed_empty_reply_is_incomplete(monkeypatch, tmp_path: Path) -
     assert result.decision.diagnostics["empty_reply"] is True
 
 
+def test_kimi_native_turn_timeout_uses_env_override(monkeypatch, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    work_dir = tmp_path / "project"
+    work_dir.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("CCB_KIMI_NATIVE_TURN_TIMEOUT_S", "10")
+    wire = kimi_sessions_root(work_dir, home=home) / "session-1" / "wire.jsonl"
+    _write_jsonl(
+        wire,
+        [
+            {
+                "timestamp": "2026-06-13T00:00:01Z",
+                "message": {
+                    "type": "TurnBegin",
+                    "payload": {"user_input": [{"type": "text", "text": "CCB_REQ_ID: job_native123"}]},
+                },
+            },
+        ],
+    )
+
+    result = KimiProviderAdapter().poll(
+        _submission(provider="kimi", source_kind=CompletionSourceKind.SESSION_EVENT_LOG, work_dir=work_dir),
+        now="2026-06-13T00:00:11Z",
+    )
+
+    assert result is not None
+    assert result.decision is not None
+    assert result.decision.status is CompletionStatus.FAILED
+    assert result.decision.reason == "kimi_native_turn_timeout"
+    assert result.decision.diagnostics["total_secs"] == 11.0
+    assert result.decision.diagnostics["max_wait_secs"] == 10.0
+
+
 def test_kimi_observes_source_style_turn_events(monkeypatch, tmp_path: Path) -> None:
     home = tmp_path / "home"
     work_dir = tmp_path / "project"
