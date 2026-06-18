@@ -46,6 +46,19 @@ def _write_project_memory(project_root: Path, text: str) -> None:
     path.write_text(text, encoding='utf-8')
 
 
+def _latest_agent_event(layout: PathLayout, agent_name: str, event_type: str) -> dict:
+    events_path = layout.agent_events_path(agent_name)
+    events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding='utf-8').splitlines()
+        if line.strip()
+    ]
+    for event in reversed(events):
+        if event.get('event_type') == event_type:
+            return event
+    raise AssertionError(f'{event_type} event not found: {events}')
+
+
 def _write_codex_plugin_source(
     home: Path,
     *,
@@ -722,14 +735,9 @@ def test_materialize_codex_profile_migrates_legacy_profile_runtime_home(tmp_path
     assert f'CODEX_SESSION_ROOT={runtime_home / "sessions"}' in payload['start_cmd']
     assert str(legacy_home) not in payload['codex_start_cmd']
     assert f'UNCHANGED={legacy_home}-suffix' in payload['start_cmd']
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'migrated'
-    assert events[-1]['reason'] == 'legacy_profile_runtime_home_migrated'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'migrated'
+    assert event['reason'] == 'legacy_profile_runtime_home_migrated'
 
 
 def test_materialize_codex_profile_migration_respects_inherit_auth_false(tmp_path: Path, monkeypatch) -> None:
@@ -829,14 +837,9 @@ def test_materialize_codex_profile_does_not_migrate_when_session_authority_is_ma
     runtime_home = Path(profile.runtime_home or '')
     assert legacy_session.is_file()
     assert not (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').exists()
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'skipped'
-    assert events[-1]['reason'] == 'session_authority_preflight_failed'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'skipped'
+    assert event['reason'] == 'session_authority_preflight_failed'
     assert session_file.read_text(encoding='utf-8') == '{not json}\n'
 
 
@@ -886,14 +889,9 @@ def test_materialize_codex_profile_migrates_legacy_sessions_with_unrelated_tmp_s
     assert not legacy_session.exists()
     assert (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').is_file()
     assert (tmp_dir / 'linked-outside').is_symlink()
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'migrated'
-    assert events[-1]['reason'] == 'legacy_profile_runtime_home_migrated'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'migrated'
+    assert event['reason'] == 'legacy_profile_runtime_home_migrated'
 
 
 def test_materialize_codex_profile_does_not_migrate_session_material_with_symlink(
@@ -940,14 +938,9 @@ def test_materialize_codex_profile_does_not_migrate_session_material_with_symlin
     runtime_home = Path(profile.runtime_home or '')
     assert legacy_session.is_file()
     assert not (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').exists()
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'skipped'
-    assert events[-1]['reason'] == 'legacy_home_contains_symlink'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'skipped'
+    assert event['reason'] == 'legacy_home_contains_symlink'
 
 
 def test_materialize_codex_profile_does_not_migrate_when_agent_runtime_is_active(
@@ -993,14 +986,9 @@ def test_materialize_codex_profile_does_not_migrate_when_agent_runtime_is_active
     runtime_home = Path(profile.runtime_home or '')
     assert legacy_session.is_file()
     assert not (runtime_home / 'sessions' / '2026' / '05' / '10' / 'legacy.jsonl').exists()
-    events = [
-        json.loads(line)
-        for line in layout.agent_events_path('agent1').read_text(encoding='utf-8').splitlines()
-        if line.strip()
-    ]
-    assert events[-1]['event_type'] == 'codex_profile_migration'
-    assert events[-1]['status'] == 'skipped'
-    assert events[-1]['reason'] == 'agent_runtime_active'
+    event = _latest_agent_event(layout, 'agent1', 'codex_profile_migration')
+    assert event['status'] == 'skipped'
+    assert event['reason'] == 'agent_runtime_active'
 
 
 def test_materialize_codex_profile_migrates_with_stale_idle_runtime_record(
