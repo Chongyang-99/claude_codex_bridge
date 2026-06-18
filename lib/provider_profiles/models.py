@@ -14,6 +14,7 @@ class ProviderProfileSpec:
     home: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
+    plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
     inherit_api: bool = True
     inherit_auth: bool = True
     inherit_config: bool = True
@@ -30,6 +31,7 @@ class ProviderProfileSpec:
         object.__setattr__(self, 'home', home or None)
         object.__setattr__(self, 'env', {str(key): str(value) for key, value in dict(self.env).items()})
         object.__setattr__(self, 'mcp_servers', _normalize_mcp_servers(self.mcp_servers))
+        object.__setattr__(self, 'plugins', _normalize_plugins(self.plugins))
 
     def to_record(self) -> dict[str, Any]:
         payload = {
@@ -45,6 +47,8 @@ class ProviderProfileSpec:
         }
         if self.mcp_servers:
             payload['mcp_servers'] = _clone_jsonish_mapping(self.mcp_servers)
+        if self.plugins:
+            payload['plugins'] = _clone_jsonish_mapping(self.plugins)
         return payload
 
 
@@ -57,6 +61,7 @@ class ResolvedProviderProfile:
     runtime_home: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     mcp_servers: dict[str, dict[str, Any]] = field(default_factory=dict)
+    plugins: dict[str, dict[str, Any]] = field(default_factory=dict)
     inherit_api: bool = True
     inherit_auth: bool = True
     inherit_config: bool = True
@@ -81,6 +86,7 @@ class ResolvedProviderProfile:
         object.__setattr__(self, 'runtime_home', _normalize_path_text(self.runtime_home))
         object.__setattr__(self, 'env', {str(key): str(value) for key, value in dict(self.env).items()})
         object.__setattr__(self, 'mcp_servers', _normalize_mcp_servers(self.mcp_servers))
+        object.__setattr__(self, 'plugins', _normalize_plugins(self.plugins))
 
     @property
     def profile_root_path(self) -> Path | None:
@@ -111,6 +117,8 @@ class ResolvedProviderProfile:
         }
         if self.mcp_servers:
             payload['mcp_servers'] = _clone_jsonish_mapping(self.mcp_servers)
+        if self.plugins:
+            payload['plugins'] = _clone_jsonish_mapping(self.plugins)
         return payload
 
     @classmethod
@@ -123,6 +131,7 @@ class ResolvedProviderProfile:
             runtime_home=record.get('runtime_home'),
             env=dict(record.get('env') or {}),
             mcp_servers=dict(record.get('mcp_servers') or {}),
+            plugins=dict(record.get('plugins') or {}),
             inherit_api=bool(record.get('inherit_api', True)),
             inherit_auth=bool(record.get('inherit_auth', True)),
             inherit_config=bool(record.get('inherit_config', True)),
@@ -156,6 +165,21 @@ def _normalize_mcp_servers(value: object) -> dict[str, dict[str, Any]]:
         if not name or not isinstance(raw_payload, dict):
             continue
         normalized[name] = _clone_jsonish_mapping(raw_payload)
+    return normalized
+
+
+def _normalize_plugins(value: object) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, dict[str, Any]] = {}
+    for raw_name, raw_payload in value.items():
+        name = str(raw_name or '').strip()
+        if not name:
+            continue
+        if isinstance(raw_payload, dict):
+            normalized[name] = _clone_jsonish_mapping(raw_payload)
+        else:
+            normalized[name] = {'enabled': bool(raw_payload)}
     return normalized
 
 

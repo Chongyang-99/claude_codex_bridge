@@ -525,6 +525,12 @@ args = ["serve", "--mcp"]
 
 [agents.agent1.provider_profile.mcp_servers.hindsight.env]
 HINDSIGHT_AGENT_NAME = "agent1"
+
+[agents.agent1.provider_profile.plugins."github@openai-curated"]
+enabled = false
+
+[agents.agent1.provider_profile.plugins."agentmemory@agentmemory"]
+enabled = true
 """,
     )
 
@@ -542,6 +548,10 @@ HINDSIGHT_AGENT_NAME = "agent1"
     assert spec.provider_profile.mcp_servers == {
         'codegraph': {'command': '/usr/local/bin/codegraph', 'args': ['serve', '--mcp']},
         'hindsight': {'env': {'HINDSIGHT_AGENT_NAME': 'agent1'}},
+    }
+    assert spec.provider_profile.plugins == {
+        'github@openai-curated': {'enabled': False},
+        'agentmemory@agentmemory': {'enabled': True},
     }
 
 

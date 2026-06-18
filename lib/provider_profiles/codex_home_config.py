@@ -54,10 +54,26 @@ _CODEX_ACTIVITY_HOOK_EVENTS = (
     'Stop',
 )
 _CODEX_ACTIVITY_HOOK_TIMEOUT_S = 5
-_CODEX_DEFAULT_INHERITED_HOOK_EVENTS = frozenset({'SessionStart', 'UserPromptSubmit', 'Stop'})
-_CODEX_DEFAULT_INHERITED_COMMAND_HOOK_MARKERS = ('.hindsight/codex/scripts/',)
+_CODEX_DEFAULT_INHERITED_HOOK_EVENTS = frozenset(
+    {
+        'SessionStart',
+        'UserPromptSubmit',
+        'PreToolUse',
+        'PostToolUse',
+        'PreCompact',
+        'PostCompact',
+        'Stop',
+    }
+)
+_CODEX_CONFIGURED_MARKER_DEFAULT_HOOK_EVENTS = frozenset({'SessionStart', 'UserPromptSubmit', 'Stop'})
+_CODEX_DEFAULT_INHERITED_COMMAND_HOOK_MARKERS = (
+    '.hindsight/codex/scripts/',
+    'oh-my-codex/dist/scripts/codex-native-hook.js',
+    'omx-native-hook-windows-shim.ps1',
+)
 _CODEX_INHERITED_HOOK_EVENTS_ENV = 'CCB_CODEX_INHERITED_HOOK_EVENTS'
 _CODEX_INHERITED_COMMAND_HOOK_MARKERS_ENV = 'CCB_CODEX_INHERITED_COMMAND_HOOK_MARKERS'
+_CODEX_COMMAND_HOOK_DEFAULT_TIMEOUT_S = 600
 _TOML_TABLE_HEADER_RE = re.compile(r'^\s*\[{1,2}[^\]]+\]{1,2}\s*(?:#.*)?$')
 
 
@@ -103,7 +119,7 @@ def materialize_codex_home_config(
     elif _inherits_config(profile) and _inherits_api(profile) and _source_config_valid(source_config):
         if source_config.is_file():
             payload = _read_source_config_payload(source_config)
-            if payload or _profile_mcp_servers(profile):
+            if payload or _profile_mcp_servers(profile) or _profile_plugins(profile):
                 _write_managed_codex_config(
                     target_config,
                     payload,
@@ -285,6 +301,7 @@ def _write_codex_api_authority_config(
 ) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = _managed_codex_config_payload(source_config, authority=authority)
+    _merge_codex_plugin_overrides(payload, profile=profile)
     _merge_codex_mcp_server_overrides(payload, profile=profile)
     _trust_managed_codex_project_paths(payload, project_root=project_root, workspace_path=workspace_path)
     target.write_text(_render_toml_document(payload), encoding='utf-8')
@@ -316,6 +333,7 @@ def _write_managed_codex_config(
     target.parent.mkdir(parents=True, exist_ok=True)
     sanitized = _disable_interactive_migration_features(payload)
     _strip_unmanaged_hook_config(sanitized)
+    _merge_codex_plugin_overrides(sanitized, profile=profile)
     _merge_codex_mcp_server_overrides(sanitized, profile=profile)
     _trust_managed_codex_project_paths(sanitized, project_root=project_root, workspace_path=workspace_path)
     target.write_text(_render_toml_document(sanitized), encoding='utf-8')
@@ -509,6 +527,61 @@ def _merge_codex_mcp_server_overrides(payload: dict[str, object], *, profile) ->
     for name, server in overrides.items():
         existing[name] = _clone_mapping(server)
     payload['mcp_servers'] = existing
+
+
+def _merge_codex_plugin_overrides(payload: dict[str, object], *, profile) -> None:
+    overrides = _profile_plugins(profile)
+    if not overrides:
+        return
+
+    raw_existing = payload.get('plugins')
+    existing = _clone_mapping(raw_existing) if isinstance(raw_existing, dict) else {}
+    for name, plugin in overrides.items():
+        merged = _clone_mapping(existing.get(name)) if isinstance(existing.get(name), dict) else {}
+        for key, value in plugin.items():
+            merged[str(key)] = _clone_payload(value)
+        existing[name] = merged
+    payload['plugins'] = existing
+
+
+def _profile_plugins(profile) -> dict[str, dict[str, object]]:
+    env_overrides = _profile_plugin_overrides_from_env(profile)
+    raw = getattr(profile, 'plugins', {}) if profile is not None else {}
+    if not isinstance(raw, dict):
+        return env_overrides
+    normalized: dict[str, dict[str, object]] = dict(env_overrides)
+    for raw_name, raw_plugin in raw.items():
+        name = str(raw_name or '').strip()
+        if not name:
+            continue
+        if isinstance(raw_plugin, dict):
+            normalized[name] = _clone_mapping(raw_plugin)
+        else:
+            normalized[name] = {'enabled': bool(raw_plugin)}
+    return normalized
+
+
+def _profile_plugin_overrides_from_env(profile) -> dict[str, dict[str, object]]:
+    env = _profile_env(profile)
+    raw = env.get('CCB_CODEX_PLUGIN_OVERRIDES_JSON') or env.get('CCB_CODEX_PLUGIN_OVERRIDES') or ''
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    normalized: dict[str, dict[str, object]] = {}
+    for raw_name, raw_plugin in payload.items():
+        name = str(raw_name or '').strip()
+        if not name:
+            continue
+        if isinstance(raw_plugin, dict):
+            normalized[name] = _clone_mapping(raw_plugin)
+        else:
+            normalized[name] = {'enabled': bool(raw_plugin)}
+    return normalized
 
 
 def _profile_mcp_servers(profile) -> dict[str, dict[str, object]]:
@@ -892,9 +965,15 @@ def _codex_activity_hook_events(command: str) -> dict[str, list[dict[str, object
 def _allowed_inherited_codex_hooks(source_home: Path | None) -> dict[str, list[dict[str, object]]]:
     if source_home is None:
         return {}
-    policy_events = _codex_inherited_hook_events()
-    command_markers = _codex_inherited_command_hook_markers()
-    if not policy_events or not command_markers:
+    configured_events = _split_codex_inherited_hook_env(os.environ.get(_CODEX_INHERITED_HOOK_EVENTS_ENV))
+    default_marker_events = frozenset([*_CODEX_DEFAULT_INHERITED_HOOK_EVENTS, *configured_events])
+    configured_marker_events = frozenset([*_CODEX_CONFIGURED_MARKER_DEFAULT_HOOK_EVENTS, *configured_events])
+    policy_events = frozenset([*default_marker_events, *configured_marker_events])
+    default_command_markers = _normalize_codex_command_hook_markers(_CODEX_DEFAULT_INHERITED_COMMAND_HOOK_MARKERS)
+    configured_command_markers = _normalize_codex_command_hook_markers(
+        _split_codex_inherited_hook_env(os.environ.get(_CODEX_INHERITED_COMMAND_HOOK_MARKERS_ENV))
+    )
+    if not policy_events or (not default_command_markers and not configured_command_markers):
         return {}
     hooks_path = Path(source_home).expanduser() / 'hooks.json'
     try:
@@ -912,7 +991,14 @@ def _allowed_inherited_codex_hooks(source_home: Path | None) -> dict[str, list[d
             continue
         groups: list[dict[str, object]] = []
         for raw_group in raw_groups:
-            group = _allowed_inherited_codex_hook_group(raw_group, command_markers=command_markers)
+            group = _allowed_inherited_codex_hook_group(
+                raw_group,
+                event_name=event,
+                default_marker_events=default_marker_events,
+                configured_marker_events=configured_marker_events,
+                default_command_markers=default_command_markers,
+                configured_command_markers=configured_command_markers,
+            )
             if group is not None:
                 groups.append(group)
         if groups:
@@ -927,7 +1013,10 @@ def _codex_inherited_hook_events() -> frozenset[str]:
 
 def _codex_inherited_command_hook_markers() -> tuple[str, ...]:
     configured = _split_codex_inherited_hook_env(os.environ.get(_CODEX_INHERITED_COMMAND_HOOK_MARKERS_ENV))
-    markers = [*_CODEX_DEFAULT_INHERITED_COMMAND_HOOK_MARKERS, *configured]
+    return _normalize_codex_command_hook_markers([*_CODEX_DEFAULT_INHERITED_COMMAND_HOOK_MARKERS, *configured])
+
+
+def _normalize_codex_command_hook_markers(markers: object) -> tuple[str, ...]:
     normalized: list[str] = []
     seen: set[str] = set()
     for marker in markers:
@@ -950,7 +1039,11 @@ def _split_codex_inherited_hook_env(value: object) -> tuple[str, ...]:
 def _allowed_inherited_codex_hook_group(
     raw_group: object,
     *,
-    command_markers: tuple[str, ...],
+    event_name: str,
+    default_marker_events: frozenset[str],
+    configured_marker_events: frozenset[str],
+    default_command_markers: tuple[str, ...],
+    configured_command_markers: tuple[str, ...],
 ) -> dict[str, object] | None:
     if not isinstance(raw_group, dict):
         return None
@@ -959,7 +1052,14 @@ def _allowed_inherited_codex_hook_group(
         return None
     handlers: list[dict[str, object]] = []
     for raw_handler in raw_handlers:
-        handler = _allowed_inherited_codex_hook_handler(raw_handler, command_markers=command_markers)
+        handler = _allowed_inherited_codex_hook_handler(
+            raw_handler,
+            event_name=event_name,
+            default_marker_events=default_marker_events,
+            configured_marker_events=configured_marker_events,
+            default_command_markers=default_command_markers,
+            configured_command_markers=configured_command_markers,
+        )
         if handler is None:
             return None
         handlers.append(handler)
@@ -974,7 +1074,11 @@ def _allowed_inherited_codex_hook_group(
 def _allowed_inherited_codex_hook_handler(
     raw_handler: object,
     *,
-    command_markers: tuple[str, ...],
+    event_name: str,
+    default_marker_events: frozenset[str],
+    configured_marker_events: frozenset[str],
+    default_command_markers: tuple[str, ...],
+    configured_command_markers: tuple[str, ...],
 ) -> dict[str, object] | None:
     if not isinstance(raw_handler, dict):
         return None
@@ -982,7 +1086,13 @@ def _allowed_inherited_codex_hook_handler(
         return None
     command = str(raw_handler.get('command') or '')
     normalized_command = command.replace('\\', '/')
-    if not any(marker in normalized_command for marker in command_markers):
+    matches_default_marker = event_name in default_marker_events and any(
+        marker in normalized_command for marker in default_command_markers
+    )
+    matches_configured_marker = event_name in configured_marker_events and any(
+        marker in normalized_command for marker in configured_command_markers
+    )
+    if not matches_default_marker and not matches_configured_marker:
         return None
     handler: dict[str, object] = {
         'type': 'command',
@@ -1009,14 +1119,14 @@ def _merge_codex_hook_groups(
         for event, groups in base.items()
     }
     seen_commands = {
-        _codex_hook_group_command_identity(group)
-        for groups in merged.values()
+        (event, _codex_hook_group_command_identity(group))
+        for event, groups in merged.items()
         for group in groups
     }
     for event, groups in inherited.items():
         event_groups = merged.setdefault(event, [])
         for group in groups:
-            identity = _codex_hook_group_command_identity(group)
+            identity = (event, _codex_hook_group_command_identity(group))
             if identity in seen_commands:
                 continue
             event_groups.append(_clone_mapping(group))
@@ -1105,7 +1215,7 @@ def _codex_command_hook_hash(event_label: str, group: dict[str, object], handler
     normalized_handler = {
         'type': 'command',
         'command': str(handler.get('command') or ''),
-        'timeout': int(handler.get('timeout') or _CODEX_ACTIVITY_HOOK_TIMEOUT_S),
+        'timeout': int(handler.get('timeout') or _CODEX_COMMAND_HOOK_DEFAULT_TIMEOUT_S),
         'async': bool(handler.get('async', False)),
     }
     if handler.get('statusMessage') is not None:

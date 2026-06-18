@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -695,6 +696,93 @@ def test_prepare_provider_workspace_preserves_allowed_codex_hindsight_hooks(
     state = config['hooks']['state']
     assert any(key.endswith(':user_prompt_submit:1:0') for key in state)
     assert len(state) == 9
+
+
+def test_prepare_provider_workspace_preserves_omx_native_codex_hooks(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    workspace = project_root / 'workspace'
+    system_home = tmp_path / 'system-home'
+    system_codex = system_home / '.codex'
+    system_codex.mkdir(parents=True, exist_ok=True)
+    (system_codex / 'AGENTS.md').write_text('system codex memory\n', encoding='utf-8')
+    (system_codex / 'config.toml').write_text('model = "gpt-test"\n', encoding='utf-8')
+    omx_command = '"/usr/bin/node" "/usr/lib/node_modules/oh-my-codex/dist/scripts/codex-native-hook.js"'
+    (system_codex / 'hooks.json').write_text(
+        json.dumps(
+            {
+                'hooks': {
+                    'SessionStart': [{'matcher': 'startup|resume|clear', 'hooks': [{'type': 'command', 'command': omx_command}]}],
+                    'UserPromptSubmit': [{'hooks': [{'type': 'command', 'command': omx_command}]}],
+                    'PreToolUse': [{'hooks': [{'type': 'command', 'command': omx_command}]}],
+                    'PostToolUse': [{'hooks': [{'type': 'command', 'command': omx_command}]}],
+                    'PreCompact': [{'hooks': [{'type': 'command', 'command': omx_command}]}],
+                    'PostCompact': [{'hooks': [{'type': 'command', 'command': omx_command}]}],
+                    'Stop': [{'hooks': [{'type': 'command', 'command': omx_command, 'timeout': 30}]}],
+                    'Notification': [{'hooks': [{'type': 'command', 'command': omx_command}]}],
+                }
+            },
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
+    project_root.mkdir(parents=True, exist_ok=True)
+    _write_project_memory(project_root, 'shared ccb memory\n')
+    monkeypatch.setenv('CODEX_HOME', str(system_codex))
+    layout = PathLayout(project_root)
+    runtime_dir = layout.agent_provider_runtime_dir('agent1', 'codex')
+
+    prepare_provider_workspace(
+        layout=layout,
+        spec=_spec('agent1', provider='codex'),
+        workspace_path=workspace,
+        completion_dir=runtime_dir / 'completion',
+        agent_name='agent1',
+        refresh_profile=True,
+    )
+
+    codex_home = project_root / '.ccb' / 'agents' / 'agent1' / 'provider-state' / 'codex' / 'home'
+    hooks_payload = json.loads((codex_home / 'hooks.json').read_text(encoding='utf-8'))
+    all_commands = [
+        str(hook.get('command') or '')
+        for commands in hooks_payload['hooks'].values()
+        for group in commands
+        for hook in group.get('hooks', [])
+    ]
+
+    assert any('ccb-provider-activity-hook' in command for command in all_commands)
+    assert sum('codex-native-hook.js' in command for command in all_commands) == 7
+    assert 'Notification' not in hooks_payload['hooks']
+
+    config = tomllib.loads((codex_home / 'config.toml').read_text(encoding='utf-8'))
+    state = config['hooks']['state']
+    hooks_path = codex_home / 'hooks.json'
+    assert f'{hooks_path}:session_start:1:0' in state
+    assert f'{hooks_path}:user_prompt_submit:1:0' in state
+    assert f'{hooks_path}:pre_tool_use:1:0' in state
+    assert f'{hooks_path}:post_tool_use:1:0' in state
+    assert f'{hooks_path}:pre_compact:0:0' in state
+    assert f'{hooks_path}:post_compact:0:0' in state
+    assert f'{hooks_path}:stop:1:0' in state
+    assert len(state) == 13
+
+    identity = {
+        'event_name': 'user_prompt_submit',
+        'hooks': [
+            {
+                'async': False,
+                'command': omx_command,
+                'timeout': 600,
+                'type': 'command',
+            }
+        ],
+    }
+    expected_hash = 'sha256:' + hashlib.sha256(
+        json.dumps(identity, ensure_ascii=False, separators=(',', ':'), sort_keys=True).encode('utf-8')
+    ).hexdigest()
+    assert state[f'{hooks_path}:user_prompt_submit:1:0']['trusted_hash'] == expected_hash
 
 
 def test_prepare_provider_workspace_preserves_configured_codex_command_hooks(

@@ -288,6 +288,99 @@ def test_materialize_codex_profile_merges_agent_mcp_server_overrides(
     assert config['features']['external_migration'] is False
 
 
+def test_materialize_codex_profile_merges_agent_plugin_overrides(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        '\n'.join(
+            [
+                'model = "gpt-5.5"',
+                '',
+                '[plugins."github@openai-curated"]',
+                'enabled = true',
+                '',
+                '[plugins."superpowers@openai-curated"]',
+                'enabled = true',
+                '',
+            ]
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec(
+            'agent1',
+            provider_profile=ProviderProfileSpec(
+                mode='isolated',
+                plugins={
+                    'github@openai-curated': {'enabled': False},
+                    'agentmemory@agentmemory': {'enabled': True},
+                },
+            ),
+        ),
+        workspace_path=project_root,
+    )
+
+    config = tomllib.loads((Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8'))
+
+    assert config['plugins']['github@openai-curated']['enabled'] is False
+    assert config['plugins']['superpowers@openai-curated']['enabled'] is True
+    assert config['plugins']['agentmemory@agentmemory']['enabled'] is True
+    assert config['features']['external_migration'] is False
+
+
+def test_materialize_codex_profile_merges_plugin_overrides_from_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / 'repo'
+    source_home = tmp_path / 'system-codex-home'
+    source_home.mkdir(parents=True, exist_ok=True)
+    (source_home / 'config.toml').write_text(
+        '\n'.join(
+            [
+                'model = "gpt-5.5"',
+                '',
+                '[plugins."github@openai-curated"]',
+                'enabled = true',
+                '',
+            ]
+        ),
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('CODEX_HOME', str(source_home))
+
+    profile = materialize_provider_profile(
+        layout=PathLayout(project_root),
+        spec=_spec(
+            'agent1',
+            provider_profile=ProviderProfileSpec(
+                mode='isolated',
+                env={
+                    'CCB_CODEX_PLUGIN_OVERRIDES_JSON': json.dumps(
+                        {
+                            'github@openai-curated': {'enabled': False},
+                            'agentmemory@agentmemory': {'enabled': True},
+                        }
+                    )
+                },
+            ),
+        ),
+        workspace_path=project_root,
+    )
+
+    config = tomllib.loads((Path(profile.runtime_home or '') / 'config.toml').read_text(encoding='utf-8'))
+
+    assert config['plugins']['github@openai-curated']['enabled'] is False
+    assert config['plugins']['agentmemory@agentmemory']['enabled'] is True
+
+
 def test_materialize_codex_profile_preserves_nested_inline_table_arrays(
     tmp_path: Path,
     monkeypatch,
