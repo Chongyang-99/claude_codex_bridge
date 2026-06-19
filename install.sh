@@ -2920,6 +2920,17 @@ install_tmux_config() {
     echo "Installed: $BIN_DIR/ccb-tmux-off.sh"
   fi
 
+  # === xbridge customization: NON-INVASIVE MODE =========================
+  # Upstream appends a CCB block into the user's ~/.tmux.conf (or
+  # ~/.tmux.conf.local). xbridge NEVER modifies the user's tmux config: the
+  # helper scripts above are installed (harmless files in BIN_DIR) but we
+  # return here before any append/backup of ~/.tmux.conf. This is the core of
+  # the "do not touch my tmux config" requirement; nothing to clean on
+  # uninstall either.
+  echo "[xbridge] non-invasive mode: skipping ~/.tmux.conf modification"
+  return 0
+  # === end xbridge customization ========================================
+
   # Oh-My-Tmux keeps user customizations in ~/.tmux.conf.local.
   # Appending to ~/.tmux.conf can break its internal _apply_configuration script.
   if [[ -f "$tmux_conf_main" ]] && grep -q 'TMUX_CONF_LOCAL' "$tmux_conf_main" 2>/dev/null; then

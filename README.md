@@ -1,3 +1,9 @@
+> **Fork notice:** This is a non-invasive fork of
+> [SeemSeam/claude_codex_bridge](https://github.com/SeemSeam/claude_codex_bridge)
+> (base v7.6.12, `cf036b2`, forked 2026-06-19). By default it does **not** modify
+> your tmux configuration; set `XB_TMUX_THEME=1` to restore upstream theming.
+> See [FORK-NOTICE.md](FORK-NOTICE.md). License unchanged: AGPL-3.0-only.
+
 <div align="center">
 
 # CCB

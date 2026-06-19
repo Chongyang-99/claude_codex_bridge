@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# === xbridge customization: NON-INVASIVE MODE ===========================
+# In xbridge the "on" script never mutates the session theme (see
+# ccb-tmux-on.sh), so there is nothing to restore here. Exit early unless the
+# user opted into upstream theming via XB_TMUX_THEME=1.
+if [[ "${XB_TMUX_THEME:-0}" != "1" ]]; then
+  exit 0
+fi
+# === end xbridge customization ==========================================
+
 if ! command -v tmux >/dev/null 2>&1; then
   exit 0
 fi

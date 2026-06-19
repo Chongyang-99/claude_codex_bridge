@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# === xbridge customization: NON-INVASIVE MODE ===========================
+# Upstream applies session-level status-style / status-format[0] /
+# window-status-format / pane-border-status and registers an after-select-pane
+# set-hook on the user's CURRENT tmux session. That hijacks the user's tmux
+# theme (the root cause of the "grey bar / window list hidden" incident).
+# In xbridge this theming is OFF by default; agents still launch in panes and
+# all collaboration features work unchanged. Set XB_TMUX_THEME=1 to opt back
+# into the upstream theming behavior.
+if [[ "${XB_TMUX_THEME:-0}" != "1" ]]; then
+  exit 0
+fi
+# === end xbridge customization ==========================================
+
 if ! command -v tmux >/dev/null 2>&1; then
   exit 0
 fi

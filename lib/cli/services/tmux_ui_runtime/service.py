@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 
 from terminal_runtime.tmux_theme import render_tmux_session_theme
@@ -15,6 +16,18 @@ def apply_project_tmux_ui(
     ccbd_socket_path: str | None = None,
     backend=None,
 ) -> None:
+    # === xbridge customization: NON-INVASIVE MODE =========================
+    # This is the Python application path that mutates the user's tmux session:
+    #   - session-level status-style / status-format[0] / window-status-format
+    #     / pane-border-status theming  (the "grey bar / hidden window list")
+    #   - GLOBAL root-table mouse bindings (MouseDown1Pane / MouseDrag1Border)
+    #   - after-select-pane / after-resize-pane / window-resized set-hooks
+    # All of that is exactly the tmux-config mutation xbridge must avoid. It is
+    # disabled by default; panes/agents still launch and every collaboration
+    # feature works unchanged. Re-enable upstream theming with XB_TMUX_THEME=1.
+    if os.environ.get('XB_TMUX_THEME', '0') != '1':
+        return
+    # === end xbridge customization ========================================
     socket_path = str(tmux_socket_path or '').strip()
     session_name = str(tmux_session_name or '').strip()
     if not socket_path or not session_name:
