@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import os
 import re
+import sys
 import tempfile
 from typing import Any, Literal
 
@@ -134,19 +135,85 @@ def is_wsl() -> bool:
         return False
 
 
+_DARWIN_REMOTE_FSTYPES = frozenset({
+    'nfs', 'smbfs', 'afpfs', 'webdav', 'ftp', 'fusefs', 'macfuse', 'osxfuse',
+})
+
+
+def _darwin_fstypename(path: Path) -> str | None:
+    """Return the macOS filesystem type name for ``path`` (e.g. 'apfs', 'nfs').
+
+    FUSE-T (sshfs on modern macOS) surfaces remote mounts as 'nfs'. Unix-domain
+    sockets cannot be bound on these network/fuse filesystems, so runtime sockets
+    and state are relocated onto a local filesystem when this is detected.
+    """
+    if sys.platform != 'darwin':
+        return None
+    probe = Path(path).expanduser()
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    try:
+        import ctypes
+
+        class _StatFS(ctypes.Structure):
+            _fields_ = [
+                ('f_bsize', ctypes.c_uint32),
+                ('f_iosize', ctypes.c_int32),
+                ('f_blocks', ctypes.c_uint64),
+                ('f_bfree', ctypes.c_uint64),
+                ('f_bavail', ctypes.c_uint64),
+                ('f_files', ctypes.c_uint64),
+                ('f_ffree', ctypes.c_uint64),
+                ('f_fsid', ctypes.c_int32 * 2),
+                ('f_owner', ctypes.c_uint32),
+                ('f_type', ctypes.c_uint32),
+                ('f_flags', ctypes.c_uint32),
+                ('f_fssubtype', ctypes.c_uint32),
+                ('f_fstypename', ctypes.c_char * 16),
+                ('f_mntonname', ctypes.c_char * 1024),
+                ('f_mntfromname', ctypes.c_char * 1024),
+                ('f_flags_ext', ctypes.c_uint32),
+                ('f_reserved', ctypes.c_uint32 * 7),
+            ]
+
+        libc = ctypes.CDLL('libc.dylib', use_errno=True)
+        buf = _StatFS()
+        if libc.statfs(os.fsencode(str(probe)), ctypes.byref(buf)) != 0:
+            return None
+        name = buf.f_fstypename.decode('ascii', 'ignore').strip().lower()
+        return name or None
+    except Exception:
+        return None
+
+
+def _darwin_remote_fs_hint(path: Path) -> str | None:
+    fstype = _darwin_fstypename(path)
+    if not fstype:
+        return None
+    if fstype in _DARWIN_REMOTE_FSTYPES or 'fuse' in fstype:
+        return 'darwin_remote_fs'
+    return None
+
+
 def socket_filesystem_hint(path: Path) -> str | None:
     normalized = str(Path(path).expanduser()).replace('\\', '/')
     if is_wsl() and _WSL_MOUNTED_DRIVE_RE.match(normalized):
         return 'wsl_drvfs'
+    darwin_hint = _darwin_remote_fs_hint(Path(path).expanduser())
+    if darwin_hint is not None:
+        return darwin_hint
     return None
 
 
+_RELOCATE_FILESYSTEM_HINTS = frozenset({'wsl_drvfs', 'darwin_remote_fs'})
+
+
 def pathname_unix_socket_supported(path: Path) -> bool:
-    return socket_filesystem_hint(path) != 'wsl_drvfs'
+    return socket_filesystem_hint(path) not in _RELOCATE_FILESYSTEM_HINTS
 
 
 def pathname_runtime_state_supported(path: Path) -> bool:
-    return socket_filesystem_hint(path) != 'wsl_drvfs'
+    return socket_filesystem_hint(path) not in _RELOCATE_FILESYSTEM_HINTS
 
 
 def choose_runtime_state_placement(
@@ -167,12 +234,12 @@ def choose_runtime_state_placement(
             relocation_reason='runtime_root_ref',
             filesystem_hint=filesystem_hint,
         )
-    if filesystem_hint == 'wsl_drvfs':
+    if filesystem_hint in _RELOCATE_FILESYSTEM_HINTS:
         return RuntimeStatePlacement(
             anchor_path=anchor,
             effective_path=runtime_state_root_for_project(project_id),
             root_kind='relocated',
-            relocation_reason='wsl_drvfs',
+            relocation_reason=filesystem_hint,
             filesystem_hint=filesystem_hint,
         )
     return RuntimeStatePlacement(
