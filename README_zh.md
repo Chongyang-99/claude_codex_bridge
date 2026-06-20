@@ -33,6 +33,8 @@
 
 [快速开始](#快速开始) · [v7 界面](#v7-界面速览) · [Rich 模式](#rich-mode-new) · [配置团队](#配置-agent-团队) · [使用文档](docs/manuals/user-guide/) · [开发文档](docs/manuals/developer-guide/)
 
+**👉 第一次用？照着 [5 分钟上手](docs/QUICKSTART.md) 走一遍 —— 安装 → 配置 → 发出第一个跨 agent 任务，一条线走完。**
+
 <p align="center">
   <img src="assets/readme_v7/ccb-hero-zh.png" alt="CCB v7 可见多 Agent CLI 工作台" width="960">
 </p>
