@@ -34,3 +34,6 @@ GEMINI.md
 openspec
 *.log
 .hippocampus
+
+# personal project-convention note, not for public fork
+文件说明.md
